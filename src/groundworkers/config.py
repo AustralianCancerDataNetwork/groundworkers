@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+SCHEMA_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+class FullTextConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    db_schema: str | None = Field(default=None, alias="schema")
+    table: str
+    search_fields: list[str] = Field(default_factory=list)
+    vector_column: str | None = None
+
+
+class EmbeddingIndexConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    ids_dataset: str = "ids"
+    vectors_dataset: str = "vectors"
+    payloads_dataset: str | None = None
+
+
+class SqlResourceConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    db_schema: str | None = Field(default=None, alias="schema")
+    table: str
+    primary_key: str
+    allowed_filter_fields: list[str] = Field(default_factory=list)
+    search_fields: list[str] = Field(default_factory=list)
+    display_fields: list[str] = Field(default_factory=list)
+    fulltext: FullTextConfig | None = None
+    embedding_index: EmbeddingIndexConfig | None = None
+
+
+class ModuleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    resources: dict[str, SqlResourceConfig] = Field(default_factory=dict)
+    relationship_resource: str | None = None
+    relationship_left_key: str | None = None
+    relationship_right_key: str | None = None
+    concept_reference_columns: dict[str, str] = Field(default_factory=dict)
+
+
+class DatabaseConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+
+
+class OmopGraphConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    db_url: str
+    vocab_schema: str = "omop_vocab"
+    emb_model_name: str | None = None
+
+    @field_validator("vocab_schema")
+    @classmethod
+    def validate_schema_name(cls, value: str) -> str:
+        if SCHEMA_NAME_PATTERN.fullmatch(value):
+            return value
+        raise ValueError("schema names must contain only letters, numbers, and underscores")
+
+
+class OmopEmbConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    db_url: str | None = None
+    backend_type: str = "sqlitevec"
+    db_path: str | None = None
+    default_model_name: str | None = None
+    faiss_cache_dir: str | None = None
+    api_base: str | None = None
+    api_key: str | None = None
+
+    @model_validator(mode="after")
+    def validate_enabled_backend(self) -> OmopEmbConfig:
+        if not self.enabled:
+            return self
+        if not self.db_url and not self.db_path:
+            raise ValueError("enabled omop_emb config requires db_url or db_path")
+        if self.api_base and not self.api_key:
+            raise ValueError("omop_emb.api_key is required when api_base is configured")
+        return self
+
+    @property
+    def configured_api_credentials(self) -> tuple[str, str] | None:
+        if self.api_base is None:
+            return None
+        if self.api_key is None:
+            raise ValueError("omop_emb.api_key is required when api_base is configured")
+        return self.api_base, self.api_key
+
+    @property
+    def required_db_url(self) -> str:
+        if self.db_url is None:
+            raise ValueError("omop_emb.db_url is required for this configuration")
+        return self.db_url
+
+    @property
+    def required_db_path(self) -> str:
+        if self.db_path is None:
+            raise ValueError("omop_emb.db_path is required for this configuration")
+        return self.db_path
+
+
+class AppConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    app_name: str = "groundworkers"
+    database: DatabaseConfig | None = None
+    omop_graph: OmopGraphConfig | None = None
+    omop_emb: OmopEmbConfig | None = None
+
+    @classmethod
+    def load(cls, path: str | Path) -> "AppConfig":
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+        return cls.model_validate(data)
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "app_name": self.app_name,
+            "database_url": self.database.url if self.database else None,
+            "omop_graph": self.omop_graph.model_dump() if self.omop_graph else None,
+            "omop_emb": self.omop_emb.model_dump() if self.omop_emb else None,
+        }

@@ -1,0 +1,46 @@
+[project]
+name = "groundworkers"
+version = "0.2.0"
+description = "Groundworkers MCP server — read-only agentive access to OMOP vocabularies, concept graphs, and embeddings."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "mcp[cli]>=1,<2",
+  "pydantic>=2,<3",
+  "pyyaml>=6,<7",
+  "SQLAlchemy>=2,<3",
+  "psycopg[binary]>=3.1,<4",
+  "omop-graph>=1.1.0",
+  "omop-emb>=1.0.0",
+]
+
+[project.optional-dependencies]
+embedding-pgvector = [
+  "omop-emb[pgvector]>=1.0.0",
+]
+embedding-faiss = [
+  "omop-emb[faiss-cpu]>=1.0.0",
+]
+dev = [
+  "pytest>=8,<9",
+]
+
+[project.scripts]
+groundworkers = "groundworkers.server:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: requires a live backend or database",
+  "requires_client: requires an embedding API client",
+]

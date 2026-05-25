@@ -1,0 +1,69 @@
+site_name: groundworkers
+site_description: Read-only MCP tool substrate for OMOP vocabulary, embeddings, and cohorts
+site_url: https://AustralianCancerDataNetwork.github.io/groundworkers
+repo_url: https://github.com/AustralianCancerDataNetwork/groundworkers
+repo_name: groundworkers
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: light-blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: usage/installation.md
+      - Configuration: usage/configuration.md
+      - Testing: usage/testing.md
+  - Tools:
+      - Overview: tools/overview.md
+      - Concept Tools: tools/concept.md
+      - Search Tools: tools/search.md
+      - Embedding Tools: tools/embedding.md
+      - Cohort Tools: tools/cohort.md
+      - System Tools: tools/system.md
+  - Adapters:
+      - OmopGraph: adapters/omop_graph.md
+      - OmopEmb: adapters/omop_emb.md
+      - OaCohorts: adapters/oa_cohorts.md
+  - API Reference:
+      - Tools: reference/ref_tools.md
+      - Adapters: reference/ref_adapters.md
+      - Configuration: reference/ref_config.md
+      - Base: reference/ref_base.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: false
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - attr_list
+  - tables

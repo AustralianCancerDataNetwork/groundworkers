@@ -1,0 +1,22 @@
+app_name: groundworkers
+
+database:
+  url: postgresql+psycopg://readonly:readonly@localhost:5432/cava
+
+omop_graph:
+  db_url: postgresql+psycopg://readonly:readonly@localhost:5432/cava
+  vocab_schema: omop_vocab
+  emb_model_name: null
+
+omop_emb:
+  enabled: true
+  backend_type: sqlitevec
+  db_path: /absolute/path/to/omop_emb.db
+  default_model_name: bge-small-en-v1.5
+  faiss_cache_dir: /absolute/path/to/omop_emb-cache
+  api_base: http://localhost:11434/v1
+  api_key: ollama
+
+oa_cohorts:
+  enabled: false
+  db_url: postgresql+psycopg://readonly:readonly@localhost:5432/cava_cohorts
