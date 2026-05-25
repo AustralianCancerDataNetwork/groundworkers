@@ -7,7 +7,3 @@
 ## OmopEmbAdapter
 
 ::: groundworkers.adapters.omop_emb
-
-## OaCohortAdapter
-
-::: groundworkers.adapters.oa_cohorts
