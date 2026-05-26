@@ -16,7 +16,3 @@ omop_emb:
   faiss_cache_dir: /absolute/path/to/omop_emb-cache
   api_base: http://localhost:11434/v1
   api_key: ollama
-
-oa_cohorts:
-  enabled: false
-  db_url: postgresql+psycopg://readonly:readonly@localhost:5432/cava_cohorts
