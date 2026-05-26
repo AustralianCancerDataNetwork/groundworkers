@@ -16,10 +16,6 @@
 
 ::: groundworkers.tools.embedding_tools
 
-## Cohort Tools
-
-::: groundworkers.tools.cohort_tools
-
 ## System Tools
 
 ::: groundworkers.tools.system_tools
