@@ -65,6 +65,20 @@ class OmopGraphConfig(BaseModel):
     db_url: str
     vocab_schema: str = "omop_vocab"
     emb_model_name: str | None = None
+    # Minimum proportion of query tokens that must appear in the matched concept
+    # name for a fulltext (FTS) result to be accepted.  FTS results below this
+    # threshold are silently dropped; if *all* FTS results are dropped the tier
+    # is treated as empty and grounding falls through to the embedding tier.
+    # Range [0.0, 1.0]; 0.0 disables the filter (legacy behaviour).
+    # A value of 0.5 means at least half the query words must be present.
+    min_fulltext_overlap: float = 0.0
+
+    @field_validator("min_fulltext_overlap")
+    @classmethod
+    def validate_overlap(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("min_fulltext_overlap must be between 0.0 and 1.0")
+        return v
 
     @field_validator("vocab_schema")
     @classmethod

@@ -1,38 +1,53 @@
 # Tools Overview
 
-groundworkers registers tools in six groups.  Tools are only registered when the relevant
-adapter is present in the config — absent adapters simply mean those tools are not
-available in that deployment.
+groundworkers registers six tool groups. Tools appear only when the relevant
+adapters are available in the config.
 
 | Group | Tools | Requires |
 |---|---|---|
 | **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | `omop_graph` |
 | **Resolver** | `concept_ground` | `omop_graph` |
-| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_graph` |
+| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_vocab` |
+| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_parent_backoff`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `MappingService` |
 | **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` |
-| **Cohort** | `cohort_find_concept_references` | `oa_cohorts` |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
-!!! info "system tools are always registered"
-    `system_status` and `system_vocabulary_catalogue` are registered unconditionally so
-    clients always get a structured response.  Absent adapters are reported as
-    `"available": false` rather than causing an "unknown tool" error.
+!!! info "System tools are always registered"
+    `system_status` and `system_vocabulary_catalogue` are always present so clients can
+    check what is available in the current deployment.
 
 ## Tool groups at a glance
 
-**Concept tools** — deterministic lookups from known identifiers (concept_id, vocab+code,
-hierarchy traversal, path finding).  Input → exact fact.
+**Concept tools** return deterministic OMOP facts from known identifiers.
 
-**Resolver tools** — free-text grounding via a tiered pipeline (Exact → FullText →
-Embedding → Partial).  Input → ranked candidates.
+**Resolver tools** take free text and try to return the best grounded answer.
 
-**Search tools** — agent-composable primitives that expose raw quality signals
-(ts_rank, standard_concept flag) for the caller to act on.  Use these when you need
-finer control than `concept_ground` provides.
+**Search tools** expose lower-level lexical retrieval with raw quality signals.
+
+**Mapping tools** are aimed at review and adjudication workflows where the caller
+often wants multiple evidence channels side by side.
+
+**Embedding tools** expose the embedding index directly.
+
+## Mapping tools and direct Python use
+
+The mapping group is also available directly through `app.services.mapping`.
+
+```mermaid
+flowchart LR
+    MCP[MCP caller] --> MT[mapping tool]
+    PY[Python caller] --> MS[MappingService]
+    MT --> MS
+    MS --> VA[OmopVocabAdapter]
+    MS --> GA[OmopGraphAdapter]
+    MS --> EA[OmopEmbAdapter]
+```
+
+If you are building a Python application, this is the highest-level place to start.
 
 ## Error response shape
 
-Every tool returns a plain dict.  On failure the dict has:
+Every tool returns a plain dict. On failure the dict has:
 
 ```json
 {"error": true, "code": "ERROR_CODE", "message": "Human-readable description"}
@@ -41,8 +56,8 @@ Every tool returns a plain dict.  On failure the dict has:
 | Code | Meaning |
 |---|---|
 | `NOT_FOUND` | Requested concept ID or code does not exist |
-| `INVALID_INPUT` | Bad argument (non-positive concept_id, empty string, etc.) |
-| `BACKEND_UNAVAIL` | Adapter not configured, embedding index unavailable, or feature not yet implemented |
+| `INVALID_INPUT` | Bad argument such as a non-positive `concept_id` or empty string |
+| `BACKEND_UNAVAIL` | Required adapter is not configured or a backend is unavailable |
 | `QUERY_ERROR` | Database or adapter error during the query |
 
 ## Input validation
@@ -50,10 +65,14 @@ Every tool returns a plain dict.  On failure the dict has:
 All tools validate their inputs before hitting the adapter:
 
 - `concept_id` must be a positive integer (`> 0`)
-- String arguments (`vocabulary_id`, `concept_code`, `query`) must be non-empty after stripping
-- `limit` arguments for search/embedding results are clamped to `[1, 50]`
-- `max_depth` for `concept_ancestors` is clamped to `[1, 20]`; for `concept_descendants` to `[1, 10]`; for `concept_neighbors` to `[1, 4]`
+- string arguments such as `vocabulary_id`, `concept_code`, and `query` must be non-empty after stripping
+- `limit` arguments for search and embedding results are clamped to `[1, 50]`
+- `max_depth` for `concept_ancestors` is clamped to `[1, 20]`
+- `max_depth` for `concept_descendants` is clamped to `[1, 10]`
+- `max_depth` for `concept_neighbors` is clamped to `[1, 4]`
 - `max_nodes` for `concept_neighbors` is clamped to `[10, 500]`
+- mapping bundle `per_channel_limit` is clamped to `[1, 20]`
+- mapping bundle `overall_limit` is clamped to `[1, 100]`
 
 Validation failures return `INVALID_INPUT` without touching the database.
 
@@ -63,5 +82,5 @@ Validation failures return `INVALID_INPUT` without touching the database.
 groundworkers --config /path/to/config.yaml --describe
 ```
 
-This prints a JSON object with every registered tool's signature and docstring —
-useful for verifying which tools are active in a given deployment.
+This prints a JSON object with each registered tool's signature and docstring, which
+is useful when you want to confirm what is active in a particular deployment.

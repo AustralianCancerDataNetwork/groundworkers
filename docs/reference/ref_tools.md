@@ -12,6 +12,10 @@
 
 ::: groundworkers.tools.search_tools
 
+## Mapping Tools
+
+::: groundworkers.tools.mapping_tools
+
 ## Embedding Tools
 
 ::: groundworkers.tools.embedding_tools

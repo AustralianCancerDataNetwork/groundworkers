@@ -7,7 +7,7 @@ from typing import Any
 
 from omop_graph.extensions.omop_alchemy import PredicateKind
 from omop_graph.graph.constraints import SearchConstraintConcept
-from omop_graph.graph.kg import KnowledgeGraph
+from omop_graph.graph.kg import KnowledgeGraph, KnowledgeGraphEmbeddingConfiguration
 from omop_graph.graph.paths import find_shortest_paths_batch
 from omop_graph.graph.traverse import traverse
 from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
@@ -32,6 +32,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
 
+from omop_emb import EmbeddingClient
+
 from groundworkers.base.errors import GroundworkersError
 
 # TODO: some of this adapter logic really should be pushed back into 
@@ -45,11 +47,27 @@ class OmopGraphAdapter:
         *,
         vocab_schema: str = "omop_vocab",
         emb_model_name: str | None = None,
+        embedding_client: EmbeddingClient | None = None,
+        min_fulltext_overlap: float = 0.0,
     ) -> None:
         self.engine = engine
         self.vocab_schema = vocab_schema
         self.emb_model_name = emb_model_name
+        self._embedding_client: EmbeddingClient | None = embedding_client
+        self.min_fulltext_overlap = min_fulltext_overlap
         self._kg: KnowledgeGraph | None = None
+
+    def set_embedding_client(self, client: EmbeddingClient, model_name: str | None = None) -> None:
+        """Inject an EmbeddingClient so concept_ground can encode query strings on-the-fly.
+
+        Call this after construction (e.g. once the omop_emb adapter has resolved
+        the default model from the registry).  The embedding is computed before
+        ground_term is called and passed as the query_embedding argument — the KG
+        itself does not need to be rebuilt.
+        """
+        self._embedding_client = client
+        if model_name is not None:
+            self.emb_model_name = model_name
 
     def is_available(self) -> bool:
         try:
@@ -157,22 +175,38 @@ class OmopGraphAdapter:
             (ExactLabelResolver(), ExactSynonymResolver()),
             (FullTextResolver(), FullTextSynonymResolver()),
         ]
-        if self.emb_model_name:
+        if self.emb_model_name or self._embedding_client is not None:
             tiers.append((EmbeddingResolver(),))
         tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
 
         results: list[Any] = []
         for tier in tiers:
+            is_fts_tier = any(
+                isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier
+            )
             pipeline = ResolverPipeline(resolvers=tier)
             try:
-                results = ground_term(
+                raw = ground_term(
                     pipeline, kg, query,
-                    query_embedding=None,
+                    query_embedding=None,  # KG computes this via its emb_config
                     constraints=constraints,
                     max_candidates=limit,
                 )
             except Exception as exc:
                 raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
+            # Apply minimum token-overlap filter to FTS results: if fewer than
+            # min_fulltext_overlap of the query tokens appear in the matched
+            # concept name, drop the hit and fall through to a better tier.
+            if raw and is_fts_tier and self.min_fulltext_overlap > 0.0:
+                query_tokens = set(query.lower().split())
+                filtered = [
+                    r for r in raw
+                    if self._fts_overlap(query_tokens, r.matched_concept_label or "")
+                    >= self.min_fulltext_overlap
+                ]
+                results = filtered
+            else:
+                results = list(raw)
             if results:
                 break
 
@@ -536,6 +570,20 @@ class OmopGraphAdapter:
         }
 
     @staticmethod
+    def _fts_overlap(query_tokens: set[str], concept_label: str) -> float:
+        """Return the proportion of query tokens that appear in *concept_label*.
+
+        Both sides are lowercased and split on whitespace.  A value of 1.0
+        means every query token was found; 0.0 means none were found.
+        Used to filter noisy fulltext results before falling through to the
+        embedding tier.
+        """
+        if not query_tokens:
+            return 1.0
+        label_tokens = set(concept_label.lower().split())
+        return len(query_tokens & label_tokens) / len(query_tokens)
+
+    @staticmethod
     def _label_match_kind_name(match_kind: object) -> str:
         _MAP = {0: "EXACT", 1: "FULLTEXT", 2: "PARTIAL", 3: "EMBEDDING_NEAREST"}
         val = getattr(match_kind, "value", None)
@@ -588,7 +636,18 @@ class OmopGraphAdapter:
             raise GroundworkersError("DB_UNAVAILABLE", f"Cannot connect to database: {exc}") from exc
 
         try:
-            self._kg = KnowledgeGraph(cdm_engine=self.engine)
+            emb_config: KnowledgeGraphEmbeddingConfiguration | None = None
+            if self._embedding_client is not None:
+                try:
+                    from omop_emb.config import MetricType
+                    emb_config = KnowledgeGraphEmbeddingConfiguration(
+                        metric_type=MetricType.COSINE,
+                        model_name=self.emb_model_name,
+                        client=self._embedding_client,
+                    )
+                except Exception:
+                    emb_config = None  # Non-fatal: grounding falls back to non-embedding tiers
+            self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=emb_config)
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="BACKEND_UNAVAIL")
         return self._kg
@@ -597,11 +656,11 @@ class OmopGraphAdapter:
     # These are consistent across all Athena vocabulary releases (concept_ids may differ
     # between instances, but concept_codes are stable).
     _DOMAIN_ROOT_CODES: dict[str, tuple[str, str]] = {
-        "condition":   ("SNOMED", "404684003"),  # Clinical finding
-        "procedure":   ("SNOMED", "71388002"),   # Procedure
-        "drug":        ("SNOMED", "373873005"),  # Pharmaceutical / biologic product
-        "measurement": ("SNOMED", "363787002"),  # Observable entity
-        "device":      ("SNOMED", "260787004"),  # Physical object
+        "Condition":   ("SNOMED", "404684003"),  # Clinical finding
+        "Procedure":   ("SNOMED", "71388002"),   # Procedure
+        "Drug":        ("SNOMED", "373873005"),  # Pharmaceutical / biologic product
+        "Measurement": ("SNOMED", "363787002"),  # Observable entity
+        "Device":      ("SNOMED", "260787004"),  # Physical object
     }
 
     def _get_domain_root_ids(self, domain: str | None) -> tuple[int, ...]:

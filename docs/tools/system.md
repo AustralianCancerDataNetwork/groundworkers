@@ -1,13 +1,14 @@
 # System Tools
 
-Two tools report on the overall health and vocabulary catalogue of the groundworkers
-instance.  Both are **always registered** regardless of adapter configuration.
+Two tools report on overall availability and the OMOP vocabulary catalogue for a
+`groundworkers` deployment. Both are always registered.
 
 ## `system_status`
 
-Returns the availability of each configured adapter.  Takes no arguments.
+Returns the availability of each configured adapter. Takes no arguments.
 
 **Response**:
+
 ```json
 {
   "available": true,
@@ -16,26 +17,30 @@ Returns the availability of each configured adapter.  Takes no arguments.
     "omop_emb": {
       "available": true,
       "models": [{"model_name": "qwen3-embedding:0.6b", "concept_count": 438924}]
-    },
-    "oa_cohorts": {"available": false, "reason": "not configured"}
+    }
   }
 }
 ```
 
-`"available"` at the top level is `true` if **any** adapter is available.  Each
-adapter reports its own availability independently.  Unconfigured adapters appear
-with `"available": false` and a `"reason"` string.
+Top-level `"available"` is `true` if at least one adapter is available. Each
+adapter reports its own status independently.
 
-!!! tip "Health check"
-    groundcrew calls `system_status` at session start to verify the groundworkers
-    instance is reachable and has the expected adapters available.
+Use this tool when you want to confirm:
+
+- whether vocabulary lookup is available
+- whether embedding search is available
+- which embedding models are registered
 
 ## `system_vocabulary_catalogue`
 
-Returns all OMOP vocabularies, domains, and concept classes from the vocabulary
-database.  Requires `omop_graph` to be configured; returns `BACKEND_UNAVAIL` otherwise.
+Returns vocabularies, domains, and concept classes from the OMOP vocabulary
+database.
+
+This requires `omop_graph` to be configured and returns `BACKEND_UNAVAIL`
+otherwise.
 
 **Response**:
+
 ```json
 {
   "vocabularies": [
@@ -50,5 +55,5 @@ database.  Requires `omop_graph` to be configured; returns `BACKEND_UNAVAIL` oth
 }
 ```
 
-This response is typically cached by groundcrew at Stage 0 of the grounding
-pipeline to avoid repeated round-trips during a mapping session.
+Clients often cache this response so they can present vocabulary and domain choices
+without re-querying the server repeatedly.

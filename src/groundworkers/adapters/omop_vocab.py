@@ -24,6 +24,7 @@ raises NotImplementedError — the navigate_to_standard method here fills that g
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
@@ -89,6 +90,15 @@ class StandardMapping:
     standard_concepts: list[MappedConcept] = field(default_factory=list)
 
 
+@dataclass
+class RelatedConceptMapping:
+    """Relationship-driven mapping result for a single source concept_id."""
+    source_concept_id: int
+    source_concept_name: str
+    source_standard_concept: bool
+    related_concepts: list[MappedConcept] = field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Adapter
 # ---------------------------------------------------------------------------
@@ -117,6 +127,7 @@ class OmopVocabAdapter:
     # The OMOP relationship_id(s) that express cross-vocabulary standard mapping.
     # "Maps to" is the primary identity relationship in all Athena vocabulary releases.
     IDENTITY_RELATIONSHIP_IDS: frozenset[str] = frozenset({"Maps to"})
+    VALUE_RELATIONSHIP_IDS: frozenset[str] = frozenset({"Maps to value"})
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
@@ -245,6 +256,110 @@ class OmopVocabAdapter:
             raise
         except Exception as exc:
             raise OmopVocabError(f"search_exact failed: {exc}") from exc
+
+        return results
+
+    # ------------------------------------------------------------------
+    # search_normalized
+    # ------------------------------------------------------------------
+
+    def search_normalized(
+        self,
+        query: str,
+        *,
+        domain: str | None = None,
+        vocabulary_id: str | None = None,
+        standard_only: bool = False,
+        include_synonyms: bool = False,
+        normalization_profile: str = "verbatim",
+        remove_stop_phrases: bool = True,
+        limit: int = 20,
+    ) -> list[ConceptMatch]:
+        """
+        Deterministic near-verbatim search after text normalization.
+
+        This is intentionally distinct from full-text search: both the query and
+        the candidate text are normalized, then compared for equality.
+        """
+        normalized_query, _steps = normalize_text_for_matching(
+            query,
+            profile=normalization_profile,
+            remove_stop_phrases=remove_stop_phrases,
+        )
+        if not normalized_query:
+            raise ValueError("query must be a non-empty string after normalization")
+
+        results: list[ConceptMatch] = []
+        seen_ids: set[int] = set()
+
+        try:
+            name_expr = _normalized_sql_expr(
+                Concept.concept_name,
+                normalization_profile=normalization_profile,
+                remove_stop_phrases=remove_stop_phrases,
+            )
+
+            with self._session_factory() as session:
+                name_stmt = self._apply_concept_filters(
+                    select(
+                        Concept.concept_id,
+                        Concept.concept_name,
+                        Concept.concept_code,
+                        Concept.vocabulary_id,
+                        Concept.domain_id,
+                        Concept.concept_class_id,
+                        Concept.standard_concept,
+                        Concept.invalid_reason,
+                    ).where(name_expr == normalized_query),
+                    domain=domain,
+                    vocabulary_id=vocabulary_id,
+                    standard_only=standard_only,
+                ).limit(limit)
+
+                for row in session.execute(name_stmt).all():
+                    seen_ids.add(int(row.concept_id))
+                    results.append(_row_to_match(row, "name", None, None))
+
+                if include_synonyms:
+                    remaining = limit - len(results)
+                    if remaining > 0:
+                        syn_expr = _normalized_sql_expr(
+                            Concept_Synonym.concept_synonym_name,
+                            normalization_profile=normalization_profile,
+                            remove_stop_phrases=remove_stop_phrases,
+                        )
+                        syn_stmt = self._apply_concept_filters(
+                            select(
+                                Concept.concept_id,
+                                Concept.concept_name,
+                                Concept.concept_code,
+                                Concept.vocabulary_id,
+                                Concept.domain_id,
+                                Concept.concept_class_id,
+                                Concept.standard_concept,
+                                Concept.invalid_reason,
+                                Concept_Synonym.concept_synonym_name,
+                            )
+                            .join(
+                                Concept_Synonym,
+                                Concept_Synonym.concept_id == Concept.concept_id,
+                            )
+                            .where(syn_expr == normalized_query),
+                            domain=domain,
+                            vocabulary_id=vocabulary_id,
+                            standard_only=standard_only,
+                        ).limit(remaining)
+
+                        if seen_ids:
+                            syn_stmt = syn_stmt.where(Concept.concept_id.not_in(list(seen_ids)))
+
+                        for row in session.execute(syn_stmt).all():
+                            results.append(_row_to_match(row, "synonym", row.concept_synonym_name, None))
+
+        except OmopVocabError:
+            raise
+        except Exception as exc:
+            raise OmopVocabError(f"search_normalized failed: {exc}") from exc
 
         return results
 
@@ -495,6 +610,16 @@ class OmopVocabAdapter:
 
         return results
 
+    def navigate_to_value(
+        self,
+        concept_ids: list[int],
+    ) -> list[RelatedConceptMapping]:
+        """Return ``Maps to value`` related concepts for the given concept_ids."""
+        return self._navigate_relationship(
+            concept_ids,
+            self.VALUE_RELATIONSHIP_IDS,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -515,6 +640,84 @@ class OmopVocabAdapter:
         if vocabulary_id:
             stmt = stmt.where(Concept.vocabulary_id == vocabulary_id)
         return stmt
+
+    def _navigate_relationship(
+        self,
+        concept_ids: list[int],
+        relationship_ids: frozenset[str],
+    ) -> list[RelatedConceptMapping]:
+        if not concept_ids:
+            return []
+
+        try:
+            with self._session_factory() as session:
+                source_stmt = select(
+                    Concept.concept_id,
+                    Concept.concept_name,
+                    Concept.vocabulary_id,
+                    Concept.domain_id,
+                    Concept.concept_class_id,
+                    Concept.standard_concept,
+                ).where(Concept.concept_id.in_(concept_ids))
+
+                source_rows = {
+                    int(r.concept_id): r
+                    for r in session.execute(source_stmt).all()
+                }
+
+                related: dict[int, list[MappedConcept]] = {}
+                if source_rows:
+                    rel_stmt = (
+                        select(
+                            Concept_Relationship.concept_id_1.label("source_id"),
+                            Concept_Relationship.relationship_id,
+                            Concept.concept_id,
+                            Concept.concept_name,
+                            Concept.vocabulary_id,
+                            Concept.domain_id,
+                            Concept.concept_class_id,
+                        )
+                        .join(
+                            Concept,
+                            Concept.concept_id == Concept_Relationship.concept_id_2,
+                        )
+                        .where(
+                            Concept_Relationship.concept_id_1.in_(list(source_rows.keys())),
+                            Concept_Relationship.relationship_id.in_(relationship_ids),
+                            Concept_Relationship.invalid_reason.is_(None),
+                        )
+                    )
+                    for row in session.execute(rel_stmt).all():
+                        src = int(row.source_id)
+                        related.setdefault(src, []).append(
+                            MappedConcept(
+                                concept_id=int(row.concept_id),
+                                concept_name=row.concept_name,
+                                vocabulary_id=row.vocabulary_id,
+                                domain_id=row.domain_id,
+                                concept_class_id=row.concept_class_id,
+                                relationship_id=row.relationship_id,
+                            )
+                        )
+        except OmopVocabError:
+            raise
+        except Exception as exc:
+            raise OmopVocabError(f"relationship navigation failed: {exc}") from exc
+
+        results: list[RelatedConceptMapping] = []
+        for cid in concept_ids:
+            src = source_rows.get(cid)
+            if src is None:
+                continue
+            results.append(
+                RelatedConceptMapping(
+                    source_concept_id=cid,
+                    source_concept_name=src.concept_name,
+                    source_standard_concept=src.standard_concept == "S",
+                    related_concepts=related.get(cid, []),
+                )
+            )
+        return results
 
 
 # ---------------------------------------------------------------------------
@@ -580,3 +783,72 @@ def serialise_standard_mapping(mapping: StandardMapping) -> dict:
             for sc in mapping.standard_concepts
         ],
     }
+
+
+def serialise_related_concept_mapping(mapping: RelatedConceptMapping) -> dict:
+    """Serialise a RelatedConceptMapping to a JSON-safe dict for MCP tool responses."""
+    return {
+        "source_concept_id": mapping.source_concept_id,
+        "source_concept_name": mapping.source_concept_name,
+        "source_standard_concept": mapping.source_standard_concept,
+        "related_concepts": [
+            {
+                "concept_id": sc.concept_id,
+                "concept_name": sc.concept_name,
+                "vocabulary_id": sc.vocabulary_id,
+                "domain_id": sc.domain_id,
+                "concept_class_id": sc.concept_class_id,
+                "relationship_id": sc.relationship_id,
+            }
+            for sc in mapping.related_concepts
+        ],
+    }
+
+
+_STOP_PHRASE_RE = re.compile(r"\b(?:nos|nec|nfs|unspecified|unknown|other|w/?o|w/)\b")
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def normalize_text_for_matching(
+    text: str,
+    *,
+    profile: str = "verbatim",
+    remove_stop_phrases: bool = True,
+) -> tuple[str, list[str]]:
+    """Normalize free text into a deterministic matching form."""
+    steps: list[str] = ["strip", "lowercase", "collapse_whitespace"]
+    normalised = _WHITESPACE_RE.sub(" ", text.strip().lower())
+
+    if remove_stop_phrases:
+        normalised = _STOP_PHRASE_RE.sub(" ", normalised)
+        steps.append("remove_stop_phrases")
+
+    if profile in {"verbatim", "aggressive", "drug_name"}:
+        normalised = _NON_ALNUM_RE.sub(" ", normalised)
+        steps.append("strip_punctuation")
+
+    if profile == "drug_name":
+        normalised = normalised.replace(" extended release ", " ")
+        normalised = normalised.replace(" modified release ", " ")
+        steps.append("drug_name_cleanup")
+
+    normalised = _WHITESPACE_RE.sub(" ", normalised).strip()
+    return normalised, steps
+
+
+def _normalized_sql_expr(
+    column,
+    *,
+    normalization_profile: str,
+    remove_stop_phrases: bool,
+):
+    expr = func.lower(column)
+    if remove_stop_phrases:
+        expr = func.regexp_replace(expr, r'\m(?:nos|nec|nfs|unspecified|unknown|other|w/?o|w/)\M', " ", "g")
+    expr = func.regexp_replace(expr, r"[^a-z0-9]+", " ", "g")
+    if normalization_profile == "drug_name":
+        expr = func.replace(expr, " extended release ", " ")
+        expr = func.replace(expr, " modified release ", " ")
+    expr = func.regexp_replace(expr, r"\s+", " ", "g")
+    return func.btrim(expr)

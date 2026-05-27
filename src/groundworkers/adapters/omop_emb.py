@@ -4,7 +4,15 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-from omop_emb import EmbeddingConceptFilter, EmbeddingReaderInterface
+from sqlalchemy.engine import Engine
+
+from omop_emb import (
+    EmbeddingBackend,
+    EmbeddingClient,
+    EmbeddingConceptFilter,
+    EmbeddingModelRecord,
+    EmbeddingReaderInterface,
+)
 from omop_emb.config import MetricType
 from omop_emb.embeddings.embedding_client import EmbeddingRole
 from omop_emb.interface import list_registered_models
@@ -16,11 +24,11 @@ class OmopEmbAdapter:
     def __init__(
         self,
         *,
-        backend_factory: Callable[[], object],
+        backend_factory: Callable[[], EmbeddingBackend],
         backend_type: str | None,
         default_model_name: str | None = None,
-        client_factory: Callable[[str], object] | None = None,
-        cdm_engine: object | None = None,
+        client_factory: Callable[[str], EmbeddingClient] | None = None,
+        cdm_engine: Engine | None = None,
         faiss_cache_dir: str | None = None,
     ) -> None:
         self._backend_factory = backend_factory
@@ -29,8 +37,8 @@ class OmopEmbAdapter:
         self._client_factory = client_factory
         self._cdm_engine = cdm_engine
         self._faiss_cache_dir = faiss_cache_dir
-        self._backend: object | None = None
-        self._clients: dict[str, object] = {}
+        self._backend: EmbeddingBackend | None = None
+        self._clients: dict[str, EmbeddingClient] = {}
 
     def is_available(self) -> bool:
         return self.index_status()["available"]
@@ -164,7 +172,7 @@ class OmopEmbAdapter:
             "vector": row.tolist(),
         }
 
-    def _get_backend(self) -> object:
+    def _get_backend(self) -> EmbeddingBackend:
         if self._backend is None:
             try:
                 self._backend = self._backend_factory()
@@ -172,7 +180,7 @@ class OmopEmbAdapter:
                 raise GroundworkersError("BACKEND_UNAVAIL", f"Embedding backend is unavailable: {exc}") from exc
         return self._backend
 
-    def _resolve_model_record(self, model_name: str | None) -> object:
+    def _resolve_model_record(self, model_name: str | None) -> EmbeddingModelRecord:
         backend = self._get_backend()
         requested_name = model_name or self._default_model_name
         records = list_registered_models(backend=backend, model_name=requested_name)
@@ -190,7 +198,7 @@ class OmopEmbAdapter:
             "No default embedding model is configured and multiple registered models are available",
         )
 
-    def _build_reader(self, record: object) -> EmbeddingReaderInterface:
+    def _build_reader(self, record: EmbeddingModelRecord) -> EmbeddingReaderInterface:
         return EmbeddingReaderInterface(
             model=record.model_name,
             backend=self._get_backend(),
@@ -200,7 +208,7 @@ class OmopEmbAdapter:
             faiss_cache_dir=self._faiss_cache_dir,
         )
 
-    def _get_client(self, model_name: str) -> object:
+    def _get_client(self, model_name: str) -> EmbeddingClient:
         if self._client_factory is None:
             raise GroundworkersError("BACKEND_UNAVAIL", "embedding client is not configured")
         client = self._clients.get(model_name)
@@ -231,7 +239,7 @@ class OmopEmbAdapter:
             limit=limit,
         )
 
-    def _backend_type_from_backend(self, backend: object) -> str | None:
+    def _backend_type_from_backend(self, backend: EmbeddingBackend) -> str | None:
         backend_type = getattr(backend, "backend_type", None)
         return self._enum_value(backend_type)
 
