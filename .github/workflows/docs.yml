@@ -30,7 +30,7 @@ jobs:
             mkdocs-material-
 
       - name: Install MkDocs and plugins
-        run: pip install mkdocs-material mkdocstrings-python
+        run: pip install mkdocs-material mkdocstrings-python mkdocs-mermaid2-plugin
 
       - name: Install package
         run: pip install .
