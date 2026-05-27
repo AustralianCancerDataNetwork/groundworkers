@@ -1,0 +1,363 @@
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from groundworkers.adapters.omop_vocab import (
+    ConceptMatch,
+    MappedConcept,
+    RelatedConceptMapping,
+    StandardMapping,
+)
+from groundworkers.services import MappingService
+
+
+class StubVocabAdapter:
+    def search_exact(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, include_synonyms=True, limit=20):
+        return [
+            ConceptMatch(
+                concept_id=101,
+                concept_name="Diabetes mellitus",
+                concept_code="44054006",
+                vocabulary_id="SNOMED",
+                domain_id="Condition",
+                concept_class_id="Clinical Finding",
+                standard_concept=True,
+                invalid_reason=None,
+                match_source="name",
+            )
+        ]
+
+    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, include_synonyms=False, normalization_profile="verbatim", remove_stop_phrases=True, limit=20):
+        return [
+            ConceptMatch(
+                concept_id=102,
+                concept_name="Type 2 diabetes mellitus",
+                concept_code="44054007",
+                vocabulary_id="SNOMED",
+                domain_id="Condition",
+                concept_class_id="Clinical Finding",
+                standard_concept=False,
+                invalid_reason=None,
+                match_source="name",
+            )
+        ]
+
+    def search_fulltext(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, include_synonyms=True, min_rank=0.0, limit=20):
+        return ([
+            ConceptMatch(
+                concept_id=103,
+                concept_name="Diabetic disorder",
+                concept_code="44054008",
+                vocabulary_id="SNOMED",
+                domain_id="Condition",
+                concept_class_id="Clinical Finding",
+                standard_concept=False,
+                invalid_reason=None,
+                match_source="name",
+                ts_rank=0.42,
+            )
+        ], True)
+
+    def navigate_to_standard(self, concept_ids: list[int]):
+        return [
+            StandardMapping(
+                source_concept_id=102,
+                source_concept_name="Type 2 diabetes mellitus",
+                source_standard_concept=False,
+                standard_concepts=[
+                    MappedConcept(
+                        concept_id=201,
+                        concept_name="Type 2 diabetes mellitus (standard)",
+                        vocabulary_id="SNOMED",
+                        domain_id="Condition",
+                        concept_class_id="Clinical Finding",
+                        relationship_id="Maps to",
+                    )
+                ],
+            )
+        ]
+
+    def navigate_to_value(self, concept_ids: list[int]):
+        return [
+            RelatedConceptMapping(
+                source_concept_id=555,
+                source_concept_name="Source concept",
+                source_standard_concept=False,
+                related_concepts=[
+                    MappedConcept(
+                        concept_id=777,
+                        concept_name="Positive",
+                        vocabulary_id="SNOMED",
+                        domain_id="Observation",
+                        concept_class_id="Qualifier Value",
+                        relationship_id="Maps to value",
+                    )
+                ],
+            )
+        ]
+
+
+class StubGraphAdapter:
+    def get_concept(self, concept_id: int):
+        concepts = {
+            102: {
+                "concept_id": 102,
+                "concept_name": "Type 2 diabetes mellitus",
+                "concept_code": "44054007",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": False,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+            201: {
+                "concept_id": 201,
+                "concept_name": "Type 2 diabetes mellitus (standard)",
+                "concept_code": "201",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+            301: {
+                "concept_id": 301,
+                "concept_name": "Diabetes mellitus",
+                "concept_code": "301",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+            302: {
+                "concept_id": 302,
+                "concept_name": "Endocrine disorder",
+                "concept_code": "302",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+            401: {
+                "concept_id": 401,
+                "concept_name": "Child concept",
+                "concept_code": "401",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+            555: {
+                "concept_id": 555,
+                "concept_name": "Source concept",
+                "concept_code": "SRC1",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Observation",
+                "concept_class_id": "Observable Entity",
+                "standard_concept": False,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+        }
+        return concepts.get(concept_id)
+
+    def get_concept_by_code(self, vocabulary_id: str, code: str):
+        if vocabulary_id == "SNOMED" and code == "SRC1":
+            return [self.get_concept(555)]
+        return []
+
+    def get_ancestors(self, concept_id: int, max_depth: int):
+        if concept_id == 102:
+            return [
+                {"concept_id": 301, "concept_name": "Diabetes mellitus", "vocabulary_id": "SNOMED", "domain_id": "Condition", "standard_concept": True, "depth": 1},
+                {"concept_id": 302, "concept_name": "Endocrine disorder", "vocabulary_id": "SNOMED", "domain_id": "Condition", "standard_concept": True, "depth": 2},
+            ]
+        return []
+
+    def get_descendants(self, concept_id: int, max_depth: int):
+        if concept_id == 301:
+            return [
+                {"concept_id": 401, "concept_name": "Child concept", "vocabulary_id": "SNOMED", "domain_id": "Condition", "standard_concept": True, "depth": 1}
+            ]
+        return []
+
+    def get_edges(self, concept_id: int):
+        return {
+            "outbound": [
+                {"relationship_id": "Is a", "predicate_kind": "HIERARCHY", "target_concept_id": 301, "target_concept_name": "Diabetes mellitus", "valid": True}
+            ],
+            "inbound": [],
+        }
+
+    def get_neighbors(self, concept_id: int, max_depth: int, predicate_kinds, max_nodes: int, include_edges: bool):
+        return {
+            "concept_id": concept_id,
+            "neighbor_count": 1,
+            "edge_count": 0,
+            "neighbors": [
+                {"concept_id": 301, "concept_name": "Diabetes mellitus", "vocabulary_id": "SNOMED", "domain_id": "Condition", "concept_class_id": "Clinical Finding", "standard_concept": True}
+            ],
+            "edges": [],
+            "terminated_early": False,
+            "terminated_reason": None,
+        }
+
+    def ground(self, query: str, limit: int, domain: str | None, vocabulary_id: str | None, parent_ids=None):
+        return {
+            "results": [
+                {
+                    "concept_id": 102,
+                    "concept_name": "Type 2 diabetes mellitus",
+                    "match_kind": "PARTIAL",
+                    "standard_concept": True,
+                }
+            ],
+            "grounding_explanation": {"matched_tier": "PARTIAL"},
+        }
+
+    def find_path(self, source_id: int, target_id: int, max_depth: int, within_domain: bool = True):
+        return {"found": True, "paths": [{"length": 1, "steps": [{"subject_id": source_id, "object_id": target_id, "predicate": "Is a", "predicate_kind": "HIERARCHY"}]}]}
+
+    def map_to_standard(self, vocabulary_id: str, code: str):
+        if code == "44054007":
+            return {"source": self.get_concept(102), "standard_concepts": [self.get_concept(201)]}
+        return {"source": self.get_concept(555), "standard_concepts": []}
+
+
+class StubEmbAdapter:
+    def search(self, query: str, limit: int, domain: str | None, vocabulary: str | None, standard_only: bool, active_only: bool, model_name: str | None):
+        return {
+            "query_text": query,
+            "model_name": model_name or "demo-model",
+            "results": [
+                {"concept_id": 104, "concept_name": "Diabetes", "similarity": 0.91, "is_standard": True, "is_active": True}
+            ],
+        }
+
+    def get_neighbours(self, concept_id: int, limit: int, model_name: str | None):
+        return {
+            "query_concept_id": concept_id,
+            "model_name": model_name or "demo-model",
+            "results": [{"concept_id": 888, "concept_name": "Near neighbour", "similarity": 0.88}],
+        }
+
+
+def build_service() -> MappingService:
+    return MappingService(
+        StubVocabAdapter(),
+        graph_adapter=StubGraphAdapter(),
+        emb_adapter=StubEmbAdapter(),
+    )
+
+
+def test_concept_search_normalized_returns_normalized_metadata_and_results():
+    service = build_service()
+
+    result = service.concept_search_normalized(" Type-2 Diabetes, NOS ")
+
+    assert result["normalized_query"] == "type 2 diabetes"
+    assert result["results"][0]["match_mode"] == "label_exact_normalized"
+    assert result["results"][0]["matched_text_normalized"] == "type 2 diabetes mellitus"
+
+
+def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
+    service = build_service()
+
+    result = service.concept_candidate_bundle(
+        "type 2 diabetes",
+        include_hierarchy_context=True,
+        include_relationship_summary=True,
+    )
+
+    assert set(result["channels"]) >= {"exact", "normalized", "fulltext", "embedding"}
+    assert any(row["concept_id"] == 102 for row in result["candidate_union"])
+    non_standard = next(row for row in result["candidate_union"] if row["concept_id"] == 102)
+    assert non_standard["mapped_standard_concepts"][0]["concept_id"] == 201
+    assert "ancestor_preview" in non_standard
+
+
+def test_concept_parent_backoff_selects_nearest_standard_ancestor():
+    service = build_service()
+
+    result = service.concept_parent_backoff(query="type 2 diabetes", domain="Condition")
+
+    assert result["found"] is True
+    assert result["selected_parent"]["concept_id"] == 301
+    assert result["selection_reason"] == "nearest_standard_ancestor"
+
+
+def test_concept_mapping_context_assembles_requested_context():
+    service = build_service()
+
+    result = service.concept_mapping_context(
+        102,
+        include_embedding_neighbors=True,
+        include_descendants=False,
+    )
+
+    assert result["concept"]["concept_id"] == 102
+    assert result["standard_mapping"]["standard_concepts"][0]["concept_id"] == 201
+    assert result["ancestors"][0]["concept_id"] == 301
+    assert result["embedding_neighbors"][0]["concept_id"] == 888
+
+
+def test_concept_map_to_value_returns_related_concepts():
+    service = build_service()
+
+    result = service.concept_map_to_value("SNOMED", "SRC1")
+
+    assert result["source_concept"]["concept_id"] == 555
+    assert result["maps_to_value"][0]["concept_id"] == 777
+
+
+def test_concept_resolve_mapping_expression_applies_exclude_and_descendants():
+    service = build_service()
+
+    result = service.concept_resolve_mapping_expression(
+        items=[
+            {"concept_id": 301, "include_descendants": True},
+            {"concept_id": 401, "exclude": True},
+        ],
+    )
+
+    assert 301 in result["resolved_concept_ids"]
+    assert 401 not in result["resolved_concept_ids"]
+    assert result["counts"]["excluded"] == 1
+
+
+def test_mapping_evaluate_candidates_computes_summary_metrics():
+    service = build_service()
+
+    result = service.mapping_evaluate_candidates(
+        predicted_mappings=[
+            {"source_key": "a", "predicted_standard_concept_ids": [201, 202], "domain_id": "Condition"},
+            {"source_key": "b", "predicted_standard_concept_ids": [999], "domain_id": "Condition"},
+        ],
+        reference_mappings=[
+            {"source_key": "a", "reference_standard_concept_id": 201, "domain_id": "Condition"},
+            {"source_key": "b", "reference_standard_concept_id": 301, "domain_id": "Condition"},
+            {"source_key": "c", "reference_standard_concept_id": 401, "domain_id": "Condition"},
+        ],
+    )
+
+    assert result["summary_metrics"]["agreement_count"] == 1
+    assert result["summary_metrics"]["disagreement_count"] == 1
+    assert result["summary_metrics"]["missing_reference_count"] == 1

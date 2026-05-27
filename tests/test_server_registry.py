@@ -6,6 +6,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from groundworkers.app import build_application
 from groundworkers.config import AppConfig
 from groundworkers.server import build_adapters, create_server
 
@@ -63,6 +64,17 @@ def test_build_adapters_leaves_disabled_components_unset():
     adapters = build_adapters(config)
     assert adapters.omop_graph is None
     assert adapters.omop_emb is None
+
+
+def test_build_application_exposes_services_container():
+    config = AppConfig.model_validate(
+        {
+            "omop_emb": {"enabled": False},
+        }
+    )
+    app = build_application(config)
+    assert app.adapters.omop_graph is None
+    assert app.services.mapping is None
 
 
 def test_app_config_accepts_all_vocab_sections():

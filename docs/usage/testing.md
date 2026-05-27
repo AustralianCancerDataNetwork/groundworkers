@@ -24,7 +24,7 @@ OMOP_CDM_DB_URL=postgresql://user:pass@localhost:5432/omop
 
 Unit tests mock the adapter layer and run without a live database.
 
-## What is currently tested
+## What is tested
 
 | Area | Scope |
 |---|---|

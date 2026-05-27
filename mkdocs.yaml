@@ -1,5 +1,5 @@
 site_name: groundworkers
-site_description: Read-only MCP tool substrate for OMOP vocabulary, embeddings, and cohorts
+site_description: Read-only OMOP tooling for MCP and direct Python services
 site_url: https://AustralianCancerDataNetwork.github.io/groundworkers
 repo_url: https://github.com/AustralianCancerDataNetwork/groundworkers
 repo_name: groundworkers
@@ -29,29 +29,33 @@ theme:
 
 nav:
   - Home: index.md
+  - Architecture: architecture.md
   - Getting Started:
       - Installation: usage/installation.md
       - Configuration: usage/configuration.md
+      - Integrations: usage/integrations.md
       - Testing: usage/testing.md
   - Tools:
       - Overview: tools/overview.md
       - Concept Tools: tools/concept.md
       - Search Tools: tools/search.md
+      - Mapping Tools: tools/mapping.md
       - Embedding Tools: tools/embedding.md
-      - Cohort Tools: tools/cohort.md
       - System Tools: tools/system.md
   - Adapters:
       - OmopGraph: adapters/omop_graph.md
+      - OmopVocab: adapters/omop_vocab.md
       - OmopEmb: adapters/omop_emb.md
-      - OaCohorts: adapters/oa_cohorts.md
   - API Reference:
       - Tools: reference/ref_tools.md
+      - Services: reference/ref_services.md
       - Adapters: reference/ref_adapters.md
       - Configuration: reference/ref_config.md
       - Base: reference/ref_base.md
 
 plugins:
   - search
+  - mermaid2
   - mkdocstrings:
       handlers:
         python:
@@ -67,3 +71,9 @@ markdown_extensions:
   - pymdownx.superfences
   - attr_list
   - tables
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
