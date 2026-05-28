@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "groundworkers": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        ".",
+        "groundworkers",
+        "--config",
+        "config/groundworkers.local.yaml"
+      ]
+    }
+  }
+}
