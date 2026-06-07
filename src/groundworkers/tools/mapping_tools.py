@@ -89,16 +89,14 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
-    @server.tool("concept_parent_backoff")
-    def concept_parent_backoff(
+    @server.tool("concept_nearest_standard_ancestor")
+    def concept_nearest_standard_ancestor(
         query: str | None = None,
         concept_id: int | None = None,
         domain: str | None = None,
         vocabulary_id: str | None = None,
         parent_ids: list[int] | None = None,
         max_depth: int = 5,
-        strategy: str = "nearest_standard_ancestor",
-        model_name: str | None = None,
         candidate_limit: int = 10,
     ) -> dict[str, Any]:
         if mapping_service is None:
@@ -106,15 +104,13 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         safe_depth = max(1, min(max_depth, 10))
         safe_limit = max(1, min(candidate_limit, 20))
         try:
-            return mapping_service.concept_parent_backoff(
+            return mapping_service.concept_nearest_standard_ancestor(
                 query=query,
                 concept_id=concept_id,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
                 parent_ids=parent_ids,
                 max_depth=safe_depth,
-                strategy=strategy,
-                model_name=model_name,
                 candidate_limit=safe_limit,
             )
         except ValueError as exc:

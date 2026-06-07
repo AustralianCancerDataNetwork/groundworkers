@@ -294,14 +294,35 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
     assert "ancestor_preview" in non_standard
 
 
-def test_concept_parent_backoff_selects_nearest_standard_ancestor():
+def test_concept_nearest_standard_ancestor_selects_nearest_standard_ancestor():
     service = build_service()
 
-    result = service.concept_parent_backoff(query="type 2 diabetes", domain="Condition")
+    result = service.concept_nearest_standard_ancestor(query="type 2 diabetes", domain="Condition")
 
     assert result["found"] is True
     assert result["selected_parent"]["concept_id"] == 301
     assert result["selection_reason"] == "nearest_standard_ancestor"
+
+
+def test_concept_nearest_standard_ancestor_by_concept_id():
+    service = build_service()
+
+    result = service.concept_nearest_standard_ancestor(concept_id=102)
+
+    assert result["found"] is True
+    assert result["selected_parent"]["concept_id"] == 301
+    assert result["selection_reason"] == "direct_concept_input"
+
+
+def test_concept_nearest_standard_ancestor_raises_when_no_graph():
+    service = MappingService(StubVocabAdapter())
+
+    from groundworkers.base.errors import GroundworkersError as GWError
+    try:
+        service.concept_nearest_standard_ancestor(query="diabetes")
+        assert False, "should have raised"
+    except GWError as exc:
+        assert exc.code == "BACKEND_UNAVAIL"
 
 
 def test_concept_mapping_context_assembles_requested_context():
