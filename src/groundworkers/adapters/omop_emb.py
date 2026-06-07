@@ -47,9 +47,6 @@ class OmopEmbAdapter:
         return self._client_factory is not None
 
     def close(self) -> None:
-        backend = self._backend
-        if backend is not None and hasattr(backend, "close"):
-            backend.close()
         self._backend = None
         self._clients.clear()
 
