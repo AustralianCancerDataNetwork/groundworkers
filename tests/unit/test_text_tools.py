@@ -15,7 +15,8 @@ from groundworkers.services.text import (
     Interpretation,
     NormalizeResult,
 )
-from groundworkers.tools.text_tools import register_text_tools
+from groundworkers.services.text import _build_user_prompt, _SYSTEM_PROMPTS
+from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 
 
 # ---------------------------------------------------------------------------
@@ -189,3 +190,104 @@ def test_text_disambiguate_passes_max_interpretations():
     svc = StubTextService(disambiguate_result=DisambiguateResult(interpretations=[], original="x", is_ambiguous=False))
     _server(svc).call("text_disambiguate", text="SOB", max_interpretations=3)
     assert svc.disambiguate_calls[0]["max_interpretations"] == 3
+
+
+# ---------------------------------------------------------------------------
+# register_text_prompts
+# ---------------------------------------------------------------------------
+
+def _prompt_server() -> GroundcrewServer:
+    server = GroundcrewServer("test-server")
+    register_text_prompts(server)
+    return server
+
+
+def test_register_text_prompts_registers_three_prompts():
+    server = _prompt_server()
+    assert set(server.list_prompts()) == {
+        "normalize_clinical_term",
+        "decompose_clinical_text",
+        "disambiguate_clinical_term",
+    }
+
+
+def test_normalize_prompt_returns_single_user_message():
+    result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["role"] == "user"
+
+
+def test_normalize_prompt_content_contains_text():
+    result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
+    assert "'MI'" in result[0]["content"]
+
+
+def test_normalize_prompt_system_folded_into_user_content():
+    result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
+    assert _SYSTEM_PROMPTS["normalize"] in result[0]["content"]
+
+
+def test_normalize_prompt_domain_hint_flows_through():
+    result = _prompt_server().call_prompt("normalize_clinical_term", text="MS", domain_hint="Condition")
+    assert "Condition" in result[0]["content"]
+
+
+def test_normalize_prompt_empty_domain_hint_shows_not_specified():
+    result = _prompt_server().call_prompt("normalize_clinical_term", text="MI", domain_hint="")
+    assert "not specified" in result[0]["content"]
+
+
+def test_decompose_prompt_returns_single_user_message():
+    result = _prompt_server().call_prompt("decompose_clinical_text", text="T2DM and HTN on metformin")
+    assert len(result) == 1
+    assert result[0]["role"] == "user"
+
+
+def test_decompose_prompt_max_terms_default_in_content():
+    result = _prompt_server().call_prompt("decompose_clinical_text", text="some phrase")
+    assert "10" in result[0]["content"]
+
+
+def test_decompose_prompt_max_terms_clamped_to_20():
+    result = _prompt_server().call_prompt("decompose_clinical_text", text="some phrase", max_terms=50)
+    assert "20" in result[0]["content"]
+    assert "50" not in result[0]["content"]
+
+
+def test_decompose_prompt_max_terms_clamped_to_1():
+    result = _prompt_server().call_prompt("decompose_clinical_text", text="some phrase", max_terms=0)
+    assert "1" in result[0]["content"]
+
+
+def test_disambiguate_prompt_returns_single_user_message():
+    result = _prompt_server().call_prompt("disambiguate_clinical_term", text="MS")
+    assert len(result) == 1
+    assert result[0]["role"] == "user"
+
+
+def test_disambiguate_prompt_max_interpretations_clamped_to_10():
+    result = _prompt_server().call_prompt("disambiguate_clinical_term", text="MS", max_interpretations=15)
+    assert "10" in result[0]["content"]
+    assert "15" not in result[0]["content"]
+
+
+def test_disambiguate_prompt_max_interpretations_default_in_content():
+    result = _prompt_server().call_prompt("disambiguate_clinical_term", text="MS")
+    assert "5" in result[0]["content"]
+
+
+def test_prompt_and_service_use_same_user_turn():
+    """normalize prompt content matches what _build_user_prompt produces directly."""
+    text = "DM2"
+    domain = "Condition"
+    prompt_result = _prompt_server().call_prompt("normalize_clinical_term", text=text, domain_hint=domain)
+    expected_user = _build_user_prompt("normalize", text, domain_hint=domain)
+    assert expected_user in prompt_result[0]["content"]
+
+
+def test_decompose_prompt_and_service_use_same_user_turn():
+    text = "T2DM and HTN"
+    prompt_result = _prompt_server().call_prompt("decompose_clinical_text", text=text, max_terms=7)
+    expected_user = _build_user_prompt("decompose", text, max_terms=7)
+    assert expected_user in prompt_result[0]["content"]

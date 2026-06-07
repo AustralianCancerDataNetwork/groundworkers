@@ -4,7 +4,7 @@ from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
-from groundworkers.services.text import TextService
+from groundworkers.services.text import TextService, _SYSTEM_PROMPTS, _build_user_prompt
 
 
 def register_text_tools(server: GroundcrewServer, text_service: TextService) -> None:
@@ -95,3 +95,64 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
             return exc.to_dict()
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+
+
+def register_text_prompts(server: GroundcrewServer) -> None:
+    """Register MCP prompt handlers for the three text preprocessing operations.
+
+    These prompts let MCP clients request the exact message sequences that would
+    be sent to the LLM for normalize, decompose, and disambiguate — useful for
+    inspection, testing, or manual invocation via prompt UIs.
+
+    System prompts are folded into the user turn because MCP only supports
+    "user" and "assistant" roles; there is no "system" role in prompt messages.
+    """
+
+    @server.prompt(
+        "normalize_clinical_term",
+        description=(
+            "Return the message sequence for normalizing a clinical term, "
+            "abbreviation, or lay phrase to its OMOP-compatible equivalent."
+        ),
+    )
+    def normalize_clinical_term(
+        text: str,
+        domain_hint: str = "",
+    ) -> list[dict[str, str]]:
+        system = _SYSTEM_PROMPTS["normalize"]
+        user = _build_user_prompt("normalize", text, domain_hint=domain_hint or None)
+        return [{"role": "user", "content": f"{system}\n\n{user}"}]
+
+    @server.prompt(
+        "decompose_clinical_text",
+        description=(
+            "Return the message sequence for decomposing a free-text clinical "
+            "description into a list of normalized search terms."
+        ),
+    )
+    def decompose_clinical_text(
+        text: str,
+        domain_hint: str = "",
+        max_terms: int = 10,
+    ) -> list[dict[str, str]]:
+        system = _SYSTEM_PROMPTS["decompose"]
+        user = _build_user_prompt("decompose", text, domain_hint=domain_hint or None, max_terms=max_terms)
+        return [{"role": "user", "content": f"{system}\n\n{user}"}]
+
+    @server.prompt(
+        "disambiguate_clinical_term",
+        description=(
+            "Return the message sequence for listing all plausible clinical "
+            "interpretations of an ambiguous term or abbreviation."
+        ),
+    )
+    def disambiguate_clinical_term(
+        text: str,
+        domain_hint: str = "",
+        max_interpretations: int = 5,
+    ) -> list[dict[str, str]]:
+        system = _SYSTEM_PROMPTS["disambiguate"]
+        user = _build_user_prompt(
+            "disambiguate", text, domain_hint=domain_hint or None, max_interpretations=max_interpretations
+        )
+        return [{"role": "user", "content": f"{system}\n\n{user}"}]

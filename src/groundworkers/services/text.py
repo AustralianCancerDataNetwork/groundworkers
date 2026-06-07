@@ -76,6 +76,45 @@ _SYSTEM_PROMPTS: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# User-prompt builder
+# ---------------------------------------------------------------------------
+
+def _build_user_prompt(operation: str, text: str, **kwargs: object) -> str:
+    """Construct the user-turn prompt for the given operation.
+
+    Shared between TextService methods and MCP prompt handlers so both always
+    present the same prompt to the LLM.
+
+    Clamping (max_terms 1–20, max_interpretations 1–10) is applied here so
+    the MCP prompt reflects the same bounds as the service call.
+    """
+    domain_hint = kwargs.get("domain_hint") or None
+    if operation == "normalize":
+        return (
+            f"Normalize the following to a standard OMOP clinical term.\n"
+            f"Term: {text!r}\n"
+            f"Domain hint: {domain_hint or 'not specified'}"
+        )
+    if operation == "decompose":
+        safe_max = max(1, min(int(kwargs.get("max_terms", 10)), 20))
+        return (
+            f"Extract and normalize clinical concepts from the following text.\n"
+            f"Return at most {safe_max} terms.\n"
+            f"Text: {text!r}\n"
+            f"Domain hint: {domain_hint or 'not specified'}"
+        )
+    if operation == "disambiguate":
+        safe_max = max(1, min(int(kwargs.get("max_interpretations", 5)), 10))
+        return (
+            f"List all plausible clinical interpretations of the following term.\n"
+            f"Return at most {safe_max} interpretations.\n"
+            f"Term: {text!r}\n"
+            f"Domain hint: {domain_hint or 'not specified'}"
+        )
+    raise ValueError(f"Unknown operation: {operation!r}")
+
+
+# ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
 
@@ -109,11 +148,7 @@ class TextService:
         """
         if not text.strip():
             raise ValueError("text must be a non-empty string")
-        prompt = (
-            f"Normalize the following to a standard OMOP clinical term.\n"
-            f"Term: {text!r}\n"
-            f"Domain hint: {domain_hint or 'not specified'}"
-        )
+        prompt = _build_user_prompt("normalize", text, domain_hint=domain_hint)
         return self._call(prompt, NormalizeResult, "normalize", model_name)
 
     def decompose(
@@ -133,13 +168,7 @@ class TextService:
         """
         if not text.strip():
             raise ValueError("text must be a non-empty string")
-        safe_max = max(1, min(max_terms, 20))
-        prompt = (
-            f"Extract and normalize clinical concepts from the following text.\n"
-            f"Return at most {safe_max} terms.\n"
-            f"Text: {text!r}\n"
-            f"Domain hint: {domain_hint or 'not specified'}"
-        )
+        prompt = _build_user_prompt("decompose", text, domain_hint=domain_hint, max_terms=max_terms)
         return self._call(prompt, DecomposeResult, "decompose", model_name)
 
     def disambiguate(
@@ -159,13 +188,7 @@ class TextService:
         """
         if not text.strip():
             raise ValueError("text must be a non-empty string")
-        safe_max = max(1, min(max_interpretations, 10))
-        prompt = (
-            f"List all plausible clinical interpretations of the following term.\n"
-            f"Return at most {safe_max} interpretations.\n"
-            f"Term: {text!r}\n"
-            f"Domain hint: {domain_hint or 'not specified'}"
-        )
+        prompt = _build_user_prompt("disambiguate", text, domain_hint=domain_hint, max_interpretations=max_interpretations)
         return self._call(prompt, DisambiguateResult, "disambiguate", model_name)
 
     def _call(self, prompt: str, model_cls: type[_T], prompt_key: str, model_name: str | None) -> _T:
