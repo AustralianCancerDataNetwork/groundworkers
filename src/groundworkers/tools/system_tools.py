@@ -24,31 +24,59 @@ def register_system_tools(
 ) -> None:
     @server.tool("system_status")
     def system_status() -> dict[str, Any]:
-        """Returns availability of each configured adapter/backend."""
-        adapters: dict[str, Any] = {}
+        """Returns availability and health of each configured adapter/backend.
+
+        overall is one of:
+          "healthy"     — all configured components available
+          "degraded"    — at least one configured component unavailable
+          "unavailable" — no components available (or none configured)
+
+        components only contains entries for adapters that are configured.
+        omop_graph.embedding_resolver_active is true only when an EmbeddingClient
+        was successfully wired into the graph adapter at startup — it is independent
+        from omop_emb.available and must be checked separately to confirm the
+        embedding tier of concept_ground is operational.
+        """
+        components: dict[str, Any] = {}
 
         if graph_adapter is not None:
-            try:
-                adapters["omop_graph"] = {"available": graph_adapter.is_available()}
-            except Exception as exc:
-                adapters["omop_graph"] = {"available": False, "reason": repr(exc)}
-        else:
-            adapters["omop_graph"] = {"available": False, "reason": "not configured"}
+            available, detail = graph_adapter.probe()
+            components["omop_graph"] = {
+                "available": available,
+                "db_connected": available,
+                "embedding_resolver_active": graph_adapter.embedding_resolver_active,
+                "detail": detail,
+            }
 
         if emb_adapter is not None:
             try:
                 status = emb_adapter.index_status()
-                adapters["omop_emb"] = {
+                components["omop_emb"] = {
                     "available": status["available"],
-                    "models": status.get("models", []),
+                    "backend_type": status.get("backend_type"),
+                    "model_count": len(status.get("models", [])),
+                    "client_configured": emb_adapter.has_client(),
+                    "detail": None,
                 }
             except Exception as exc:
-                adapters["omop_emb"] = {"available": False, "reason": repr(exc)}
-        else:
-            adapters["omop_emb"] = {"available": False, "reason": "not configured"}
+                components["omop_emb"] = {
+                    "available": False,
+                    "backend_type": None,
+                    "model_count": 0,
+                    "client_configured": emb_adapter.has_client(),
+                    "detail": repr(exc),
+                }
 
-        overall = any(v.get("available") for v in adapters.values())
-        return {"available": overall, "adapters": adapters}
+        if not components:
+            overall = "unavailable"
+        elif all(v["available"] for v in components.values()):
+            overall = "healthy"
+        elif any(v["available"] for v in components.values()):
+            overall = "degraded"
+        else:
+            overall = "unavailable"
+
+        return {"overall": overall, "components": components}
 
     @server.tool("system_vocabulary_catalogue")
     def system_vocabulary_catalogue() -> dict[str, Any]:

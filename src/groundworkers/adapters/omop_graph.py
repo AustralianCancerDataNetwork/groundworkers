@@ -69,12 +69,33 @@ class OmopGraphAdapter:
         if model_name is not None:
             self.emb_model_name = model_name
 
+    @property
+    def embedding_resolver_active(self) -> bool:
+        """True when an EmbeddingClient was successfully injected at startup.
+
+        Reflects whether the embedding tier in concept_ground is live.
+        False when the wiring step in app.py failed silently or was never attempted.
+        Independent from OmopEmbAdapter.is_available() — both must be checked to
+        confirm the full embedding pipeline is operational.
+        """
+        return self._embedding_client is not None
+
     def is_available(self) -> bool:
         try:
             self._get_kg()
             return True
         except GroundworkersError:
             return False
+
+    def probe(self) -> tuple[bool, str | None]:
+        """Return (available, detail) without raising. Used by system_status."""
+        try:
+            self._get_kg()
+            return True, None
+        except GroundworkersError as exc:
+            return False, exc.message
+        except Exception as exc:
+            return False, repr(exc)
 
     def close(self) -> None:
         self.engine.dispose()
@@ -633,7 +654,7 @@ class OmopGraphAdapter:
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
         except Exception as exc:
-            raise GroundworkersError("DB_UNAVAILABLE", f"Cannot connect to database: {exc}") from exc
+            raise GroundworkersError("BACKEND_UNAVAIL", f"Cannot connect to database: {exc}") from exc
 
         try:
             emb_config: KnowledgeGraphEmbeddingConfiguration | None = None
@@ -680,9 +701,9 @@ class OmopGraphAdapter:
         result: tuple[int, ...] = ()
         kg = self._get_kg()
 
-        if domain and domain.lower() in self._DOMAIN_ROOT_CODES:
+        if domain and domain in self._DOMAIN_ROOT_CODES:
             # Fast path: single-row lookup by the stable SNOMED root concept_code.
-            vocab_id, code = self._DOMAIN_ROOT_CODES[domain.lower()]
+            vocab_id, code = self._DOMAIN_ROOT_CODES[domain]
             stmt = (
                 select(Concept.concept_id)
                 .where(
@@ -710,7 +731,7 @@ class OmopGraphAdapter:
                 select(Concept_Ancestor.ancestor_concept_id)
                 .join(Concept, Concept.concept_id == Concept_Ancestor.ancestor_concept_id)
                 .where(
-                    func.lower(Concept.domain_id) == domain.lower(),
+                    Concept.domain_id == domain,
                     Concept.standard_concept == "S",
                     Concept_Ancestor.min_levels_of_separation > 0,
                 )

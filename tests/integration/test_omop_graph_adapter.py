@@ -100,8 +100,11 @@ def test_concept_by_code_snomed():
 def test_ground_exact_match():
     adapter = _load_graph_adapter()
 
-    results = adapter.ground("Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None)
+    result = adapter.ground("Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None)
 
+    assert "results" in result
+    assert "grounding_explanation" in result
+    results = result["results"]
     assert results
     assert results[0]["match_kind"] == "EXACT"
     assert results[0]["concept_name"].lower() == "type 2 diabetes mellitus"
@@ -112,8 +115,9 @@ def test_ground_exact_match():
 def test_ground_partial_match():
     adapter = _load_graph_adapter()
 
-    results = adapter.ground("type 2 diabet", limit=5, domain=None, vocabulary_id=None)
+    result = adapter.ground("type 2 diabet", limit=5, domain=None, vocabulary_id=None)
 
+    results = result["results"]
     assert results
     assert all(r["standard_concept"] is True for r in results)
 
@@ -122,8 +126,9 @@ def test_ground_partial_match():
 def test_ground_returns_standard_concepts_only():
     adapter = _load_graph_adapter()
 
-    results = adapter.ground("diabetes", limit=10, domain=None, vocabulary_id=None)
+    result = adapter.ground("diabetes", limit=10, domain=None, vocabulary_id=None)
 
+    results = result["results"]
     assert results
     assert all(r["standard_concept"] is True for r in results)
     scores = [r["total_score"] for r in results]
