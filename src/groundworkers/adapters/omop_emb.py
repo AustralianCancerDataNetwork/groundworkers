@@ -69,7 +69,7 @@ class OmopEmbAdapter:
         """Return index availability and per-model statistics.
 
         Always returns a dict — never raises. On backend failure, returns
-        ``{"available": False, "backend_type": ..., "models": []}``.
+        ``{"available": False, "backend_type": ..., "models": [], "detail": "<reason>"}``.
         """
         try:
             backend = self._get_backend()
@@ -95,11 +95,12 @@ class OmopEmbAdapter:
                 "backend_type": self._backend_type or self._backend_type_from_backend(backend),
                 "models": models,
             }
-        except Exception:
+        except Exception as exc:
             return {
                 "available": False,
                 "backend_type": self._backend_type,
                 "models": [],
+                "detail": repr(exc),
             }
 
     def get_neighbours(

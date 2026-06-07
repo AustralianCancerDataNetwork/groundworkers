@@ -56,7 +56,7 @@ def register_system_tools(
                     "backend_type": status.get("backend_type"),
                     "model_count": len(status.get("models", [])),
                     "client_configured": emb_adapter.has_client(),
-                    "detail": None,
+                    "detail": status.get("detail"),
                 }
             except Exception as exc:
                 components["omop_emb"] = {

@@ -34,12 +34,14 @@ class StubGraphAdapter:
 
 class StubEmbAdapter:
     def __init__(self, *, available: bool = True, backend_type: str = "sqlitevec",
-                 model_count: int = 1, has_client: bool = True, raise_on_status: bool = False):
+                 model_count: int = 1, has_client: bool = True,
+                 raise_on_status: bool = False, detail: str | None = None):
         self._available = available
         self._backend_type = backend_type
         self._model_count = model_count
         self._has_client = has_client
         self._raise_on_status = raise_on_status
+        self._detail = detail
 
     def has_client(self) -> bool:
         return self._has_client
@@ -47,11 +49,14 @@ class StubEmbAdapter:
     def index_status(self) -> dict:
         if self._raise_on_status:
             raise RuntimeError("backend unreachable")
-        return {
+        result: dict = {
             "available": self._available,
             "backend_type": self._backend_type,
             "models": [{"model_name": f"model-{i}"} for i in range(self._model_count)],
         }
+        if self._detail is not None:
+            result["detail"] = self._detail
+        return result
 
 
 def _server(graph=None, emb=None) -> GroundcrewServer:
@@ -160,6 +165,20 @@ def test_system_status_omop_emb_backend_failure_reflected_in_component():
     assert comp["available"] is False
     assert comp["model_count"] == 0
     assert comp["detail"] is not None
+
+
+def test_system_status_omop_emb_detail_propagated_from_index_status():
+    # Mirrors the real OmopEmbAdapter behaviour: index_status never raises but
+    # includes a 'detail' field when the backend is unreachable.
+    server = _server(emb=StubEmbAdapter(
+        available=False, model_count=0, has_client=False,
+        detail="GroundworkersError('BACKEND_UNAVAIL', 'Embedding backend is unavailable: ...')",
+    ))
+    result = server.call("system_status")
+    comp = result["components"]["omop_emb"]
+    assert comp["available"] is False
+    assert comp["detail"] is not None
+    assert "BACKEND_UNAVAIL" in comp["detail"]
 
 
 def test_system_status_only_configured_adapters_appear_in_components():
