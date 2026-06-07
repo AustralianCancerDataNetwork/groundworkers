@@ -72,7 +72,8 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         hierarchy, and relationship summary. Use this to gather a broad candidate set
         before applying a mapping decision.
 
-        parent_ids restricts all channels to descendants of the specified concept_ids.
+        parent_ids restricts lexical channels (exact, normalized, fulltext) to descendants of
+        the specified concept_ids; the embedding channel does not apply this filter.
         active_only filters out retired (invalid) concepts.
         """
         if mapping_service is None:
