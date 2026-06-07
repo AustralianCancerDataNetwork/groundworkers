@@ -27,11 +27,13 @@ flowchart LR
     Client2[MCP client] --> Server[groundworkers server]
     App --> Services[services/]
     Server --> Tools[tools/]
+    Server --> Prompts[prompts/]
     Tools --> Services
     Services --> Adapters[adapters/]
     Adapters --> OG[omop-graph]
     Adapters --> OE[omop-emb]
     Adapters --> DB[(OMOP DB)]
+    Adapters --> LM[LLM API]
 ```
 
 - `adapters/` handle dependency-specific details
@@ -48,6 +50,8 @@ flowchart LR
 | Search | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | Low-level lexical primitives |
 | Mapping | `concept_search_normalized`, `concept_candidate_bundle`, `concept_parent_backoff`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | High-level mapping workflows |
 | Embedding | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | Backed by `OmopEmbAdapter` |
+| Text tools | `text_normalize`, `text_decompose`, `text_disambiguate` | LLM-backed clinical text preprocessing via `TextService`; registered when `llm` is configured |
+| Text prompts | `normalize_clinical_term`, `decompose_clinical_text`, `disambiguate_clinical_term` | MCP prompts exposing the same LLM message sequences; registered alongside text tools |
 | System | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
 ## Quick start
@@ -111,6 +115,11 @@ omop_emb:
   default_model_name: qwen3-embedding:0.6b
   api_base: "http://localhost:11434/v1"
   api_key: "ollama"
+
+llm:
+  api_base: "https://api.openai.com/v1"
+  api_key: "sk-..."
+  default_model_name: "gpt-4o-mini"
 ```
 
 ## End-to-end examples
@@ -168,8 +177,9 @@ sequenceDiagram
 ## If you are using it as a library
 
 Start with `build_application(config)` and `app.services.mapping` for higher-level
-mapping workflows. Drop down to `app.adapters.*` when you want lower-level,
-dependency-shaped operations.
+mapping workflows. Use `app.services.text` for LLM-backed normalization, decomposition,
+and disambiguation before passing terms into search or grounding. Drop down to
+`app.adapters.*` when you want lower-level, dependency-shaped operations.
 
 ## Companion repos
 

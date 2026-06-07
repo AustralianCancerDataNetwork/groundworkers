@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -79,7 +79,7 @@ _SYSTEM_PROMPTS: dict[str, str] = {
 # User-prompt builder
 # ---------------------------------------------------------------------------
 
-def _build_user_prompt(operation: str, text: str, **kwargs: object) -> str:
+def _build_user_prompt(operation: str, text: str, **kwargs: Any) -> str:
     """Construct the user-turn prompt for the given operation.
 
     Shared between TextService methods and MCP prompt handlers so both always
