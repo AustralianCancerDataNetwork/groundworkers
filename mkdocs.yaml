@@ -41,10 +41,15 @@ nav:
       - Search Tools: tools/search.md
       - Mapping Tools: tools/mapping.md
       - Embedding Tools: tools/embedding.md
+      - Text Tools: tools/text.md
       - System Tools: tools/system.md
+  - Services:
+      - Vocab Service: services/vocab.md
+      - Mapping Service: services/mapping.md
+      - Text Service: services/text.md
   - Adapters:
+      - CDM: adapters/cdm.md
       - OmopGraph: adapters/omop_graph.md
-      - OmopVocab: adapters/omop_vocab.md
       - OmopEmb: adapters/omop_emb.md
   - API Reference:
       - Tools: reference/ref_tools.md

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 
 class GroundcrewServer:
     def __init__(self, name: str) -> None:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
+        self._prompts: dict[str, tuple[Callable[..., Any], str | None]] = {}
 
     def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -17,11 +18,30 @@ class GroundcrewServer:
 
         return decorator
 
+    def prompt(
+        self,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            prompt_name = name or func.__name__
+            self._prompts[prompt_name] = (func, description)
+            return func
+
+        return decorator
+
     def list_tools(self) -> list[str]:
         return sorted(self._tools.keys())
 
+    def list_prompts(self) -> list[str]:
+        return sorted(self._prompts.keys())
+
     def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
         return self._tools[name](*args, **kwargs)
+
+    def call_prompt(self, name: str, **kwargs: Any) -> Any:
+        func, _ = self._prompts[name]
+        return func(**kwargs)
 
     def describe_tools(self) -> dict[str, dict[str, Any]]:
         description: dict[str, dict[str, Any]] = {}
@@ -33,9 +53,19 @@ class GroundcrewServer:
             }
         return description
 
+    def describe_prompts(self) -> dict[str, dict[str, Any]]:
+        description: dict[str, dict[str, Any]] = {}
+        for name, (func, prompt_description) in self._prompts.items():
+            signature = inspect.signature(func)
+            description[name] = {
+                "signature": str(signature),
+                "description": prompt_description or "",
+            }
+        return description
+
     def run(
         self,
-        transport: str = "stdio",
+        transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
         host: str = "127.0.0.1",
         port: int = 8000,
     ) -> None:
@@ -49,4 +79,6 @@ class GroundcrewServer:
         app = FastMCP(self.name, host=host, port=port)
         for tool_name, func in self._tools.items():
             app.tool(name=tool_name)(func)
+        for prompt_name, (func, description) in self._prompts.items():
+            app.prompt(name=prompt_name, description=description)(func)
         app.run(transport=transport)

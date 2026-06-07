@@ -11,6 +11,7 @@ from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 from groundworkers.tools.search_tools import register_search_tools
 from groundworkers.tools.system_tools import register_system_tools
+from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 
 
 def create_server(config: AppConfig) -> GroundcrewServer:
@@ -21,15 +22,18 @@ def create_server(config: AppConfig) -> GroundcrewServer:
     if app.adapters.omop_graph is not None:
         register_concept_tools(server, app.adapters.omop_graph)
         register_resolver_tools(server, app.adapters.omop_graph)
-    if app.adapters.omop_vocab is not None:
-        register_search_tools(server, app.adapters.omop_vocab)
+    if app.services.vocab is not None:
+        register_search_tools(server, app.services.vocab)
         register_mapping_tools(
             server,
             app.services.mapping,
         )
     if app.adapters.omop_emb is not None:
         register_embedding_tools(server, app.adapters.omop_emb)
-    register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb)
+    if app.services.text is not None:
+        register_text_tools(server, app.services.text)
+        register_text_prompts(server)
+    register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
     return server
 
 
@@ -39,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--describe", action="store_true", help="Print configured tools and exit")
     parser.add_argument(
         "--transport",
-        choices=["stdio", "streamable-http"],
+        choices=["stdio", "sse", "streamable-http"],
         default="stdio",
         help="MCP transport (default: stdio)",
     )
@@ -53,7 +57,7 @@ def main() -> None:
     config = AppConfig.load(args.config)
     server = create_server(config)
     if args.describe:
-        print(json.dumps({"config": config.describe(), "tools": server.describe_tools()}, indent=2))
+        print(json.dumps({"config": config.describe(), "tools": server.describe_tools(), "prompts": server.describe_prompts()}, indent=2))
         return
     server.run(transport=args.transport, host=args.host, port=args.port)
 

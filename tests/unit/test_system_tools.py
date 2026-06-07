@@ -59,9 +59,33 @@ class StubEmbAdapter:
         return result
 
 
-def _server(graph=None, emb=None) -> GroundcrewServer:
+class StubLLMAdapter:
+    def __init__(self, *, available: bool = True, provider: str = "openai-compatible",
+                 default_model: str | None = "test-model", detail: str | None = None,
+                 raise_on_status: bool = False):
+        self._available = available
+        self._provider = provider
+        self._default_model = default_model
+        self._detail = detail
+        self._raise_on_status = raise_on_status
+
+    def status(self) -> dict:
+        if self._raise_on_status:
+            raise RuntimeError("LLM API unreachable")
+        result: dict = {
+            "available": self._available,
+            "provider": self._provider,
+            "default_model": self._default_model,
+            "structured_output_supported": True if self._available else None,
+        }
+        if self._detail is not None:
+            result["detail"] = self._detail
+        return result
+
+
+def _server(graph=None, emb=None, llm=None) -> GroundcrewServer:
     server = GroundcrewServer("test-server")
-    register_system_tools(server, graph_adapter=graph, emb_adapter=emb)
+    register_system_tools(server, graph_adapter=graph, emb_adapter=emb, llm_adapter=llm)
     return server
 
 
@@ -179,6 +203,65 @@ def test_system_status_omop_emb_detail_propagated_from_index_status():
     assert comp["available"] is False
     assert comp["detail"] is not None
     assert "BACKEND_UNAVAIL" in comp["detail"]
+
+
+# ---------------------------------------------------------------------------
+# system_status — llm component
+# ---------------------------------------------------------------------------
+
+def test_system_status_llm_component_shape():
+    server = _server(llm=StubLLMAdapter(available=True, provider="openai-compatible",
+                                        default_model="gpt-4o-mini"))
+    result = server.call("system_status")
+    comp = result["components"]["llm"]
+    assert comp["available"] is True
+    assert comp["provider"] == "openai-compatible"
+    assert comp["default_model"] == "gpt-4o-mini"
+    assert comp["structured_output_supported"] is True
+    assert comp["detail"] is None
+
+
+def test_system_status_llm_unavailable_includes_detail():
+    server = _server(llm=StubLLMAdapter(
+        available=False, detail="ConnectionError('refused')",
+    ))
+    result = server.call("system_status")
+    comp = result["components"]["llm"]
+    assert comp["available"] is False
+    assert comp["detail"] is not None
+    assert "refused" in comp["detail"]
+
+
+def test_system_status_llm_does_not_appear_when_not_configured():
+    server = _server(graph=StubGraphAdapter())
+    result = server.call("system_status")
+    assert "llm" not in result["components"]
+
+
+def test_system_status_overall_degraded_when_llm_unavailable_and_graph_available():
+    server = _server(
+        graph=StubGraphAdapter(available=True),
+        llm=StubLLMAdapter(available=False),
+    )
+    result = server.call("system_status")
+    assert result["overall"] == "degraded"
+
+
+def test_system_status_overall_healthy_when_llm_and_graph_both_available():
+    server = _server(
+        graph=StubGraphAdapter(available=True),
+        llm=StubLLMAdapter(available=True),
+    )
+    result = server.call("system_status")
+    assert result["overall"] == "healthy"
+
+
+def test_system_status_llm_status_exception_still_returns_component():
+    server = _server(llm=StubLLMAdapter(raise_on_status=True))
+    result = server.call("system_status")
+    comp = result["components"]["llm"]
+    assert comp["available"] is False
+    assert comp["detail"] is not None
 
 
 def test_system_status_only_configured_adapters_appear_in_components():

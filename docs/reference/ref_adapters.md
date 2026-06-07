@@ -1,13 +1,17 @@
 # Adapters — API Reference
 
+## CDMAdapter
+
+::: groundworkers.adapters.cdm
+
 ## OmopGraphAdapter
 
 ::: groundworkers.adapters.omop_graph
 
-## OmopVocabAdapter
-
-::: groundworkers.adapters.omop_vocab
-
 ## OmopEmbAdapter
 
 ::: groundworkers.adapters.omop_emb
+
+## LLMAdapter
+
+::: groundworkers.adapters.llm

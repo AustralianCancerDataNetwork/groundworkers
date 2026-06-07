@@ -21,8 +21,9 @@ and search tools, plus both system tools.
 | `get_vocabulary_catalogue()` | `system_vocabulary_catalogue` |
 | `is_available()` | `system_status` |
 
-`OmopVocabAdapter` shares the same database engine and backs the search tools
-(`concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard`).
+`VocabService` shares the same CDM database connection via `CDMAdapter` and backs
+the search tools (`concept_search_exact`, `concept_search_fulltext`,
+`concept_navigate_to_standard`).
 
 ## Concept response shape
 
@@ -54,7 +55,7 @@ when they are present on the vocabulary tables.  Detection is automatic — no
 configuration is required.  When the sidecar columns are absent, the FullText tier
 returns no results and the pipeline falls through to Partial matching.
 
-`concept_search_fulltext` (via `OmopVocabAdapter`) uses the same sidecar columns and
+`concept_search_fulltext` (via `VocabService`) uses the same sidecar columns and
 exposes `tsvector_available` in its response so callers can detect degraded mode.
 
 ## Error handling

@@ -131,6 +131,24 @@ class OmopEmbConfig(BaseModel):
         return self.db_path
 
 
+class LLMConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    provider: str = "openai-compatible"
+    api_base: str | None = None
+    api_key: str | None = None
+    default_model_name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_enabled_config(self) -> "LLMConfig":
+        if not self.enabled:
+            return self
+        if self.api_key is not None and not self.api_key.strip():
+             raise ValueError("llm.api_key must be a non-empty string when provided")
+        return self
+
+
 class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -138,6 +156,7 @@ class AppConfig(BaseModel):
     database: DatabaseConfig | None = None
     omop_graph: OmopGraphConfig | None = None
     omop_emb: OmopEmbConfig | None = None
+    llm: LLMConfig | None = None
 
     @classmethod
     def load(cls, path: str | Path) -> "AppConfig":
@@ -145,9 +164,15 @@ class AppConfig(BaseModel):
         return cls.model_validate(data)
 
     def describe(self) -> dict[str, Any]:
+        def _mask(d: dict[str, Any]) -> dict[str, Any]:
+            if d.get("api_key"):
+                d = {**d, "api_key": "***"}
+            return d
+
         return {
             "app_name": self.app_name,
             "database_url": self.database.url if self.database else None,
             "omop_graph": self.omop_graph.model_dump() if self.omop_graph else None,
-            "omop_emb": self.omop_emb.model_dump() if self.omop_emb else None,
+            "omop_emb": _mask(self.omop_emb.model_dump()) if self.omop_emb else None,
+            "llm": _mask(self.llm.model_dump()) if self.llm else None,
         }

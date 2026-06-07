@@ -1,7 +1,8 @@
 # Search Tools
 
-Three agent-composable primitives expose low-level concept search operations with raw
-quality signals.  All require `omop_graph` to be configured.
+Three agent-composable primitives expose lexical concept search operations with raw
+quality signals. All require `omop_graph` to be configured. They are backed by
+`VocabService`.
 
 Unlike `concept_ground` (which runs a tiered pipeline and short-circuits on the first
 tier with results), these tools let the caller control which search strategy to use,

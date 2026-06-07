@@ -1,20 +1,26 @@
 # Tools Overview
 
-groundworkers registers six tool groups. Tools appear only when the relevant
-adapters are available in the config.
+groundworkers registers seven tool groups. Tools appear only when the relevant
+adapters or services are available in the config.
 
 | Group | Tools | Requires |
 |---|---|---|
 | **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | `omop_graph` |
 | **Resolver** | `concept_ground` | `omop_graph` |
-| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_vocab` |
-| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `MappingService` |
+| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_graph` |
+| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `omop_graph` |
 | **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` |
+| **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | `llm` |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
 !!! info "System tools are always registered"
     `system_status` and `system_vocabulary_catalogue` are always present so clients can
     check what is available in the current deployment.
+
+!!! info "Text tools require LLM configuration"
+    `text_normalize`, `text_decompose`, and `text_disambiguate` are registered only
+    when `llm` is configured in `AppConfig`. They are absent from `--describe` output
+    when no LLM is configured.
 
 ## Tool groups at a glance
 
@@ -22,28 +28,33 @@ adapters are available in the config.
 
 **Resolver tools** take free text and try to return the best grounded answer.
 
-**Search tools** expose lower-level lexical retrieval with raw quality signals.
+**Search tools** expose lexical retrieval with raw quality signals. Backed by
+`VocabService`.
 
 **Mapping tools** are aimed at review and adjudication workflows where the caller
-often wants multiple evidence channels side by side.
+often wants multiple evidence channels side by side. Backed by `MappingService`.
 
 **Embedding tools** expose the embedding index directly.
 
-## Mapping tools and direct Python use
+**Text tools** preprocess free text using an LLM before grounding. Use these when
+the input contains abbreviations, lay language, or ambiguous clinical phrases.
+Backed by `TextService`.
 
-The mapping group is also available directly through `app.services.mapping`.
+## Services and direct Python use
+
+The mapping, search, and text groups are also available directly through
+`app.services.*`.
 
 ```mermaid
 flowchart LR
-    MCP[MCP caller] --> MT[mapping tool]
-    PY[Python caller] --> MS[MappingService]
-    MT --> MS
-    MS --> VA[OmopVocabAdapter]
-    MS --> GA[OmopGraphAdapter]
-    MS --> EA[OmopEmbAdapter]
+    MCP[MCP caller] --> MT[tool]
+    PY[Python caller] --> SVC[service]
+    MT --> SVC
+    SVC[VocabService\nMappingService\nTextService] --> ADP[CDMAdapter\nOmopGraphAdapter\nOmopEmbAdapter\nLLMAdapter]
 ```
 
-If you are building a Python application, this is the highest-level place to start.
+If you are building a Python application, call `app.services.*` directly rather
+than importing tool modules.
 
 ## Error response shape
 

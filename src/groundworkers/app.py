@@ -8,24 +8,28 @@ _logger = logging.getLogger(__name__)
 
 from omop_emb import EmbeddingBackend, EmbeddingClient
 
+from groundworkers.adapters.cdm import CDMAdapter
+from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
-from groundworkers.adapters.omop_vocab import OmopVocabAdapter
 from groundworkers.config import AppConfig
 from groundworkers.base.sql import build_engine
-from groundworkers.services import MappingService
+from groundworkers.services import MappingService, TextService, VocabService
 
 
 @dataclass
 class Adapters:
+    cdm: CDMAdapter | None = None
     omop_graph: OmopGraphAdapter | None = None
-    omop_vocab: OmopVocabAdapter | None = None
     omop_emb: OmopEmbAdapter | None = None
+    llm: LLMAdapter | None = None
 
 
 @dataclass
 class Services:
+    vocab: VocabService | None = None
     mapping: MappingService | None = None
+    text: TextService | None = None
 
 
 @dataclass
@@ -41,17 +45,17 @@ def build_adapters(config: AppConfig) -> Adapters:
     omop_graph = config.omop_graph
     if omop_graph is not None:
         engine = build_engine(omop_graph.db_url)
+        adapters.cdm = CDMAdapter(engine)
         adapters.omop_graph = OmopGraphAdapter(
             engine=engine,
             vocab_schema=omop_graph.vocab_schema,
             emb_model_name=omop_graph.emb_model_name,
             min_fulltext_overlap=omop_graph.min_fulltext_overlap,
         )
-        adapters.omop_vocab = OmopVocabAdapter(engine=engine)
 
     omop_emb = config.omop_emb
     if omop_emb is not None and omop_emb.enabled:
-        cdm_engine = adapters.omop_graph.engine if adapters.omop_graph is not None else None
+        cdm_engine = adapters.cdm.engine if adapters.cdm is not None else None
 
         def build_backend() -> EmbeddingBackend:
             backend_type = omop_emb.backend_type.lower()
@@ -106,29 +110,55 @@ def build_adapters(config: AppConfig) -> Adapters:
                     exc,
                 )
 
+    llm_config = config.llm
+    if llm_config is not None and llm_config.enabled:
+        api_key = llm_config.api_key
+        api_base = llm_config.api_base
+
+        def build_llm_client() -> Any:
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise RuntimeError(
+                    "The 'openai' package is required for LLM features. "
+                    "Install it with: pip install openai"
+                ) from exc
+            # Pass only what was explicitly configured; when api_key is None the
+            # OpenAI SDK falls back to the OPENAI_API_KEY environment variable.
+            kwargs: dict[str, Any] = {}
+            if api_key is not None:
+                kwargs["api_key"] = api_key
+            if api_base is not None:
+                kwargs["base_url"] = api_base
+            return OpenAI(**kwargs)
+
+        adapters.llm = LLMAdapter(
+            provider=llm_config.provider,
+            default_model_name=llm_config.default_model_name,
+            client_factory=build_llm_client,
+        )
+
     return adapters
 
 
 def build_services(adapters: Adapters) -> Services:
     services = Services()
-    if adapters.omop_vocab is not None:
+    if adapters.cdm is not None:
+        services.vocab = VocabService(adapters.cdm)
         services.mapping = MappingService(
-            adapters.omop_vocab,
+            services.vocab,
             graph_adapter=adapters.omop_graph,
             emb_adapter=adapters.omop_emb,
         )
+    if adapters.llm is not None:
+        services.text = TextService(adapters.llm)
     return services
 
 
 def build_application(config: AppConfig) -> GroundworkersApp:
     adapters = build_adapters(config)
-    app = GroundworkersApp(
+    return GroundworkersApp(
         config=config,
-        adapters=Adapters(
-            omop_graph=adapters.omop_graph,
-            omop_vocab=adapters.omop_vocab,
-            omop_emb=adapters.omop_emb,
-        ),
+        adapters=adapters,
         services=build_services(adapters),
     )
-    return app
