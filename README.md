@@ -117,6 +117,7 @@ omop_emb:
   api_key: "ollama"
 
 llm:
+  enabled: true
   api_base: "https://api.openai.com/v1"
   api_key: "sk-..."
   default_model_name: "gpt-4o-mini"

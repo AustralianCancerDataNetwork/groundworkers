@@ -59,5 +59,7 @@ the first database connection is deferred until the first query. `is_available()
 performs a lightweight probe (`SELECT 1`) to confirm connectivity without blocking
 unrelated tool calls.
 
-`close()` disposes the engine and releases the connection pool. In server mode this
-is called at shutdown. In test fixtures, call it explicitly in teardown.
+`close()` disposes the engine and releases the connection pool. Call it explicitly
+in teardown (e.g. a test fixture `yield`/`finally` block) when you need to ensure
+connections are returned promptly. The MCP server does not currently wire automatic
+teardown.

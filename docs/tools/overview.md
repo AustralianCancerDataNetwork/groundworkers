@@ -7,8 +7,8 @@ adapters or services are available in the config.
 |---|---|---|
 | **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | `omop_graph` |
 | **Resolver** | `concept_ground` | `omop_graph` |
-| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `VocabService` |
-| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `MappingService` |
+| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_graph` |
+| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `omop_graph` |
 | **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` |
 | **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | `llm` |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
