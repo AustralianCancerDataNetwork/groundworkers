@@ -16,6 +16,10 @@ from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.base.errors import GroundworkersError
 
 
+# note that this service should only contain logic related to querying the vocabulary; no higher-level business logic or heuristics
+# belong here - a lot of queries already exist on omop-graph and can be reused, so verify both locations before adding new methods here, 
+# and consider where the new method belongs long term.
+
 # ---------------------------------------------------------------------------
 # Return types
 # ---------------------------------------------------------------------------
