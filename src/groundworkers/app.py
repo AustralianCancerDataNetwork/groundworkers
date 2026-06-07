@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+
+_logger = logging.getLogger(__name__)
 
 from omop_emb import EmbeddingBackend, EmbeddingClient
 
@@ -59,7 +62,12 @@ def build_adapters(config: AppConfig) -> Adapters:
                 from omop_emb.backends.pgvector import PGVectorEmbeddingBackend
                 engine = build_engine(omop_emb.required_db_url)
                 return PGVectorEmbeddingBackend(emb_engine=engine)
-            raise RuntimeError(f"Unsupported embedding backend type: {omop_emb.backend_type}")
+            raise RuntimeError(
+                f"Embedding backend_type {omop_emb.backend_type!r} is not supported. "
+                "Supported values: sqlitevec, pgvector. "
+                "For FAISS-accelerated search, set faiss_cache_dir alongside a supported backend. "
+                "FAISS-primary mode (no primary backend) is not yet supported by omop-emb."
+            )
 
         client_factory: Callable[[str], EmbeddingClient] | None = None
         api_credentials = omop_emb.configured_api_credentials
@@ -91,8 +99,12 @@ def build_adapters(config: AppConfig) -> Adapters:
                     client_factory(record.model_name),
                     model_name=record.model_name,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                _logger.warning(
+                    "Embedding client could not be wired into OmopGraphAdapter; "
+                    "the embedding tier of concept_ground will be inactive. Reason: %s",
+                    exc,
+                )
 
     return adapters
 

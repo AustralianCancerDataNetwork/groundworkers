@@ -526,7 +526,7 @@ class OmopVocabAdapter:
         All navigation is done in two queries (one for source metadata, one batch
         join for mappings) regardless of the number of input ids.
 
-        This is done to avoid any query of concept_relationship if we are already standard, 
+        This is done to avoid any query of concept_relationship if we are already standard,
         and to avoid N+1 queries when navigating multiple non-standard ids at once.
         """
         if not concept_ids:
@@ -639,7 +639,7 @@ class OmopVocabAdapter:
             concept_ids,
             self.VALUE_RELATIONSHIP_IDS,
         )
-    
+
     def navigate_to_unit(
         self,
         concept_ids: list[int],
