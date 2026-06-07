@@ -32,6 +32,21 @@ omop_emb:
   api_key: "ollama"
 ```
 
+## With LLM text tools
+
+```yaml
+omop_graph:
+  db_url: "postgresql+psycopg://user:pass@localhost:5432/omop"
+  vocab_schema: omop_vocab
+
+llm:
+  enabled: true
+  provider: openai-compatible
+  api_base: "http://localhost:11434/v1"
+  api_key: "ollama"
+  default_model_name: qwen3:8b
+```
+
 ## Configuration reference
 
 ### `app_name`
@@ -53,10 +68,12 @@ Connects to the OMOP vocabulary database via omop-graph.
 
 When `omop_graph` is configured:
 
-- `OmopGraphAdapter` is built
-- `OmopVocabAdapter` is built against the same engine
+- `CDMAdapter` and `OmopGraphAdapter` are built
+- `VocabService` is built against the same CDM connection
+- `MappingService` is built on top of `VocabService` and `OmopGraphAdapter`
 - concept, resolver, search, mapping, and system tools become available
 - `MappingService` becomes available via `app.services.mapping`
+- `VocabService` becomes available via `app.services.vocab`
 
 !!! note "Full-text search is auto-detected"
     The `concept_ground` and `concept_search_fulltext` tools use PostgreSQL tsvector
@@ -89,6 +106,26 @@ When `omop_emb.enabled` is true:
 - embedding MCP tools are registered
 - `MappingService` can optionally use the embedding channel for candidate bundles
 - `concept_mapping_context` can optionally add embedding neighbors
+
+### `llm`
+
+Configures the LLM adapter for text preprocessing tools.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool` | `false` | Must be `true` for text tools to be registered. |
+| `provider` | `str` | `null` | API provider label. Use `"openai-compatible"` for OpenAI-compatible endpoints (including Ollama). |
+| `api_base` | `str` | `null` | Base URL for the model API. |
+| `api_key` | `str` | `null` | API key. Use `"ollama"` as a placeholder for Ollama (which does not require authentication). |
+| `default_model_name` | `str` | `null` | Model to use when no `model_name` argument is supplied by the caller. |
+
+When `llm.enabled` is true:
+
+- `LLMAdapter` is built and `TextService` is wired on top of it
+- `text_normalize`, `text_decompose`, and `text_disambiguate` MCP tools are registered
+- `TextService` becomes available via `app.services.text`
+- All vocabulary, search, mapping, and embedding tools remain fully functional
+  regardless of whether `llm` is configured
 
 ## Direct Python example
 
