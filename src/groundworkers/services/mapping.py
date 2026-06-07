@@ -5,14 +5,14 @@ from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
-from groundworkers.adapters.omop_vocab import (
-    OmopVocabAdapter,
+from groundworkers.base.errors import GroundworkersError
+from groundworkers.services.vocab import (
+    VocabService,
     normalize_text_for_matching,
     serialise_concept_match,
     serialise_related_concept_mapping,
     serialise_standard_mapping,
 )
-from groundworkers.base.errors import GroundworkersError
 
 
 class MappingService:
@@ -20,12 +20,12 @@ class MappingService:
 
     def __init__(
         self,
-        vocab_adapter: OmopVocabAdapter,
+        vocab: VocabService,
         *,
         graph_adapter: OmopGraphAdapter | None = None,
         emb_adapter: OmopEmbAdapter | None = None,
     ) -> None:
-        self._vocab = vocab_adapter
+        self._vocab = vocab
         self._graph = graph_adapter
         self._emb = emb_adapter
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
+
+_T = TypeVar("_T", bound=BaseModel)
 
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.base.errors import GroundworkersError
@@ -166,7 +168,7 @@ class TextService:
         )
         return self._call(prompt, DisambiguateResult, "disambiguate", model_name)
 
-    def _call(self, prompt: str, model_cls: type[BaseModel], prompt_key: str, model_name: str | None) -> BaseModel:
+    def _call(self, prompt: str, model_cls: type[_T], prompt_key: str, model_name: str | None) -> _T:
         raw = self._llm.complete_structured(
             prompt,
             model_cls.model_json_schema(),

@@ -22,8 +22,8 @@ def create_server(config: AppConfig) -> GroundcrewServer:
     if app.adapters.omop_graph is not None:
         register_concept_tools(server, app.adapters.omop_graph)
         register_resolver_tools(server, app.adapters.omop_graph)
-    if app.adapters.omop_vocab is not None:
-        register_search_tools(server, app.adapters.omop_vocab)
+    if app.services.vocab is not None:
+        register_search_tools(server, app.services.vocab)
         register_mapping_tools(
             server,
             app.services.mapping,

@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from groundworkers.adapters.omop_vocab import (
-    OmopVocabAdapter,
-    OmopVocabError,
+from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.server import GroundcrewServer
+from groundworkers.services.vocab import (
+    VocabService,
     serialise_concept_match,
     serialise_standard_mapping,
 )
-from groundworkers.base.server import GroundcrewServer
 
 
-def register_search_tools(server: GroundcrewServer, vocab_adapter: OmopVocabAdapter) -> None:
+def register_search_tools(server: GroundcrewServer, vocab_service: VocabService) -> None:
     """Register agent-composable primitive search tools against the MCP server."""
 
     @server.tool("concept_search_exact")
@@ -36,14 +36,10 @@ def register_search_tools(server: GroundcrewServer, vocab_adapter: OmopVocabAdap
         that triggered the match.
         """
         if not query.strip():
-            return {
-                "error": True,
-                "code": "INVALID_INPUT",
-                "message": "query must be a non-empty string",
-            }
+            return {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
         safe_limit = max(1, min(limit, 50))
         try:
-            results = vocab_adapter.search_exact(
+            results = vocab_service.search_exact(
                 query,
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
@@ -51,14 +47,11 @@ def register_search_tools(server: GroundcrewServer, vocab_adapter: OmopVocabAdap
                 include_synonyms=include_synonyms,
                 limit=safe_limit,
             )
-            return {
-                "query": query.strip(),
-                "results": [serialise_concept_match(r) for r in results],
-            }
+            return {"query": query.strip(), "results": [serialise_concept_match(r) for r in results]}
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
-        except OmopVocabError as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": str(exc)}
+        except GroundworkersError as exc:
+            return exc.to_dict()
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
@@ -88,20 +81,12 @@ def register_search_tools(server: GroundcrewServer, vocab_adapter: OmopVocabAdap
         standard_only defaults to false — see concept_search_exact.
         """
         if not query.strip():
-            return {
-                "error": True,
-                "code": "INVALID_INPUT",
-                "message": "query must be a non-empty string",
-            }
+            return {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
         if not (0.0 <= min_rank <= 1.0):
-            return {
-                "error": True,
-                "code": "INVALID_INPUT",
-                "message": "min_rank must be between 0.0 and 1.0",
-            }
+            return {"error": True, "code": "INVALID_INPUT", "message": "min_rank must be between 0.0 and 1.0"}
         safe_limit = max(1, min(limit, 50))
         try:
-            results, fts_available = vocab_adapter.search_fulltext(
+            results, fts_available = vocab_service.search_fulltext(
                 query,
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
@@ -117,15 +102,13 @@ def register_search_tools(server: GroundcrewServer, vocab_adapter: OmopVocabAdap
             }
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
-        except OmopVocabError as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": str(exc)}
+        except GroundworkersError as exc:
+            return exc.to_dict()
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_navigate_to_standard")
-    def concept_navigate_to_standard(
-        concept_ids: list[int],
-    ) -> dict[str, Any]:
+    def concept_navigate_to_standard(concept_ids: list[int]) -> dict[str, Any]:
         """
         Given a list of concept_ids, return their standard OMOP equivalents by
         following "Maps to" relationship edges.
@@ -143,21 +126,13 @@ def register_search_tools(server: GroundcrewServer, vocab_adapter: OmopVocabAdap
         if not concept_ids:
             return {"results": []}
         if len(concept_ids) > 100:
-            return {
-                "error": True,
-                "code": "INVALID_INPUT",
-                "message": "concept_ids must contain at most 100 entries",
-            }
+            return {"error": True, "code": "INVALID_INPUT", "message": "concept_ids must contain at most 100 entries"}
         if any(cid <= 0 for cid in concept_ids):
-            return {
-                "error": True,
-                "code": "INVALID_INPUT",
-                "message": "all concept_ids must be positive integers",
-            }
+            return {"error": True, "code": "INVALID_INPUT", "message": "all concept_ids must be positive integers"}
         try:
-            mappings = vocab_adapter.navigate_to_standard(concept_ids)
+            mappings = vocab_service.navigate_to_standard(concept_ids)
             return {"results": [serialise_standard_mapping(m) for m in mappings]}
-        except OmopVocabError as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": str(exc)}
+        except GroundworkersError as exc:
+            return exc.to_dict()
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

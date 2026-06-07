@@ -6,13 +6,13 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from groundworkers.adapters.omop_vocab import (
+from groundworkers.services import MappingService
+from groundworkers.services.vocab import (
     ConceptMatch,
     MappedConcept,
     RelatedConceptMapping,
     StandardMapping,
 )
-from groundworkers.services import MappingService
 
 
 class StubVocabAdapter:
