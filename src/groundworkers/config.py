@@ -169,4 +169,5 @@ class AppConfig(BaseModel):
             "database_url": self.database.url if self.database else None,
             "omop_graph": self.omop_graph.model_dump() if self.omop_graph else None,
             "omop_emb": self.omop_emb.model_dump() if self.omop_emb else None,
+            "llm": self.llm.model_dump() if self.llm else None,
         }

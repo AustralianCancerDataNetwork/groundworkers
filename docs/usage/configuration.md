@@ -114,7 +114,7 @@ Configures the LLM adapter for text preprocessing tools.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | `bool` | `false` | Must be `true` for text tools to be registered. |
-| `provider` | `str` | `null` | API provider label. Use `"openai-compatible"` for OpenAI-compatible endpoints (including Ollama). |
+| `provider` | `str` | `openai-compatible` | API provider label. Use `"openai-compatible"` for OpenAI-compatible endpoints (including Ollama). |
 | `api_base` | `str` | `null` | Base URL for the model API. |
 | `api_key` | `str` | `null` | API key. Use `"ollama"` as a placeholder for Ollama (which does not require authentication). |
 | `default_model_name` | `str` | `null` | Model to use when no `model_name` argument is supplied by the caller. |

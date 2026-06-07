@@ -107,20 +107,28 @@ class LLMAdapter:
         model_name: str | None = None,
         temperature: float = 0.0,
     ) -> dict[str, Any]:
-        """Complete a prompt and return a parsed JSON dict matching response_schema.
+        """Complete a prompt and return a parsed JSON dict guided by response_schema.
 
         The schema is injected into the system prompt and JSON mode is requested
         from the API. This is compatible with Ollama, vLLM, and OpenAI endpoints.
 
-        Raises ``INVALID_INPUT`` if no model is resolvable.
+        The response is parsed but not validated against the schema — callers are
+        responsible for validating the returned dict (e.g. with Pydantic).
+
+        Raises ``INVALID_INPUT`` if no model is resolvable or if response_schema
+        is not JSON-serializable.
         Raises ``BACKEND_UNAVAIL`` if the API call fails.
         Raises ``QUERY_ERROR`` if the response is not valid JSON.
         """
         client = self._get_client()
         resolved_model = self._resolve_model(model_name)
-        schema_directive = (
-            f"Respond with a JSON object matching this schema:\n{json.dumps(response_schema, indent=2)}"
-        )
+        try:
+            schema_json = json.dumps(response_schema, indent=2)
+        except (TypeError, ValueError) as exc:
+            raise GroundworkersError(
+                "INVALID_INPUT", f"response_schema is not JSON-serializable: {exc}"
+            ) from exc
+        schema_directive = f"Respond with a JSON object matching this schema:\n{schema_json}"
         augmented_system = f"{system_prompt}\n\n{schema_directive}" if system_prompt else schema_directive
         messages = _build_messages(prompt, augmented_system)
         try:

@@ -52,7 +52,7 @@ text.decompose(
     text: str,
     *,
     domain_hint: str | None = None,
-    max_terms: int | None = None,
+    max_terms: int = 10,
     model_name: str | None = None,
 ) -> DecomposeResult
 ```
@@ -71,7 +71,7 @@ text.disambiguate(
     text: str,
     *,
     domain_hint: str | None = None,
-    max_interpretations: int | None = None,
+    max_interpretations: int = 5,
     model_name: str | None = None,
 ) -> DisambiguateResult
 ```
@@ -86,45 +86,43 @@ interpretation behaves the same as a normalized result.
 
 ## Return types
 
+All return types are Pydantic `BaseModel` subclasses and can be converted to plain
+dicts via `.model_dump()`.
+
 ### `NormalizeResult`
 
 ```python
-@dataclass
-class NormalizeResult:
-    normalized: str       # OMOP-compatible normalized form
-    original: str         # the input text unchanged
-    confidence: float     # model's self-reported confidence in [0.0, 1.0]
-    notes: str | None     # optional model commentary on ambiguity or alternatives
+class NormalizeResult(BaseModel):
+    normalized: str                            # OMOP-compatible normalized form
+    original: str                              # the input text unchanged
+    confidence: Literal["high", "medium", "low"]  # model's self-assessed certainty
+    notes: str | None = None                   # optional model commentary on ambiguity or alternatives
 ```
 
 ### `DecomposeResult`
 
 ```python
-@dataclass
-class DecomposeResult:
-    terms: list[DecomposedTerm]
+class DecomposeResult(BaseModel):
+    terms: list[DecomposeTerm]
     original: str
 
-@dataclass
-class DecomposedTerm:
-    term: str             # normalized OMOP-compatible form
-    domain_hint: str | None
+class DecomposeTerm(BaseModel):
+    term: str                   # normalized OMOP-compatible form
+    domain_hint: str | None = None
 ```
 
 ### `DisambiguateResult`
 
 ```python
-@dataclass
-class DisambiguateResult:
+class DisambiguateResult(BaseModel):
     interpretations: list[Interpretation]
     original: str
     is_ambiguous: bool
 
-@dataclass
-class Interpretation:
-    interpretation: str   # normalized OMOP-compatible form
-    domain_hint: str | None
-    context_clues: list[str]  # phrases or signals that support this interpretation
+class Interpretation(BaseModel):
+    interpretation: str         # normalized OMOP-compatible form
+    domain_hint: str | None = None
+    context_clues: str | None = None  # free-text summary of signals supporting this interpretation
 ```
 
 ## Prompts
@@ -138,10 +136,11 @@ of external configuration.
 ## Error handling
 
 - Raises `ValueError` for empty input strings (before calling the LLM).
-- Raises `GroundworkersError(BACKEND_UNAVAIL)` when `LLMAdapter` is not configured
-  or the LLM API is unreachable.
+- Raises `GroundworkersError(BACKEND_UNAVAIL)` when the LLM API is unreachable or
+  authentication fails. (`TextService` is only constructed when `LLMAdapter` is
+  present, so "adapter not configured" is not a reachable condition here.)
 - Raises `GroundworkersError(QUERY_ERROR)` on model API errors or when the structured
-  response cannot be parsed.
+  response cannot be parsed into the expected shape.
 - Never returns error dicts — that is the tool layer's responsibility.
 
 ## Relationship to concept grounding

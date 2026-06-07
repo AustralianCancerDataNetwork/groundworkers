@@ -37,13 +37,13 @@ sclerosis in Condition but mass spectrometry in Measurement.
 {
   "normalized": "Type 2 diabetes mellitus",
   "original": "DM2",
-  "confidence": 0.95,
+  "confidence": "high",
   "notes": null
 }
 ```
 
-`confidence` is a float in `[0.0, 1.0]` representing the model's self-assessed
-certainty. `notes` is a free-text string when the model has commentary on
+`confidence` is one of `"high"`, `"medium"`, or `"low"` — the model's categorical
+self-assessment. `notes` is a free-text string when the model has commentary on
 alternatives or ambiguity, otherwise `null`.
 
 **When to use this vs the others:**
@@ -58,7 +58,7 @@ OMOP-compatible form before searching. If you have a multi-concept phrase, use
 | Error code | Condition |
 |---|---|
 | `INVALID_INPUT` | Empty or whitespace-only `text` |
-| `BACKEND_UNAVAIL` | LLM not configured or API unreachable |
+| `BACKEND_UNAVAIL` | LLM API unreachable or authentication failure |
 | `QUERY_ERROR` | Model API error or response could not be parsed |
 
 ---
@@ -70,14 +70,12 @@ searchable terms.
 
 ```json
 {
-  "text": "patient with T2DM and HTN on metformin",
-  "domain_hint": null,
-  "max_terms": null,
-  "model_name": null
+  "text": "patient with T2DM and HTN on metformin"
 }
 ```
 
-`text` is required. All other parameters are optional.
+`text` is required. `domain_hint`, `max_terms` (integer, default 10, clamped 1–20),
+and `model_name` are optional.
 
 `domain_hint` provides context for the whole phrase. `max_terms` sets an upper bound
 on the number of terms returned. `model_name` overrides the default model.
@@ -111,7 +109,7 @@ interpretations that you want to expose, use `text_disambiguate`.
 | Error code | Condition |
 |---|---|
 | `INVALID_INPUT` | Empty or whitespace-only `text` |
-| `BACKEND_UNAVAIL` | LLM not configured or API unreachable |
+| `BACKEND_UNAVAIL` | LLM API unreachable or authentication failure |
 | `QUERY_ERROR` | Model API error or response could not be parsed |
 
 ---
@@ -122,14 +120,12 @@ Returns ranked candidate interpretations of an ambiguous clinical term.
 
 ```json
 {
-  "text": "MS",
-  "domain_hint": null,
-  "max_interpretations": null,
-  "model_name": null
+  "text": "MS"
 }
 ```
 
-`text` is required. All other parameters are optional.
+`text` is required. `domain_hint`, `max_interpretations` (integer, default 5, clamped
+1–10), and `model_name` are optional.
 
 `domain_hint` narrows the interpretation space to a specific OMOP domain.
 `max_interpretations` sets an upper bound on the number of interpretations returned.
@@ -142,12 +138,12 @@ Returns ranked candidate interpretations of an ambiguous clinical term.
     {
       "interpretation": "Multiple sclerosis",
       "domain_hint": "Condition",
-      "context_clues": ["neurological abbreviation", "common clinical shorthand"]
+      "context_clues": "neurological abbreviation; common clinical shorthand"
     },
     {
       "interpretation": "Mitral stenosis",
       "domain_hint": "Condition",
-      "context_clues": ["cardiac abbreviation"]
+      "context_clues": "cardiac abbreviation"
     }
   ],
   "original": "MS",
@@ -156,7 +152,8 @@ Returns ranked candidate interpretations of an ambiguous clinical term.
 ```
 
 `is_ambiguous` is `true` when the model identified more than one plausible
-interpretation. `context_clues` lists the signals that support each interpretation.
+interpretation. `context_clues` is a free-text string summarising the signals that
+support each interpretation, or `null` when none were identified.
 
 When `is_ambiguous` is `false` and only one interpretation is returned, the result
 is semantically equivalent to a normalized result. In that case, `text_normalize`
@@ -176,7 +173,7 @@ context. For unambiguous or multi-concept inputs, prefer `text_normalize` or
 | Error code | Condition |
 |---|---|
 | `INVALID_INPUT` | Empty or whitespace-only `text` |
-| `BACKEND_UNAVAIL` | LLM not configured or API unreachable |
+| `BACKEND_UNAVAIL` | LLM API unreachable or authentication failure |
 | `QUERY_ERROR` | Model API error or response could not be parsed |
 
 ---

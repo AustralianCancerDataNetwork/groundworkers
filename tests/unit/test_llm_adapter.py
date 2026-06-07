@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock

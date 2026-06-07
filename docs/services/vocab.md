@@ -113,7 +113,7 @@ Concepts that are already standard are returned as self-mappings
 ```python
 vocab.navigate_to_value(
     concept_ids: list[int],
-) -> list[StandardMapping]
+) -> list[RelatedConceptMapping]
 ```
 
 Same batch navigation pattern as `navigate_to_standard`, but follows `"Maps to value"`
@@ -125,7 +125,7 @@ workflows.
 ```python
 vocab.navigate_to_unit(
     concept_ids: list[int],
-) -> list[StandardMapping]
+) -> list[RelatedConceptMapping]
 ```
 
 Batch navigation following `"Maps to unit"` relationship edges.

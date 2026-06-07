@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
@@ -27,3 +28,16 @@ class CDMAdapter:
     def session(self):
         """Return a session context manager."""
         return self._session_factory()
+
+    def is_available(self) -> bool:
+        """Return True if the CDM database is reachable (SELECT 1 probe)."""
+        try:
+            with self._engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return True
+        except Exception:
+            return False
+
+    def close(self) -> None:
+        """Dispose the engine and release the connection pool."""
+        self._engine.dispose()

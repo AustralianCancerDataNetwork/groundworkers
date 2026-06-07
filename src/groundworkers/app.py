@@ -113,11 +113,18 @@ def build_adapters(config: AppConfig) -> Adapters:
     llm_config = config.llm
     if llm_config is not None and llm_config.enabled:
         from openai import OpenAI
-        api_key = llm_config.api_key or "not-needed"
+        api_key = llm_config.api_key
         api_base = llm_config.api_base
 
         def build_llm_client() -> OpenAI:
-            return OpenAI(api_key=api_key, base_url=api_base)
+            # Pass only what was explicitly configured; when api_key is None the
+            # OpenAI SDK falls back to the OPENAI_API_KEY environment variable.
+            kwargs: dict = {}
+            if api_key is not None:
+                kwargs["api_key"] = api_key
+            if api_base is not None:
+                kwargs["base_url"] = api_base
+            return OpenAI(**kwargs)
 
         adapters.llm = LLMAdapter(
             provider=llm_config.provider,
