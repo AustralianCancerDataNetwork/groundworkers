@@ -144,8 +144,8 @@ class LLMConfig(BaseModel):
     def validate_enabled_config(self) -> "LLMConfig":
         if not self.enabled:
             return self
-        if self.api_base and not self.api_key:
-            raise ValueError("llm.api_key is required when api_base is configured")
+        if self.api_key is not None and not self.api_key.strip():
+             raise ValueError("llm.api_key must be a non-empty string when provided")
         return self
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 
 class GroundcrewServer:
@@ -65,7 +65,7 @@ class GroundcrewServer:
 
     def run(
         self,
-        transport: str = "stdio",
+        transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
         host: str = "127.0.0.1",
         port: int = 8000,
     ) -> None:
