@@ -36,10 +36,6 @@ from omop_emb import EmbeddingClient
 
 from groundworkers.base.errors import GroundworkersError
 
-# TODO: some of this adapter logic really should be pushed back into 
-# the core omop-graph library, but waiting for the use-cases and paths 
-# to stabilise first.
-
 class OmopGraphAdapter:
     def __init__(
         self,
@@ -58,12 +54,9 @@ class OmopGraphAdapter:
         self._kg: KnowledgeGraph | None = None
 
     def set_embedding_client(self, client: EmbeddingClient, model_name: str | None = None) -> None:
-        """Inject an EmbeddingClient so concept_ground can encode query strings on-the-fly.
+        """Configure an EmbeddingClient so concept_ground can encode query strings on-the-fly.
 
-        Call this after construction (e.g. once the omop_emb adapter has resolved
-        the default model from the registry).  The embedding is computed before
-        ground_term is called and passed as the query_embedding argument — the KG
-        itself does not need to be rebuilt.
+        Safe to call after construction — the knowledge graph does not need to be rebuilt.
         """
         self._embedding_client = client
         if model_name is not None:
@@ -71,12 +64,10 @@ class OmopGraphAdapter:
 
     @property
     def embedding_resolver_active(self) -> bool:
-        """True when an EmbeddingClient was successfully injected at startup.
+        """True when an EmbeddingClient is configured and the embedding tier in concept_ground is live.
 
-        Reflects whether the embedding tier in concept_ground is live.
-        False when the wiring step in app.py failed silently or was never attempted.
-        Independent from OmopEmbAdapter.is_available() — both must be checked to
-        confirm the full embedding pipeline is operational.
+        Independent from OmopEmbAdapter.is_available() — both must be True to confirm
+        the full embedding pipeline is operational.
         """
         return self._embedding_client is not None
 
@@ -88,7 +79,7 @@ class OmopGraphAdapter:
             return False
 
     def probe(self) -> tuple[bool, str | None]:
-        """Return (available, detail) without raising. Used by system_status."""
+        """Return (available, detail) without raising."""
         try:
             self._get_kg()
             return True, None
@@ -185,13 +176,6 @@ class OmopGraphAdapter:
 
         constraints = GroundingConstraints(parent_ids=resolved_parent_ids, search_constraint=search_constraint)
 
-        # Tiered pipeline — short-circuit on the first tier that returns results,
-        # avoiding lower-quality resolvers when a better match exists.
-        # Each tier pairs the label resolver with its synonym counterpart so that
-        # abbreviations, trade names, and alternate spellings are matched at the
-        # same confidence level as the primary concept name.
-        # FullTextSynonymResolver degrades gracefully (returns nothing) when the
-        # tsvector sidecar columns have not been installed.
         tiers: list[tuple[Any, ...]] = [
             (ExactLabelResolver(), ExactSynonymResolver()),
             (FullTextResolver(), FullTextSynonymResolver()),
@@ -209,15 +193,14 @@ class OmopGraphAdapter:
             try:
                 raw = ground_term(
                     pipeline, kg, query,
-                    query_embedding=None,  # KG computes this via its emb_config
+                    query_embedding=None,  # embedding is handled by the KG via its emb_config
                     constraints=constraints,
                     max_candidates=limit,
                 )
             except Exception as exc:
                 raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-            # Apply minimum token-overlap filter to FTS results: if fewer than
-            # min_fulltext_overlap of the query tokens appear in the matched
-            # concept name, drop the hit and fall through to a better tier.
+            # Drop FTS hits where fewer than min_fulltext_overlap of the query tokens appear
+            # in the matched concept name, then fall through to a higher-quality tier.
             if raw and is_fts_tier and self.min_fulltext_overlap > 0.0:
                 query_tokens = set(query.lower().split())
                 filtered = [
@@ -592,13 +575,6 @@ class OmopGraphAdapter:
 
     @staticmethod
     def _fts_overlap(query_tokens: set[str], concept_label: str) -> float:
-        """Return the proportion of query tokens that appear in *concept_label*.
-
-        Both sides are lowercased and split on whitespace.  A value of 1.0
-        means every query token was found; 0.0 means none were found.
-        Used to filter noisy fulltext results before falling through to the
-        embedding tier.
-        """
         if not query_tokens:
             return 1.0
         label_tokens = set(concept_label.lower().split())
@@ -685,12 +661,11 @@ class OmopGraphAdapter:
     }
 
     def _get_domain_root_ids(self, domain: str | None) -> tuple[int, ...]:
-        """Return 1–3 top-level concept IDs to use as hierarchy anchors for grounding.
+        """Return top-level concept IDs to use as hierarchy anchors for the given domain.
 
-        Fast path: look up a known SNOMED root by concept_code (single-row lookup).
-        Fallback for unknown domains: find the most-connected ancestor via GROUP BY
-        (one query, uses the ancestor_concept_id index).
-        Results are cached on the adapter instance.
+        Known domains use a stable SNOMED code lookup (single row). Unknown domains fall
+        back to a GROUP BY query over concept_ancestor to find the most-connected root.
+        Results are cached per domain.
         """
         if not hasattr(self, "_root_ids_cache"):
             self._root_ids_cache: dict[str, tuple[int, ...]] = {}

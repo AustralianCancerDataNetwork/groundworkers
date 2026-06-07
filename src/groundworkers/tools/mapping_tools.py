@@ -19,6 +19,12 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         remove_stop_phrases: bool = True,
         limit: int = 20,
     ) -> dict[str, Any]:
+        """Deterministic near-verbatim concept search after text normalization.
+
+        Both the query and candidate concept names are normalized before comparison,
+        making this more robust to punctuation and whitespace variation than
+        concept_search_exact while remaining fully deterministic (no ranking).
+        """
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         safe_limit = max(1, min(limit, 50))
@@ -59,6 +65,16 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         overall_limit: int = 30,
         model_name: str | None = None,
     ) -> dict[str, Any]:
+        """Aggregate candidates from multiple search channels into a single deduplicated set.
+
+        Runs exact, normalized, fulltext, and embedding channels in parallel and merges
+        results. Optionally enriches each candidate with its standard mapping, ancestor
+        hierarchy, and relationship summary. Use this to gather a broad candidate set
+        before applying a mapping decision.
+
+        parent_ids restricts all channels to descendants of the specified concept_ids.
+        active_only filters out retired (invalid) concepts.
+        """
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         channel_limit = max(1, min(per_channel_limit, 20))
@@ -99,6 +115,13 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         max_depth: int = 5,
         candidate_limit: int = 10,
     ) -> dict[str, Any]:
+        """Find the nearest standard ancestor of a concept by walking the OMOP hierarchy.
+
+        Accepts either a free-text query or a concept_id. Walks up the concept_ancestor
+        hierarchy up to max_depth levels to find the closest standard ancestor.
+        Useful when a source concept is non-standard and navigate_to_standard returns
+        no direct "Maps to" mapping.
+        """
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         safe_depth = max(1, min(max_depth, 10))
@@ -135,6 +158,12 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         embedding_neighbor_limit: int = 10,
         model_name: str | None = None,
     ) -> dict[str, Any]:
+        """Return a rich context bundle for a single concept to support mapping decisions.
+
+        Assembles standard mapping, ancestors, descendants, relationship summary, graph
+        neighbors, and (optionally) embedding neighbors for one concept_id in a single call.
+        Use this to gather everything an agent needs to evaluate or justify a mapping choice.
+        """
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
@@ -161,6 +190,7 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
 
     @server.tool("concept_map_to_value")
     def concept_map_to_value(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
+        """Return "Maps to value" target concepts for a given vocabulary/code pair."""
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
@@ -179,6 +209,13 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         deduplicate: bool = True,
         resolve_to_standard: bool = True,
     ) -> dict[str, Any]:
+        """Resolve a structured mapping expression to standard OMOP concepts.
+
+        Accepts a list of items each specifying a vocabulary_id and concept_code (or
+        concept_id). Resolves each to its standard equivalent(s) and optionally
+        deduplicates the combined result set. Useful for batch-resolving a pre-defined
+        concept set from source vocabulary codes.
+        """
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
@@ -203,6 +240,12 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         top_k: int | None = None,
         group_by_domain: bool = True,
     ) -> dict[str, Any]:
+        """Evaluate predicted concept mappings against reference mappings.
+
+        Computes precision, recall, and F1 by comparing predicted concept_ids against
+        a reference set. group_by_domain breaks metrics down per OMOP domain.
+        top_k evaluates only the top-k predictions per source term.
+        """
         if mapping_service is None:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:

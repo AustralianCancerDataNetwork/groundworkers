@@ -10,15 +10,12 @@ path: omop_graph/graph/search.py) or a standalone omop-search package with
 minimal friction.
 
 Extraction checklist:
-  [ ] No imports from groundworkers.* 
+  [ ] No imports from groundworkers.*
   [ ] OmopVocabError: replace with the target package's exception type,
       or retain as a thin domain exception and re-export from the package root
   [ ] No MCP protocol concerns (error codes, tool names, server wiring) in here
   [ ] Move file; add to target package __init__.py exports
   [ ] Remove this docstring block
-
-Context: omop_graph.reasoning.concept_handlers.concept_helpers.standardise_ids
-raises NotImplementedError — the navigate_to_standard method here fills that gap.
 """
 
 from __future__ import annotations
@@ -43,12 +40,7 @@ from sqlalchemy.orm import sessionmaker
 # ---------------------------------------------------------------------------
 
 class OmopVocabError(Exception):
-    """Raised by OmopVocabAdapter for query or backend errors.
-
-    Callers (e.g. MCP tool registrations) are responsible for wrapping this
-    into their own error representation. This class intentionally has no
-    knowledge of GroundworkersError or any MCP protocol type.
-    """
+    """Raised by OmopVocabAdapter for query or backend errors."""
 
 
 # ---------------------------------------------------------------------------
@@ -105,24 +97,14 @@ class RelatedConceptMapping:
 # ---------------------------------------------------------------------------
 
 class OmopVocabAdapter:
-    """
-    Vocabulary query primitives backed directly by omop-alchemy ORM queries.
+    """Vocabulary query primitives backed directly by omop-alchemy ORM queries.
 
-    These are the low-level operations that an agent (or a grounding pipeline)
-    can compose to find and navigate OMOP standard concepts.  They deliberately
-    expose raw quality signals (ts_rank, standard_concept flag) rather than
-    making quality decisions internally — that is the caller's responsibility.
+    Exposes raw quality signals (ts_rank, standard_concept flag) so callers can apply
+    their own quality thresholds and decide whether to navigate non-standard results to
+    their standard equivalents.
 
-    Three operations:
-      search_exact       — case-insensitive exact name / synonym match
-      search_fulltext    — PostgreSQL FTS with ts_rank exposed; graceful
-                           degradation when tsvector sidecar absent
-      navigate_to_standard — batch concept_id → standard equivalents via
-                             "Maps to" relationship edges
-
-    Raises OmopVocabError for database / query errors.
+    Raises OmopVocabError for database or query errors.
     Raises ValueError for invalid arguments.
-    Never raises GroundworkersError.
     """
 
     # The OMOP relationship_id(s) that express cross-vocabulary standard mapping.
@@ -515,19 +497,11 @@ class OmopVocabAdapter:
         self,
         concept_ids: list[int],
     ) -> list[StandardMapping]:
-        """
-        Given a list of concept_ids, return their standard equivalents via
-        IDENTITY-type ("Maps to") relationship edges.
+        """Return standard equivalents for a list of concept_ids via "Maps to" relationship edges.
 
         For concept_ids that are already standard: standard_concepts = [self].
         For concept_ids with no outbound "Maps to" relationship: standard_concepts = [].
         concept_ids not found in the vocabulary are silently omitted.
-
-        All navigation is done in two queries (one for source metadata, one batch
-        join for mappings) regardless of the number of input ids.
-
-        This is done to avoid any query of concept_relationship if we are already standard,
-        and to avoid N+1 queries when navigating multiple non-standard ids at once.
         """
         if not concept_ids:
             return []

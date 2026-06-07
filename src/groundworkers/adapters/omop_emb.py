@@ -21,6 +21,18 @@ from groundworkers.base.errors import GroundworkersError
 
 
 class OmopEmbAdapter:
+    """Adapter for an omop-emb vector store backend.
+
+    Two operation modes are available depending on configuration:
+
+    - **Index lookup** (`get_neighbours`): uses pre-stored embeddings from the backend; no
+      encoding client is required.
+    - **Text search** (`search`, `encode`): encodes a query string on-the-fly before searching;
+      requires an encoding client (`api_base` / `api_key` in config).
+
+    `has_client()` reflects which mode is available at runtime.
+    """
+
     def __init__(
         self,
         *,
@@ -41,16 +53,24 @@ class OmopEmbAdapter:
         self._clients: dict[str, EmbeddingClient] = {}
 
     def is_available(self) -> bool:
+        """Return True if the backend is reachable and at least one model is registered."""
         return self.index_status()["available"]
 
     def has_client(self) -> bool:
+        """Return True if an encoding client is configured (required for `search` and `encode`)."""
         return self._client_factory is not None
 
     def close(self) -> None:
+        """Release cached backend and client references."""
         self._backend = None
         self._clients.clear()
 
     def index_status(self) -> dict[str, Any]:
+        """Return index availability and per-model statistics.
+
+        Always returns a dict — never raises. On backend failure, returns
+        ``{"available": False, "backend_type": ..., "models": []}``.
+        """
         try:
             backend = self._get_backend()
             records = list_registered_models(backend=backend)
@@ -88,6 +108,11 @@ class OmopEmbAdapter:
         limit: int,
         model_name: str | None,
     ) -> dict[str, Any]:
+        """Return the `limit` nearest concepts to `concept_id` using its stored embedding.
+
+        Does not require an encoding client. Raises ``NOT_FOUND`` if the concept has no
+        stored embedding in the index.
+        """
         record = self._resolve_model_record(model_name)
         reader = self._build_reader(record)
         vectors = reader.get_embeddings_by_concept_ids((concept_id,))
@@ -95,7 +120,6 @@ class OmopEmbAdapter:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} is not present in the embedding index")
 
         vector = np.asarray(vectors[concept_id], dtype=float).reshape(1, -1)
-        # Request limit+1 so that self-exclusion below still yields `limit` results.
         concept_filter = self._build_concept_filter(limit=limit + 1)
         raw = reader.get_nearest_concepts(
             query_embedding=vector,
@@ -124,6 +148,11 @@ class OmopEmbAdapter:
         active_only: bool,
         model_name: str | None,
     ) -> dict[str, Any]:
+        """Encode `query` and return the nearest matching concepts.
+
+        Requires an encoding client (`has_client()` must be True). Results are optionally
+        filtered by domain, vocabulary, standard status, and active status.
+        """
         if not self.has_client():
             raise GroundworkersError(
                 "BACKEND_UNAVAIL",
@@ -153,6 +182,7 @@ class OmopEmbAdapter:
         }
 
     def encode(self, text: str, model_name: str | None) -> dict[str, Any]:
+        """Return the embedding vector for `text`. Requires an encoding client."""
         if not self.has_client():
             raise GroundworkersError("BACKEND_UNAVAIL", "embedding client is not configured")
         record = self._resolve_model_record(model_name)
@@ -185,7 +215,6 @@ class OmopEmbAdapter:
             if not records:
                 raise GroundworkersError("NOT_FOUND", f"Embedding model {requested_name!r} is not registered")
             return records[0]
-        # No specific model requested — records contains all registered models.
         if len(records) == 1:
             return records[0]
         if not records:

@@ -99,16 +99,16 @@ Representative response sections:
 - `candidate_union`
 - `warnings`
 
-## `concept_parent_backoff`
+## `concept_nearest_standard_ancestor`
 
-Selects a broader standard parent concept from either a free-text query or an
-explicit `concept_id`.
+Finds the nearest standard ancestor of a concept by walking the OMOP concept hierarchy.
+Accepts either a free-text query or an explicit `concept_id`. Useful when a source concept
+is too specific or non-standard and you need a broader standard parent.
 
 ```json
 {
   "query": "left lower lobe lung adenocarcinoma",
   "domain": "Condition",
-  "strategy": "nearest_standard_ancestor",
   "max_depth": 5
 }
 ```
