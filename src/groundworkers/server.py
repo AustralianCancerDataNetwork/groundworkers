@@ -57,7 +57,7 @@ def main() -> None:
     config = AppConfig.load(args.config)
     server = create_server(config)
     if args.describe:
-        print(json.dumps({"config": config.describe(), "tools": server.describe_tools()}, indent=2))
+        print(json.dumps({"config": config.describe(), "tools": server.describe_tools(), "prompts": server.describe_prompts()}, indent=2))
         return
     server.run(transport=args.transport, host=args.host, port=args.port)
 

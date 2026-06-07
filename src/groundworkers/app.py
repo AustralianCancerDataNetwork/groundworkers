@@ -112,14 +112,20 @@ def build_adapters(config: AppConfig) -> Adapters:
 
     llm_config = config.llm
     if llm_config is not None and llm_config.enabled:
-        from openai import OpenAI
         api_key = llm_config.api_key
         api_base = llm_config.api_base
 
-        def build_llm_client() -> OpenAI:
+        def build_llm_client() -> Any:
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise RuntimeError(
+                    "The 'openai' package is required for LLM features. "
+                    "Install it with: pip install openai"
+                ) from exc
             # Pass only what was explicitly configured; when api_key is None the
             # OpenAI SDK falls back to the OPENAI_API_KEY environment variable.
-            kwargs: dict = {}
+            kwargs: dict[str, Any] = {}
             if api_key is not None:
                 kwargs["api_key"] = api_key
             if api_base is not None:

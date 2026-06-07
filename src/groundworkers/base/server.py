@@ -53,6 +53,16 @@ class GroundcrewServer:
             }
         return description
 
+    def describe_prompts(self) -> dict[str, dict[str, Any]]:
+        description: dict[str, dict[str, Any]] = {}
+        for name, (func, prompt_description) in self._prompts.items():
+            signature = inspect.signature(func)
+            description[name] = {
+                "signature": str(signature),
+                "description": prompt_description or "",
+            }
+        return description
+
     def run(
         self,
         transport: str = "stdio",

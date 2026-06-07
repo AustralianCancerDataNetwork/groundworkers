@@ -164,10 +164,15 @@ class AppConfig(BaseModel):
         return cls.model_validate(data)
 
     def describe(self) -> dict[str, Any]:
+        def _mask(d: dict[str, Any]) -> dict[str, Any]:
+            if d.get("api_key"):
+                d = {**d, "api_key": "***"}
+            return d
+
         return {
             "app_name": self.app_name,
             "database_url": self.database.url if self.database else None,
             "omop_graph": self.omop_graph.model_dump() if self.omop_graph else None,
-            "omop_emb": self.omop_emb.model_dump() if self.omop_emb else None,
-            "llm": self.llm.model_dump() if self.llm else None,
+            "omop_emb": _mask(self.omop_emb.model_dump()) if self.omop_emb else None,
+            "llm": _mask(self.llm.model_dump()) if self.llm else None,
         }
