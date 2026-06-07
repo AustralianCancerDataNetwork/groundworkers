@@ -8,12 +8,13 @@ _logger = logging.getLogger(__name__)
 
 from omop_emb import EmbeddingBackend, EmbeddingClient
 
+from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.adapters.omop_vocab import OmopVocabAdapter
 from groundworkers.config import AppConfig
 from groundworkers.base.sql import build_engine
-from groundworkers.services import MappingService
+from groundworkers.services import MappingService, TextService
 
 
 @dataclass
@@ -21,11 +22,13 @@ class Adapters:
     omop_graph: OmopGraphAdapter | None = None
     omop_vocab: OmopVocabAdapter | None = None
     omop_emb: OmopEmbAdapter | None = None
+    llm: LLMAdapter | None = None
 
 
 @dataclass
 class Services:
     mapping: MappingService | None = None
+    text: TextService | None = None
 
 
 @dataclass
@@ -106,6 +109,21 @@ def build_adapters(config: AppConfig) -> Adapters:
                     exc,
                 )
 
+    llm_config = config.llm
+    if llm_config is not None and llm_config.enabled:
+        from openai import OpenAI
+        api_key = llm_config.api_key or "not-needed"
+        api_base = llm_config.api_base
+
+        def build_llm_client() -> OpenAI:
+            return OpenAI(api_key=api_key, base_url=api_base)
+
+        adapters.llm = LLMAdapter(
+            provider=llm_config.provider,
+            default_model_name=llm_config.default_model_name,
+            client_factory=build_llm_client,
+        )
+
     return adapters
 
 
@@ -117,6 +135,8 @@ def build_services(adapters: Adapters) -> Services:
             graph_adapter=adapters.omop_graph,
             emb_adapter=adapters.omop_emb,
         )
+    if adapters.llm is not None:
+        services.text = TextService(adapters.llm)
     return services
 
 
@@ -128,6 +148,7 @@ def build_application(config: AppConfig) -> GroundworkersApp:
             omop_graph=adapters.omop_graph,
             omop_vocab=adapters.omop_vocab,
             omop_emb=adapters.omop_emb,
+            llm=adapters.llm,
         ),
         services=build_services(adapters),
     )

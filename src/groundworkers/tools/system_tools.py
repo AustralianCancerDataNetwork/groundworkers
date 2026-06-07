@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
@@ -21,6 +22,7 @@ def register_system_tools(
     server: GroundcrewServer,
     graph_adapter: OmopGraphAdapter | None = None,
     emb_adapter: OmopEmbAdapter | None = None,
+    llm_adapter: LLMAdapter | None = None,
 ) -> None:
     @server.tool("system_status")
     def system_status() -> dict[str, Any]:
@@ -64,6 +66,25 @@ def register_system_tools(
                     "backend_type": None,
                     "model_count": 0,
                     "client_configured": emb_adapter.has_client(),
+                    "detail": repr(exc),
+                }
+
+        if llm_adapter is not None:
+            try:
+                status = llm_adapter.status()
+                components["llm"] = {
+                    "available": status["available"],
+                    "provider": status.get("provider"),
+                    "default_model": status.get("default_model"),
+                    "structured_output_supported": status.get("structured_output_supported"),
+                    "detail": status.get("detail"),
+                }
+            except Exception as exc:
+                components["llm"] = {
+                    "available": False,
+                    "provider": None,
+                    "default_model": None,
+                    "structured_output_supported": None,
                     "detail": repr(exc),
                 }
 

@@ -131,6 +131,24 @@ class OmopEmbConfig(BaseModel):
         return self.db_path
 
 
+class LLMConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    provider: str = "openai-compatible"
+    api_base: str | None = None
+    api_key: str | None = None
+    default_model_name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_enabled_config(self) -> "LLMConfig":
+        if not self.enabled:
+            return self
+        if self.api_base and not self.api_key:
+            raise ValueError("llm.api_key is required when api_base is configured")
+        return self
+
+
 class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -138,6 +156,7 @@ class AppConfig(BaseModel):
     database: DatabaseConfig | None = None
     omop_graph: OmopGraphConfig | None = None
     omop_emb: OmopEmbConfig | None = None
+    llm: LLMConfig | None = None
 
     @classmethod
     def load(cls, path: str | Path) -> "AppConfig":

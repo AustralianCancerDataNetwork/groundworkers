@@ -11,6 +11,7 @@ from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 from groundworkers.tools.search_tools import register_search_tools
 from groundworkers.tools.system_tools import register_system_tools
+from groundworkers.tools.text_tools import register_text_tools
 
 
 def create_server(config: AppConfig) -> GroundcrewServer:
@@ -29,7 +30,9 @@ def create_server(config: AppConfig) -> GroundcrewServer:
         )
     if app.adapters.omop_emb is not None:
         register_embedding_tools(server, app.adapters.omop_emb)
-    register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb)
+    if app.services.text is not None:
+        register_text_tools(server, app.services.text)
+    register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
     return server
 
 
