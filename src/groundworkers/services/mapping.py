@@ -119,7 +119,9 @@ class MappingService:
             domain=domain or None,
             vocabulary_id=vocabulary_id or None,
             standard_only=standard_only,
+            active_only=active_only,
             include_synonyms=include_synonyms,
+            parent_ids=parent_ids,
             limit=per_channel_limit,
         )
         channels["exact"] = {
@@ -134,7 +136,9 @@ class MappingService:
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
                 standard_only=standard_only,
+                active_only=active_only,
                 include_synonyms=False,
+                parent_ids=parent_ids,
                 limit=per_channel_limit,
             )
             channels["normalized"] = {
@@ -149,7 +153,9 @@ class MappingService:
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
                 standard_only=standard_only,
+                active_only=active_only,
                 include_synonyms=include_synonyms,
+                parent_ids=parent_ids,
                 limit=per_channel_limit,
             )
             channels["fulltext"] = {
@@ -175,10 +181,13 @@ class MappingService:
                         active_only=active_only,
                         model_name=model_name,
                     )
+                    emb_notes = ["semantic retrieval from omop-emb"]
+                    if parent_ids:
+                        emb_notes.append("parent_ids hierarchy filter was not applied at the embedding level")
                     channels["embedding"] = {
                         "available": True,
                         "results": embedding_result.get("results", []),
-                        "retrieval_notes": ["semantic retrieval from omop-emb"],
+                        "retrieval_notes": emb_notes,
                     }
                 except GroundworkersError as exc:
                     channels["embedding"] = {"available": False, "results": [], "retrieval_notes": []}

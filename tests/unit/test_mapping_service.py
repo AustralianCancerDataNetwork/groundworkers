@@ -16,7 +16,7 @@ from groundworkers.services import MappingService
 
 
 class StubVocabAdapter:
-    def search_exact(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, include_synonyms=True, limit=20):
+    def search_exact(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, limit=20):
         return [
             ConceptMatch(
                 concept_id=101,
@@ -31,7 +31,7 @@ class StubVocabAdapter:
             )
         ]
 
-    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, include_synonyms=False, normalization_profile="verbatim", remove_stop_phrases=True, limit=20):
+    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20):
         return [
             ConceptMatch(
                 concept_id=102,
@@ -46,7 +46,7 @@ class StubVocabAdapter:
             )
         ]
 
-    def search_fulltext(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, include_synonyms=True, min_rank=0.0, limit=20):
+    def search_fulltext(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, min_rank=0.0, limit=20):
         return ([
             ConceptMatch(
                 concept_id=103,
@@ -361,3 +361,115 @@ def test_mapping_evaluate_candidates_computes_summary_metrics():
     assert result["summary_metrics"]["agreement_count"] == 1
     assert result["summary_metrics"]["disagreement_count"] == 1
     assert result["summary_metrics"]["missing_reference_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Recording stub for propagation tests (Gap 8 and Gap 1)
+# ---------------------------------------------------------------------------
+
+class _RecordingVocabAdapter(StubVocabAdapter):
+    """Wraps StubVocabAdapter and records the active_only / parent_ids received per channel."""
+
+    def __init__(self):
+        self.received: dict[str, dict] = {}
+
+    def search_exact(self, query, *, active_only=False, parent_ids=None, **kwargs):
+        self.received["exact"] = {"active_only": active_only, "parent_ids": parent_ids}
+        return super().search_exact(query, **kwargs)
+
+    def search_normalized(self, query, *, active_only=False, parent_ids=None, **kwargs):
+        self.received["normalized"] = {"active_only": active_only, "parent_ids": parent_ids}
+        return super().search_normalized(query, **kwargs)
+
+    def search_fulltext(self, query, *, active_only=False, parent_ids=None, **kwargs):
+        self.received["fulltext"] = {"active_only": active_only, "parent_ids": parent_ids}
+        return super().search_fulltext(query, **kwargs)
+
+    def navigate_to_standard(self, concept_ids):
+        return []
+
+
+def _service_with_recording_vocab(emb=None):
+    vocab = _RecordingVocabAdapter()
+    service = MappingService(vocab, graph_adapter=StubGraphAdapter(), emb_adapter=emb)
+    return service, vocab
+
+
+# ---------------------------------------------------------------------------
+# active_only propagation (Gap 8)
+# ---------------------------------------------------------------------------
+
+def test_active_only_true_propagated_to_all_lexical_channels():
+    service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
+
+    service.concept_candidate_bundle("diabetes", active_only=True)
+
+    assert vocab.received["exact"]["active_only"] is True
+    assert vocab.received["normalized"]["active_only"] is True
+    assert vocab.received["fulltext"]["active_only"] is True
+
+
+def test_active_only_false_propagated_to_all_lexical_channels():
+    service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
+
+    service.concept_candidate_bundle("diabetes", active_only=False)
+
+    assert vocab.received["exact"]["active_only"] is False
+    assert vocab.received["normalized"]["active_only"] is False
+    assert vocab.received["fulltext"]["active_only"] is False
+
+
+# ---------------------------------------------------------------------------
+# parent_ids propagation (Gap 1)
+# ---------------------------------------------------------------------------
+
+def test_parent_ids_propagated_to_all_lexical_channels():
+    service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
+
+    service.concept_candidate_bundle("diabetes", parent_ids=[301])
+
+    assert vocab.received["exact"]["parent_ids"] == [301]
+    assert vocab.received["normalized"]["parent_ids"] == [301]
+    assert vocab.received["fulltext"]["parent_ids"] == [301]
+
+
+def test_parent_ids_none_propagated_when_not_specified():
+    service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
+
+    service.concept_candidate_bundle("diabetes")
+
+    assert vocab.received["exact"]["parent_ids"] is None
+    assert vocab.received["normalized"]["parent_ids"] is None
+    assert vocab.received["fulltext"]["parent_ids"] is None
+
+
+def test_embedding_channel_notes_parent_ids_limitation_when_parent_ids_provided():
+    service, _ = _service_with_recording_vocab(emb=StubEmbAdapter())
+
+    result = service.concept_candidate_bundle("diabetes", parent_ids=[301])
+
+    emb_notes = result["channels"]["embedding"]["retrieval_notes"]
+    assert any("parent_ids" in note for note in emb_notes)
+
+
+def test_embedding_channel_no_parent_ids_note_when_parent_ids_absent():
+    service, _ = _service_with_recording_vocab(emb=StubEmbAdapter())
+
+    result = service.concept_candidate_bundle("diabetes")
+
+    emb_notes = result["channels"]["embedding"]["retrieval_notes"]
+    assert not any("parent_ids" in note for note in emb_notes)
+
+
+# ---------------------------------------------------------------------------
+# Constraints echoed correctly in bundle output
+# ---------------------------------------------------------------------------
+
+def test_candidate_bundle_constraints_reflect_active_only_and_parent_ids():
+    service, _ = _service_with_recording_vocab()
+
+    result = service.concept_candidate_bundle("diabetes", active_only=True, parent_ids=[301, 302])
+
+    constraints = result["constraints"]
+    assert constraints["active_only"] is True
+    assert constraints["parent_ids"] == [301, 302]
