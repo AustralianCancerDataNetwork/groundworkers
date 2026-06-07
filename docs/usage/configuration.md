@@ -71,11 +71,11 @@ Configures the embedding index adapter.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | `bool` | `false` | Must be `true` for embedding tools to be registered. |
-| `backend_type` | `sqlitevec` \| `pgvector` | `sqlitevec` | Embedding storage backend. |
+| `backend_type` | `sqlitevec` \| `pgvector` | `sqlitevec` | Embedding storage backend. `sqlitevec` and `pgvector` are the only supported primary backends. |
 | `db_path` | `str` | `null` | Path to the sqlite-vec database file (required for `sqlitevec`). |
 | `db_url` | `str` | `null` | SQLAlchemy URL (required for `pgvector`). |
 | `default_model_name` | `str` | `null` | Model to use when no `model_name` argument is supplied by the caller. |
-| `faiss_cache_dir` | `str` | `null` | Directory for FAISS index cache files. |
+| `faiss_cache_dir` | `str` | `null` | Directory for a FAISS sidecar cache. FAISS accelerates nearest-neighbour queries but requires a primary backend (`sqlitevec` or `pgvector`) to be configured alongside it. |
 | `api_base` | `str` | `null` | Embedding API base URL for on-the-fly query encoding. |
 | `api_key` | `str` | `null` | API key for the embedding service when `api_base` is set. |
 

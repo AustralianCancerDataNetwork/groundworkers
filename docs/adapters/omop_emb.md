@@ -1,8 +1,8 @@
 # OmopEmb Adapter
 
 `OmopEmbAdapter` wraps [omop-emb](https://australiancancerdatanetwork.github.io/omop-emb/)
-to provide embedding index queries.  It supports two storage backends and two query
-modes.
+to provide embedding index queries.  It supports two storage backends and operates in
+one of two modes depending on whether an encoding client is configured.
 
 ## Storage backends
 
@@ -11,24 +11,26 @@ modes.
 | `sqlitevec` | `db_path: /path/to/index.db` | File-based; zero external dependencies |
 | `pgvector` | `db_url: postgresql://...` | PostgreSQL; scales to larger indexes |
 
-## Query modes
+FAISS can be layered on top of either backend via `faiss_cache_dir` to accelerate
+nearest-neighbour queries. FAISS is a read-time sidecar cache — it is not a standalone
+backend and requires `sqlitevec` or `pgvector` to be configured alongside it.
 
-### Neighbour lookup (`embedding_neighbours`)
+## Operation modes
 
-Fetches the existing vector for a concept ID from the index, then finds the nearest
-neighbours by similarity.  Does **not** require an API key — all data is in the index.
+### Index lookup mode (no encoding client required)
 
-### On-the-fly search (`embedding_search`)
+`embedding_neighbours` fetches the stored vector for a concept ID from the index and
+returns the nearest neighbours by similarity. No API key is needed — all data is in
+the index.
 
-Encodes the query string using a live embedding model (`api_base` + `api_key`), then
-searches the index for similar concepts with optional domain, vocabulary, standard,
-and active-status filtering.
+### Text search mode (encoding client required)
 
-### Raw encoding (`embedding_encode`)
+`embedding_search` and `embedding_encode` encode text on the fly using a live embedding
+model (`api_base` + `api_key`).
 
-Encodes one free-text string using the configured query embedding model and returns
-the raw vector.  This is primarily intended as a building block for higher-level
-ACP workflows.
+- `embedding_search`: encodes a query string and returns the nearest matching concepts
+  with optional domain, vocabulary, standard, and active-status filtering.
+- `embedding_encode`: returns the raw embedding vector for a text string.
 
 ## `index_status` response
 

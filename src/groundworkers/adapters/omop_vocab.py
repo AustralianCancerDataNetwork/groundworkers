@@ -10,15 +10,12 @@ path: omop_graph/graph/search.py) or a standalone omop-search package with
 minimal friction.
 
 Extraction checklist:
-  [ ] No imports from groundworkers.* (verified — none exist)
+  [ ] No imports from groundworkers.*
   [ ] OmopVocabError: replace with the target package's exception type,
       or retain as a thin domain exception and re-export from the package root
   [ ] No MCP protocol concerns (error codes, tool names, server wiring) in here
   [ ] Move file; add to target package __init__.py exports
   [ ] Remove this docstring block
-
-Context: omop_graph.reasoning.concept_handlers.concept_helpers.standardise_ids
-raises NotImplementedError — the navigate_to_standard method here fills that gap.
 """
 
 from __future__ import annotations
@@ -28,6 +25,7 @@ import re
 
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
+    Concept_Ancestor,
     Concept_Relationship,
     Concept_Synonym,
 )
@@ -42,12 +40,7 @@ from sqlalchemy.orm import sessionmaker
 # ---------------------------------------------------------------------------
 
 class OmopVocabError(Exception):
-    """Raised by OmopVocabAdapter for query or backend errors.
-
-    Callers (e.g. MCP tool registrations) are responsible for wrapping this
-    into their own error representation. This class intentionally has no
-    knowledge of GroundworkersError or any MCP protocol type.
-    """
+    """Raised by OmopVocabAdapter for query or backend errors."""
 
 
 # ---------------------------------------------------------------------------
@@ -104,30 +97,21 @@ class RelatedConceptMapping:
 # ---------------------------------------------------------------------------
 
 class OmopVocabAdapter:
-    """
-    Vocabulary query primitives backed directly by omop-alchemy ORM queries.
+    """Vocabulary query primitives backed directly by omop-alchemy ORM queries.
 
-    These are the low-level operations that an agent (or a grounding pipeline)
-    can compose to find and navigate OMOP standard concepts.  They deliberately
-    expose raw quality signals (ts_rank, standard_concept flag) rather than
-    making quality decisions internally — that is the caller's responsibility.
+    Exposes raw quality signals (ts_rank, standard_concept flag) so callers can apply
+    their own quality thresholds and decide whether to navigate non-standard results to
+    their standard equivalents.
 
-    Three operations:
-      search_exact       — case-insensitive exact name / synonym match
-      search_fulltext    — PostgreSQL FTS with ts_rank exposed; graceful
-                           degradation when tsvector sidecar absent
-      navigate_to_standard — batch concept_id → standard equivalents via
-                             "Maps to" relationship edges
-
-    Raises OmopVocabError for database / query errors.
+    Raises OmopVocabError for database or query errors.
     Raises ValueError for invalid arguments.
-    Never raises GroundworkersError.
     """
 
     # The OMOP relationship_id(s) that express cross-vocabulary standard mapping.
     # "Maps to" is the primary identity relationship in all Athena vocabulary releases.
     IDENTITY_RELATIONSHIP_IDS: frozenset[str] = frozenset({"Maps to"})
     VALUE_RELATIONSHIP_IDS: frozenset[str] = frozenset({"Maps to value"})
+    UNIT_RELATIONSHIP_IDS: frozenset[str] = frozenset({"Maps to unit"})
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
@@ -171,7 +155,9 @@ class OmopVocabAdapter:
         domain: str | None = None,
         vocabulary_id: str | None = None,
         standard_only: bool = False,
+        active_only: bool = False,
         include_synonyms: bool = True,
+        parent_ids: list[int] | None = None,
         limit: int = 20,
     ) -> list[ConceptMatch]:
         """
@@ -208,6 +194,8 @@ class OmopVocabAdapter:
                     domain=domain,
                     vocabulary_id=vocabulary_id,
                     standard_only=standard_only,
+                    active_only=active_only,
+                    parent_ids=parent_ids,
                 ).limit(limit)
 
                 for row in session.execute(name_stmt).all():
@@ -240,6 +228,8 @@ class OmopVocabAdapter:
                             domain=domain,
                             vocabulary_id=vocabulary_id,
                             standard_only=standard_only,
+                            active_only=active_only,
+                            parent_ids=parent_ids,
                         ).limit(remaining)
 
                         if seen_ids:
@@ -270,8 +260,10 @@ class OmopVocabAdapter:
         domain: str | None = None,
         vocabulary_id: str | None = None,
         standard_only: bool = False,
+        active_only: bool = False,
         include_synonyms: bool = False,
         normalization_profile: str = "verbatim",
+        parent_ids: list[int] | None = None,
         remove_stop_phrases: bool = True,
         limit: int = 20,
     ) -> list[ConceptMatch]:
@@ -314,6 +306,8 @@ class OmopVocabAdapter:
                     domain=domain,
                     vocabulary_id=vocabulary_id,
                     standard_only=standard_only,
+                    active_only=active_only,
+                    parent_ids=parent_ids,
                 ).limit(limit)
 
                 for row in session.execute(name_stmt).all():
@@ -348,6 +342,8 @@ class OmopVocabAdapter:
                             domain=domain,
                             vocabulary_id=vocabulary_id,
                             standard_only=standard_only,
+                            active_only=active_only,
+                            parent_ids=parent_ids,
                         ).limit(remaining)
 
                         if seen_ids:
@@ -374,7 +370,9 @@ class OmopVocabAdapter:
         domain: str | None = None,
         vocabulary_id: str | None = None,
         standard_only: bool = False,
+        active_only: bool = False,
         include_synonyms: bool = True,
+        parent_ids: list[int] | None = None,
         min_rank: float = 0.0,
         limit: int = 20,
     ) -> tuple[list[ConceptMatch], bool]:
@@ -426,6 +424,8 @@ class OmopVocabAdapter:
                     domain=domain,
                     vocabulary_id=vocabulary_id,
                     standard_only=standard_only,
+                    active_only=active_only,
+                    parent_ids=parent_ids,
                 ).order_by(name_rank.desc()).limit(limit)
 
                 if min_rank > 0.0:
@@ -463,6 +463,8 @@ class OmopVocabAdapter:
                             domain=domain,
                             vocabulary_id=vocabulary_id,
                             standard_only=standard_only,
+                            active_only=active_only,
+                            parent_ids=parent_ids,
                         ).order_by(syn_rank.desc()).limit(remaining)
 
                         if min_rank > 0.0:
@@ -495,19 +497,11 @@ class OmopVocabAdapter:
         self,
         concept_ids: list[int],
     ) -> list[StandardMapping]:
-        """
-        Given a list of concept_ids, return their standard equivalents via
-        IDENTITY-type ("Maps to") relationship edges.
+        """Return standard equivalents for a list of concept_ids via "Maps to" relationship edges.
 
         For concept_ids that are already standard: standard_concepts = [self].
         For concept_ids with no outbound "Maps to" relationship: standard_concepts = [].
         concept_ids not found in the vocabulary are silently omitted.
-
-        All navigation is done in two queries (one for source metadata, one batch
-        join for mappings) regardless of the number of input ids.
-
-        This fills the gap left by omop_graph.reasoning.concept_handlers.
-        concept_helpers.standardise_ids, which currently raises NotImplementedError.
         """
         if not concept_ids:
             return []
@@ -620,6 +614,16 @@ class OmopVocabAdapter:
             self.VALUE_RELATIONSHIP_IDS,
         )
 
+    def navigate_to_unit(
+        self,
+        concept_ids: list[int],
+    ) -> list[RelatedConceptMapping]:
+        """Return ``Maps to unit`` related concepts for the given concept_ids."""
+        return self._navigate_relationship(
+            concept_ids,
+            self.UNIT_RELATIONSHIP_IDS,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -631,14 +635,26 @@ class OmopVocabAdapter:
         domain: str | None,
         vocabulary_id: str | None,
         standard_only: bool,
+        active_only: bool = False,
+        parent_ids: list[int] | None = None,
     ):
-        """Apply optional domain / vocabulary / standard_concept WHERE clauses."""
+        """Apply optional domain / vocabulary / standard_concept / active / parent WHERE clauses."""
         if standard_only:
             stmt = stmt.where(Concept.standard_concept == "S")
+        if active_only:
+            stmt = stmt.where(Concept.invalid_reason.is_(None))
         if domain:
             stmt = stmt.where(func.lower(Concept.domain_id) == domain.lower())
         if vocabulary_id:
             stmt = stmt.where(Concept.vocabulary_id == vocabulary_id)
+        if parent_ids:
+            stmt = stmt.where(
+                Concept.concept_id.in_(
+                    select(Concept_Ancestor.descendant_concept_id).where(
+                        Concept_Ancestor.ancestor_concept_id.in_(parent_ids)
+                    )
+                )
+            )
         return stmt
 
     def _navigate_relationship(

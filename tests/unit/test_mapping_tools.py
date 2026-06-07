@@ -23,8 +23,8 @@ class StubMappingService:
         self.calls.append(("concept_candidate_bundle", {"query": query, **kwargs}))
         return {"query": query.strip(), "channels": {}, "candidate_union": [], "warnings": []}
 
-    def concept_parent_backoff(self, **kwargs):
-        self.calls.append(("concept_parent_backoff", kwargs))
+    def concept_nearest_standard_ancestor(self, **kwargs):
+        self.calls.append(("concept_nearest_standard_ancestor", kwargs))
         return {"found": True, "selected_parent": {"concept_id": 1}}
 
     def concept_mapping_context(self, concept_id: int, **kwargs):
@@ -86,14 +86,14 @@ def test_concept_candidate_bundle_rejects_invalid_input_from_service():
     assert result == {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
 
 
-def test_concept_parent_backoff_returns_groundworkers_error_dict():
+def test_concept_nearest_standard_ancestor_returns_groundworkers_error_dict():
     class ErrorService(StubMappingService):
-        def concept_parent_backoff(self, **kwargs):
+        def concept_nearest_standard_ancestor(self, **kwargs):
             raise GroundworkersError("NOT_FOUND", "missing")
 
     server = build_server(ErrorService())
 
-    result = server.call("concept_parent_backoff", concept_id=999)
+    result = server.call("concept_nearest_standard_ancestor", concept_id=999)
 
     assert result == {"error": True, "code": "NOT_FOUND", "message": "missing"}
 

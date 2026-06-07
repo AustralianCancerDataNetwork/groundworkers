@@ -6,6 +6,10 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+import logging
+import pytest
+from pydantic import ValidationError
+
 from groundworkers.app import build_application
 from groundworkers.config import AppConfig
 from groundworkers.server import build_adapters, create_server
@@ -95,3 +99,40 @@ def test_app_config_accepts_all_vocab_sections():
     assert config.omop_graph is not None
     assert config.omop_graph.vocab_schema == "omop_vocab"
     assert config.omop_emb is not None
+
+
+def test_omop_emb_config_accepts_faiss_backend_type():
+    # faiss is not rejected at config time — the limitation surfaces at runtime
+    # when the backend factory is invoked, with a clear error message.
+    config = AppConfig.model_validate(
+        {"omop_emb": {"enabled": False, "backend_type": "faiss", "faiss_cache_dir": "/tmp/faiss"}}
+    )
+    assert config.omop_emb is not None
+    assert config.omop_emb.backend_type == "faiss"
+
+
+def test_omop_emb_config_accepts_pgvector():
+    config = AppConfig.model_validate(
+        {"omop_emb": {"enabled": False, "backend_type": "pgvector"}}
+    )
+    assert config.omop_emb is not None
+    assert config.omop_emb.backend_type == "pgvector"
+
+
+def test_embedding_wiring_failure_emits_warning(caplog):
+    config = AppConfig.model_validate(
+        {
+            "omop_graph": {"db_url": "sqlite+pysqlite:///:memory:"},
+            "omop_emb": {
+                "enabled": True,
+                "backend_type": "sqlitevec",
+                "db_path": "/nonexistent/path/emb.db",
+                "api_base": "http://localhost:9999",
+                "api_key": "test-key",
+            },
+        }
+    )
+    with caplog.at_level(logging.WARNING, logger="groundworkers.app"):
+        build_adapters(config)
+
+    assert any("embedding tier" in r.message for r in caplog.records)

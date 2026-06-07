@@ -119,7 +119,9 @@ class MappingService:
             domain=domain or None,
             vocabulary_id=vocabulary_id or None,
             standard_only=standard_only,
+            active_only=active_only,
             include_synonyms=include_synonyms,
+            parent_ids=parent_ids,
             limit=per_channel_limit,
         )
         channels["exact"] = {
@@ -134,7 +136,9 @@ class MappingService:
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
                 standard_only=standard_only,
+                active_only=active_only,
                 include_synonyms=False,
+                parent_ids=parent_ids,
                 limit=per_channel_limit,
             )
             channels["normalized"] = {
@@ -149,7 +153,9 @@ class MappingService:
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
                 standard_only=standard_only,
+                active_only=active_only,
                 include_synonyms=include_synonyms,
+                parent_ids=parent_ids,
                 limit=per_channel_limit,
             )
             channels["fulltext"] = {
@@ -175,10 +181,13 @@ class MappingService:
                         active_only=active_only,
                         model_name=model_name,
                     )
+                    emb_notes = ["semantic retrieval from omop-emb"]
+                    if parent_ids:
+                        emb_notes.append("parent_ids hierarchy filter was not applied at the embedding level")
                     channels["embedding"] = {
                         "available": True,
                         "results": embedding_result.get("results", []),
-                        "retrieval_notes": ["semantic retrieval from omop-emb"],
+                        "retrieval_notes": emb_notes,
                     }
                 except GroundworkersError as exc:
                     channels["embedding"] = {"available": False, "results": [], "retrieval_notes": []}
@@ -230,7 +239,7 @@ class MappingService:
             "warnings": warnings,
         }
 
-    def concept_parent_backoff(
+    def concept_nearest_standard_ancestor(
         self,
         *,
         query: str | None = None,
@@ -239,16 +248,12 @@ class MappingService:
         vocabulary_id: str | None = None,
         parent_ids: list[int] | None = None,
         max_depth: int = 5,
-        strategy: str = "nearest_standard_ancestor",
-        model_name: str | None = None,
         candidate_limit: int = 10,
     ) -> dict[str, Any]:
         if self._graph is None:
             raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
         if (query is None) == (concept_id is None):
             raise ValueError("exactly one of query or concept_id must be provided")
-        if strategy not in {"nearest_standard_ancestor", "best_scoring_standard_ancestor", "ancestor_with_embedding_support"}:
-            raise ValueError(f"unsupported strategy: {strategy}")
 
         if query is not None:
             grounded = self._graph.ground(
@@ -300,17 +305,6 @@ class MappingService:
                 within_domain=True,
             )
             path_payload = path_info.get("paths", [])
-
-        if strategy == "ancestor_with_embedding_support" and self._emb is not None and selected_parent is not None:
-            try:
-                neighbours = self._emb.get_neighbours(
-                    concept_id=selected_parent["concept_id"],
-                    limit=3,
-                    model_name=model_name,
-                )
-                selected_parent = {**selected_parent, "embedding_neighbours_preview": neighbours.get("results", [])}
-            except GroundworkersError:
-                pass
 
         return {
             "query": query.strip() if query is not None else None,
