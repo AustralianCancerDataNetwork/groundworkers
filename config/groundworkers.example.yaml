@@ -1,8 +1,5 @@
 app_name: groundworkers
 
-database:
-  url: postgresql+psycopg://readonly:readonly@localhost:5432/cava
-
 omop_graph:
   db_url: postgresql+psycopg://readonly:readonly@localhost:5432/cava
   vocab_schema: omop_vocab

@@ -220,22 +220,22 @@ def test_normalize_prompt_returns_single_user_message():
 
 def test_normalize_prompt_content_contains_text():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
-    assert "'MI'" in result[0]["content"]
+    assert "'MI'" in result[0]["content"]["text"]
 
 
 def test_normalize_prompt_system_folded_into_user_content():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
-    assert _SYSTEM_PROMPTS["normalize"] in result[0]["content"]
+    assert _SYSTEM_PROMPTS["normalize"] in result[0]["content"]["text"]
 
 
 def test_normalize_prompt_domain_hint_flows_through():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MS", domain_hint="Condition")
-    assert "Condition" in result[0]["content"]
+    assert "Condition" in result[0]["content"]["text"]
 
 
 def test_normalize_prompt_empty_domain_hint_shows_not_specified():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MI", domain_hint="")
-    assert "not specified" in result[0]["content"]
+    assert "not specified" in result[0]["content"]["text"]
 
 
 def test_decompose_prompt_returns_single_user_message():
@@ -246,18 +246,18 @@ def test_decompose_prompt_returns_single_user_message():
 
 def test_decompose_prompt_max_terms_default_in_content():
     result = _prompt_server().call_prompt("decompose_clinical_text", text="some phrase")
-    assert "10" in result[0]["content"]
+    assert "10" in result[0]["content"]["text"]
 
 
 def test_decompose_prompt_max_terms_clamped_to_20():
     result = _prompt_server().call_prompt("decompose_clinical_text", text="some phrase", max_terms=50)
-    assert "20" in result[0]["content"]
-    assert "50" not in result[0]["content"]
+    assert "20" in result[0]["content"]["text"]
+    assert "50" not in result[0]["content"]["text"]
 
 
 def test_decompose_prompt_max_terms_clamped_to_1():
     result = _prompt_server().call_prompt("decompose_clinical_text", text="some phrase", max_terms=0)
-    assert "1" in result[0]["content"]
+    assert "1" in result[0]["content"]["text"]
 
 
 def test_disambiguate_prompt_returns_single_user_message():
@@ -268,13 +268,13 @@ def test_disambiguate_prompt_returns_single_user_message():
 
 def test_disambiguate_prompt_max_interpretations_clamped_to_10():
     result = _prompt_server().call_prompt("disambiguate_clinical_term", text="MS", max_interpretations=15)
-    assert "10" in result[0]["content"]
-    assert "15" not in result[0]["content"]
+    assert "10" in result[0]["content"]["text"]
+    assert "15" not in result[0]["content"]["text"]
 
 
 def test_disambiguate_prompt_max_interpretations_default_in_content():
     result = _prompt_server().call_prompt("disambiguate_clinical_term", text="MS")
-    assert "5" in result[0]["content"]
+    assert "5" in result[0]["content"]["text"]
 
 
 def test_prompt_and_service_use_same_user_turn():
@@ -283,11 +283,11 @@ def test_prompt_and_service_use_same_user_turn():
     domain = "Condition"
     prompt_result = _prompt_server().call_prompt("normalize_clinical_term", text=text, domain_hint=domain)
     expected_user = _build_user_prompt("normalize", text, domain_hint=domain)
-    assert expected_user in prompt_result[0]["content"]
+    assert expected_user in prompt_result[0]["content"]["text"]
 
 
 def test_decompose_prompt_and_service_use_same_user_turn():
     text = "T2DM and HTN"
     prompt_result = _prompt_server().call_prompt("decompose_clinical_text", text=text, max_terms=7)
     expected_user = _build_user_prompt("decompose", text, max_terms=7)
-    assert expected_user in prompt_result[0]["content"]
+    assert expected_user in prompt_result[0]["content"]["text"]

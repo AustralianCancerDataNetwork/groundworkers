@@ -13,7 +13,7 @@ from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
-from groundworkers.base.sql import build_engine
+from sqlalchemy import create_engine
 from groundworkers.services import MappingService, TextService, VocabService
 
 
@@ -44,7 +44,7 @@ def build_adapters(config: AppConfig) -> Adapters:
 
     omop_graph = config.omop_graph
     if omop_graph is not None:
-        engine = build_engine(omop_graph.db_url)
+        engine = create_engine(omop_graph.db_url, future=True)
         adapters.cdm = CDMAdapter(engine)
         adapters.omop_graph = OmopGraphAdapter(
             engine=engine,
@@ -64,7 +64,7 @@ def build_adapters(config: AppConfig) -> Adapters:
                 return SQLiteVecEmbeddingBackend.from_path(omop_emb.required_db_path)
             if backend_type == "pgvector":
                 from omop_emb.backends.pgvector import PGVectorEmbeddingBackend
-                engine = build_engine(omop_emb.required_db_url)
+                engine = create_engine(omop_emb.required_db_url, future=True)
                 return PGVectorEmbeddingBackend(emb_engine=engine)
             raise RuntimeError(
                 f"Embedding backend_type {omop_emb.backend_type!r} is not supported. "

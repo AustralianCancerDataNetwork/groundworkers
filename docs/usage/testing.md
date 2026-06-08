@@ -33,4 +33,3 @@ Unit tests mock the adapter layer and run without a live database.
 | Embedding tools | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode`: correct responses, clamped limits, error propagation |
 | Server registry | `create_server` with and without each adapter; system tools always present; adapter-conditional tool registration |
 | Config validation | `OmopGraphConfig` schema name validation; `OmopEmbConfig` enabled-without-url guard; extra field rejection |
-| SQL resource | `SQLResource` get/list; `SQLTextSearchResource` ILIKE fallback |
