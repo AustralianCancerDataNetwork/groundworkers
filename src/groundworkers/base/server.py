@@ -9,6 +9,7 @@ class GroundcrewServer:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
         self._prompts: dict[str, tuple[Callable[..., Any], str | None]] = {}
+        self._resources: dict[str, tuple[Callable[..., Any], str | None]] = {}
 
     def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -30,11 +31,25 @@ class GroundcrewServer:
 
         return decorator
 
+    def resource(
+        self,
+        uri: str,
+        description: str | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            self._resources[uri] = (func, description)
+            return func
+
+        return decorator
+
     def list_tools(self) -> list[str]:
         return sorted(self._tools.keys())
 
     def list_prompts(self) -> list[str]:
         return sorted(self._prompts.keys())
+
+    def list_resources(self) -> list[str]:
+        return sorted(self._resources.keys())
 
     def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
         return self._tools[name](*args, **kwargs)
@@ -63,6 +78,14 @@ class GroundcrewServer:
             }
         return description
 
+    def describe_resources(self) -> dict[str, dict[str, Any]]:
+        description: dict[str, dict[str, Any]] = {}
+        for uri, (func, resource_description) in self._resources.items():
+            description[uri] = {
+                "description": resource_description or "",
+            }
+        return description
+
     def run(
         self,
         transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
@@ -78,7 +101,9 @@ class GroundcrewServer:
 
         app = FastMCP(self.name, host=host, port=port)
         for tool_name, func in self._tools.items():
-            app.tool(name=tool_name)(func)
+            app.tool(name=tool_name, description=inspect.getdoc(func) or "")(func)
         for prompt_name, (func, description) in self._prompts.items():
             app.prompt(name=prompt_name, description=description)(func)
+        for uri, (func, description) in self._resources.items():
+            app.resource(uri, description=description or "")(func)
         app.run(transport=transport)

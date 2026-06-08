@@ -106,6 +106,8 @@ def register_text_prompts(server: GroundcrewServer) -> None:
 
     System prompts are folded into the user turn because MCP only supports
     "user" and "assistant" roles; there is no "system" role in prompt messages.
+    Each message's content uses the TextContent format required by FastMCP
+    ({"type": "text", "text": "..."}) rather than a bare string.
     """
 
     @server.prompt(
@@ -118,10 +120,10 @@ def register_text_prompts(server: GroundcrewServer) -> None:
     def normalize_clinical_term(
         text: str,
         domain_hint: str = "",
-    ) -> list[dict[str, str]]:
+    ) -> list[dict]:
         system = _SYSTEM_PROMPTS["normalize"]
         user = _build_user_prompt("normalize", text, domain_hint=domain_hint or None)
-        return [{"role": "user", "content": f"{system}\n\n{user}"}]
+        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
 
     @server.prompt(
         "decompose_clinical_text",
@@ -134,10 +136,10 @@ def register_text_prompts(server: GroundcrewServer) -> None:
         text: str,
         domain_hint: str = "",
         max_terms: int = 10,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict]:
         system = _SYSTEM_PROMPTS["decompose"]
         user = _build_user_prompt("decompose", text, domain_hint=domain_hint or None, max_terms=max_terms)
-        return [{"role": "user", "content": f"{system}\n\n{user}"}]
+        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
 
     @server.prompt(
         "disambiguate_clinical_term",
@@ -150,9 +152,9 @@ def register_text_prompts(server: GroundcrewServer) -> None:
         text: str,
         domain_hint: str = "",
         max_interpretations: int = 5,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict]:
         system = _SYSTEM_PROMPTS["disambiguate"]
         user = _build_user_prompt(
             "disambiguate", text, domain_hint=domain_hint or None, max_interpretations=max_interpretations
         )
-        return [{"role": "user", "content": f"{system}\n\n{user}"}]
+        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]

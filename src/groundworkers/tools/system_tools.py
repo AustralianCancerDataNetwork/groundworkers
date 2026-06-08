@@ -9,6 +9,7 @@ system_vocabulary_catalogue — returns the full OMOP vocabulary/domain/class
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from groundworkers.adapters.llm import LLMAdapter
@@ -16,6 +17,47 @@ from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
+from groundworkers.config import AppConfig
+
+
+def register_system_resources(
+    server: GroundcrewServer,
+    config: AppConfig,
+    graph_adapter: OmopGraphAdapter | None = None,
+) -> None:
+    @server.resource(
+        "config://active",
+        description=(
+            "Sanitised view of the active server configuration: which adapters are "
+            "wired up (omop_graph, omop_emb, llm), their key settings, and the "
+            "effective min_fulltext_overlap. API keys are masked."
+        ),
+    )
+    def active_config() -> str:
+        return json.dumps(config.describe())
+
+    @server.resource(
+        "vocabularies://catalogue",
+        description=(
+            "Full OMOP vocabulary/domain/concept-class catalogue with concept counts. "
+            "Read this before filtering searches by vocabulary or domain. "
+            # vocabularies://{vocabulary_id} is reserved for per-vocabulary detail slices.
+            "Requires omop_graph to be configured."
+        ),
+    )
+    def vocabularies_catalogue() -> str:
+        if graph_adapter is None:
+            return json.dumps({
+                "error": True,
+                "code": "BACKEND_UNAVAIL",
+                "message": "omop_graph adapter is not configured",
+            })
+        try:
+            return json.dumps(graph_adapter.get_vocabulary_catalogue())
+        except GroundworkersError as exc:
+            return json.dumps(exc.to_dict())
+        except Exception as exc:
+            return json.dumps({"error": True, "code": "QUERY_ERROR", "message": repr(exc)})
 
 
 def register_system_tools(

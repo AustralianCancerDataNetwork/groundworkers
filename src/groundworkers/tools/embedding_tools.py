@@ -1,10 +1,28 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
+
+
+def register_embedding_resources(server: GroundcrewServer, emb_adapter: OmopEmbAdapter) -> None:
+    @server.resource(
+        "embedding://models",
+        description=(
+            "List all locally available embedding models with their backend type, "
+            "provider, dimensions, and indexed concept count."
+        ),
+    )
+    def embedding_models() -> str:
+        status = emb_adapter.index_status()
+        return json.dumps({
+            "backend_type": status.get("backend_type"),
+            "available": status.get("available", False),
+            "models": status.get("models", []),
+        })
 
 
 def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapter) -> None:
