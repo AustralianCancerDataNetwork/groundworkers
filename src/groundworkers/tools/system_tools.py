@@ -1,11 +1,17 @@
-"""System-level MCP tools: system_status and system_vocabulary_catalogue.
+"""System-level MCP tools and resources.
 
-These tools are always registered regardless of adapter availability, so
+Tools are always registered regardless of adapter availability, so
 callers always get a structured response (never "unknown tool").
 
-system_status — reports availability of every configured adapter.
-system_vocabulary_catalogue — returns the full OMOP vocabulary/domain/class
-  catalogue from OmopGraphAdapter.  Requires omop_graph to be configured.
+Tools:
+  system_status — reports availability of every configured adapter.
+  system_vocabulary_catalogue — returns the full OMOP vocabulary/domain/class
+    catalogue from OmopGraphAdapter.  Requires omop_graph to be configured.
+
+Resources:
+  config://active — sanitised view of the active server configuration.
+  vocabularies://catalogue — full OMOP vocabulary/domain/concept-class
+    catalogue with concept counts.  Requires omop_graph to be configured.
 """
 from __future__ import annotations
 
