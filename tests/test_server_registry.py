@@ -84,7 +84,6 @@ def test_build_application_exposes_services_container():
 def test_app_config_accepts_all_vocab_sections():
     config = AppConfig.model_validate(
         {
-            "database": {"url": "sqlite+pysqlite:///:memory:"},
             "omop_graph": {
                 "db_url": "sqlite+pysqlite:///:memory:",
                 "vocab_schema": "omop_vocab",

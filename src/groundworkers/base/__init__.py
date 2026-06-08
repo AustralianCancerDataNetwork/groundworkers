@@ -1,7 +1,6 @@
 from .errors import GroundworkersError, ERROR_CODES
 from .results import DatasetStatus, DetailResult, ListResult, SearchHit, SearchResult
 from .server import GroundcrewServer
-from .sql import SQLResource, SQLTextSearchResource
 
 __all__ = [
     "GroundworkersError",
@@ -12,6 +11,4 @@ __all__ = [
     "ListResult",
     "SearchHit",
     "SearchResult",
-    "SQLResource",
-    "SQLTextSearchResource",
 ]
