@@ -8,9 +8,10 @@ column names deterministic. They must not assign semantic roles.
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from html import unescape
 import re
-from typing import Any
+from typing import Any, Iterable
 
 from groundworkers.source_planning.models import NormalisedTable, RawTable
 from groundworkers.source_planning.provenance import HeaderProvenance
@@ -21,14 +22,33 @@ _WHITESPACE_RE = re.compile(r"\s+")
 _PREVIEW_ROWS = 5
 
 
-def normalise_headers(table: RawTable) -> NormalisedTable:
+@dataclass(kw_only=True, frozen=True)
+class NormalisationPolicy:
+    """Configuration for structural cleanup.
+
+    The defaults are intentionally conservative:
+      - preserve table identity and row order
+      - stabilize headers and cell text
+      - prune only columns that are structurally empty after cleanup
+    """
+
+    prune_empty_columns: bool = True
+    empty_header_prefix: str = "column"
+
+
+def normalise_table(
+    table: RawTable,
+    *,
+    policy: NormalisationPolicy | None = None,
+) -> NormalisedTable:
     """Normalize a raw table into a stable structural representation.
 
-    This helper intentionally does only one real transformation path for PR1:
-    it takes a ``RawTable`` and returns a ``NormalisedTable`` with cleaned
-    headers, cleaned cell text, deterministic duplicate handling, and explicit
-    provenance about the structural changes that were made.
+    It takes a ``RawTable`` and returns a ``NormalisedTable`` with cleaned
+    headers, cleaned cell text, deterministic duplicate handling, conservative
+    empty-column pruning, and explicit provenance about the structural changes
+    that were made.
     """
+    policy = policy or NormalisationPolicy()
 
     used_headers: Counter[str] = Counter()
     header_provenance: dict[str, HeaderProvenance] = {}
@@ -43,7 +63,7 @@ def normalise_headers(table: RawTable) -> NormalisedTable:
     for index, original_header in enumerate(table.headers, start=1):
         base_header, operations = _clean_header(original_header)
         if not base_header:
-            base_header = f"column_{index}"
+            base_header = f"{policy.empty_header_prefix}_{index}"
             operations.append("empty_header_replaced")
             warnings.append(
                 PlanningWarning(
@@ -90,6 +110,30 @@ def normalise_headers(table: RawTable) -> NormalisedTable:
                 coercion_seen = True
         normalised_rows.append(normalised_row)
 
+    if policy.prune_empty_columns:
+        (
+            normalised_headers,
+            normalised_rows,
+            sample_rows_override,
+            empty_columns_pruned,
+            prune_warnings,
+        ) = _prune_empty_columns(
+            headers=normalised_headers,
+            rows=normalised_rows,
+            table_name=table.name,
+        )
+        warnings.extend(prune_warnings)
+        if empty_columns_pruned:
+            notes.append("structurally empty columns were pruned")
+            header_provenance = {
+                header: provenance
+                for header, provenance in header_provenance.items()
+                if header in normalised_headers
+            }
+    else:
+        sample_rows_override = None
+        empty_columns_pruned = False
+
     if duplicate_seen:
         notes.append("duplicate headers were normalized deterministically")
     if html_seen:
@@ -97,7 +141,9 @@ def normalise_headers(table: RawTable) -> NormalisedTable:
     if coercion_seen:
         notes.append("mixed cell values were coerced to string surfaces")
 
-    sample_rows = normalised_rows[: min(_PREVIEW_ROWS, len(normalised_rows))]
+    _append_format_specific_notes(table, notes)
+
+    sample_rows = sample_rows_override or normalised_rows[: min(_PREVIEW_ROWS, len(normalised_rows))]
 
     return NormalisedTable.from_raw(
         table,
@@ -108,6 +154,22 @@ def normalise_headers(table: RawTable) -> NormalisedTable:
         normalisation_notes=notes,
         warnings=warnings,
     )
+
+
+def normalise_tables(
+    tables: Iterable[RawTable],
+    *,
+    policy: NormalisationPolicy | None = None,
+) -> list[NormalisedTable]:
+    """Normalize multiple raw tables with one shared policy."""
+
+    return [normalise_table(table, policy=policy) for table in tables]
+
+
+def normalise_headers(table: RawTable) -> NormalisedTable:
+    """Backward-compatible alias for the PR1 helper name."""
+
+    return normalise_table(table)
 
 
 def _clean_header(value: Any) -> tuple[str, list[str]]:
@@ -153,3 +215,44 @@ def _strip_html(text: str) -> tuple[str, bool]:
 
 def _collapse_whitespace(text: str) -> str:
     return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _prune_empty_columns(
+    *,
+    headers: list[str],
+    rows: list[dict[str, str]],
+    table_name: str,
+) -> tuple[list[str], list[dict[str, str]], list[dict[str, str]] | None, bool, list[PlanningWarning]]:
+    if not rows:
+        return headers, rows, None, False, []
+
+    retained_headers = [
+        header
+        for header in headers
+        if header and any((row.get(header) or "").strip() for row in rows)
+    ]
+
+    if len(retained_headers) == len(headers):
+        return headers, rows, None, False, []
+
+    dropped_headers = [header for header in headers if header not in retained_headers]
+    pruned_rows = [
+        {header: row.get(header, "") for header in retained_headers}
+        for row in rows
+    ]
+    warnings = [
+        PlanningWarning(
+            code="EMPTY_COLUMN_PRUNED",
+            message=f"Structurally empty column {header!r} was pruned during normalization.",
+            table_name=table_name,
+            column_name=header,
+        )
+        for header in dropped_headers
+    ]
+    sample_rows = pruned_rows[: min(_PREVIEW_ROWS, len(pruned_rows))]
+    return retained_headers, pruned_rows, sample_rows, True, warnings
+
+
+def _append_format_specific_notes(table: RawTable, notes: list[str]) -> None:
+    if table.metadata.get("banner_row_removed"):
+        notes.append("a banner/title row was removed during format-specific extraction")

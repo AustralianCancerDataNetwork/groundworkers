@@ -16,7 +16,12 @@ from groundworkers.source_planning.models import (
     RawTable,
     SourceFormat,
 )
-from groundworkers.source_planning.normalisation import normalise_headers
+from groundworkers.source_planning.normalisation import (
+    NormalisationPolicy,
+    normalise_headers,
+    normalise_table,
+    normalise_tables,
+)
 from groundworkers.source_planning.provenance import HeaderProvenance
 from groundworkers.source_planning.warnings import PlanningError, PlanningWarning
 
@@ -28,10 +33,13 @@ __all__ = [
     "IngestionPlan",
     "IngestionStrategy",
     "NormalisedTable",
+    "NormalisationPolicy",
     "PlanningError",
     "PlanningWarning",
     "PreIngestBundle",
     "RawTable",
     "SourceFormat",
     "normalise_headers",
+    "normalise_table",
+    "normalise_tables",
 ]
