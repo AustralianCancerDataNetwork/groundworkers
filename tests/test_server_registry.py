@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from groundworkers.app import build_application
+from groundworkers.base.server import GroundcrewServer
 from groundworkers.config import AppConfig
 from groundworkers.server import build_adapters, create_server
 
@@ -135,3 +136,38 @@ def test_embedding_wiring_failure_emits_warning(caplog):
         build_adapters(config)
 
     assert any("embedding tier" in r.message for r in caplog.records)
+
+
+def test_streamable_http_transport_runs_in_stateless_json_mode(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] = {}
+
+    class FakeFastMCP:
+        def __init__(self, name: str, **kwargs):
+            captured["name"] = name
+            captured["kwargs"] = kwargs
+
+        def tool(self, name=None, description=None):
+            return lambda func: func
+
+        def prompt(self, name=None, description=None):
+            return lambda func: func
+
+        def resource(self, uri, description=None):
+            return lambda func: func
+
+        def run(self, transport: str):
+            captured["transport"] = transport
+
+    monkeypatch.setattr("mcp.server.fastmcp.FastMCP", FakeFastMCP)
+
+    server = GroundcrewServer("groundworkers-test")
+    server.run(transport="streamable-http", host="0.0.0.0", port=18080)
+
+    assert captured["name"] == "groundworkers-test"
+    assert captured["transport"] == "streamable-http"
+    assert captured["kwargs"] == {
+        "host": "0.0.0.0",
+        "port": 18080,
+        "json_response": True,
+        "stateless_http": True,
+    }

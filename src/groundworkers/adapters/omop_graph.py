@@ -182,7 +182,11 @@ class OmopGraphAdapter:
         ]
         if self.emb_model_name or self._embedding_client is not None:
             tiers.append((EmbeddingResolver(),))
-        tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
+        # Partial matching without a domain/vocabulary constraint runs ILIKE against
+        # the full concept table — extremely slow on large vocabularies.  Only add
+        # this tier when search_constraint narrows the search space.
+        if search_constraint is not None:
+            tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
 
         results: list[Any] = []
         for tier in tiers:
