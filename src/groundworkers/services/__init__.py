@@ -1,6 +1,6 @@
 from .mapping import MappingService
-from . import source_planning
+from .source_planning import SourcePlanningService
 from .text import TextService
 from .vocab import VocabService
 
-__all__ = ["MappingService", "TextService", "VocabService", "source_planning"]
+__all__ = ["MappingService", "SourcePlanningService", "TextService", "VocabService"]

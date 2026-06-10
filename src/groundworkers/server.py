@@ -37,8 +37,7 @@ def create_server(config: AppConfig) -> GroundcrewServer:
         register_embedding_resources(server, app.adapters.omop_emb)
     if app.services.text is not None:
         register_text_tools(server, app.services.text)
-    if app.services.source_planning is not None:
-        register_source_planning_tools(server, app.services.source_planning)
+    register_source_planning_tools(server, app.services.source_planning)
     register_source_planning_resources(server)
     register_text_prompts(server)
     register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)

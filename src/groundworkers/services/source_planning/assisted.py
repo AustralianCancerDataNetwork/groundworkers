@@ -8,7 +8,6 @@ enough and explicitly requests this fallback path.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -16,12 +15,12 @@ from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.services.source_planning.models import (
     AnnotatedTable,
+    COLUMN_ROLE_DESCRIPTIONS,
     ColumnAnnotation,
     ColumnRole,
-    NormalisedTable,
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
 )
 
-_UNCERTAIN_CONFIDENCE_THRESHOLD = 0.8
 _GROUNDABLE_ROLES = frozenset(
     {
         ColumnRole.label,
@@ -33,28 +32,6 @@ _GROUNDABLE_ROLES = frozenset(
         ColumnRole.attribute,
     }
 )
-
-_ROLE_DESCRIPTIONS: dict[ColumnRole, str] = {
-    ColumnRole.label: "Human-readable label or preferred term.",
-    ColumnRole.codes: "Primary code value to ground.",
-    ColumnRole.values: "Allowed values or packed value-set column.",
-    ColumnRole.annotation: "Supplementary cross-reference or external annotation.",
-    ColumnRole.entity: "Entity or subject column.",
-    ColumnRole.attribute: "Stable source field or variable identifier.",
-    ColumnRole.section: "Form, module, section, or grouping column.",
-    ColumnRole.subsection: "Sub-grouping within a section.",
-    ColumnRole.source_vocab: "Declared coding system or source vocabulary column.",
-    ColumnRole.description: "Long-form descriptive text or definition.",
-    ColumnRole.mapping_context: "Reference context for mapping, not directly groundable.",
-    ColumnRole.data_type: "Declared source data type metadata.",
-    ColumnRole.field_type_ctrl: "Source control or field-type metadata.",
-    ColumnRole.local_pk: "Local row identifier or primary key.",
-    ColumnRole.pii_flag: "Column marking personally identifying information.",
-    ColumnRole.required: "Column indicating a field is required.",
-    ColumnRole.frequency: "Frequency or cadence metadata.",
-    ColumnRole.pipeline_meta: "Pipeline metadata retained for traceability.",
-    ColumnRole.irrelevant: "Structurally retained but not relevant to grounding.",
-}
 
 _SYSTEM_PROMPT = """\
 You assist with source-planning column classification for OMOP-grounding-adjacent files.
@@ -85,16 +62,15 @@ class AssistedColumnRoleClassifier:
 
     def classify(
         self,
-        table: NormalisedTable,
         *,
         baseline: AnnotatedTable,
         model_name: str | None = None,
     ) -> AnnotatedTable:
-        candidate_headers = _candidate_headers(table, baseline)
+        candidate_headers = _candidate_headers(baseline)
         if not candidate_headers:
             return baseline
 
-        prompt = _build_prompt(table, baseline, candidate_headers)
+        prompt = _build_prompt(baseline, candidate_headers)
         raw = self._llm.complete_structured(
             prompt,
             AssistedClassificationResult.model_json_schema(),
@@ -109,29 +85,28 @@ class AssistedColumnRoleClassifier:
                 f"LLM-assisted source-planning response did not match expected structure: {exc}",
             ) from exc
 
-        return _merge_assisted_decisions(table, baseline, candidate_headers, result.decisions)
+        return _merge_assisted_decisions(baseline, candidate_headers, result.decisions)
 
 
-def _candidate_headers(table: NormalisedTable, baseline: AnnotatedTable) -> list[str]:
+def _candidate_headers(baseline: AnnotatedTable) -> list[str]:
     return [
         header
-        for header in table.headers
+        for header in baseline.headers
         if header not in baseline.column_annotations or header in baseline.uncertain_columns
     ]
 
 
 def _build_prompt(
-    table: NormalisedTable,
     baseline: AnnotatedTable,
     candidate_headers: list[str],
 ) -> str:
     lines: list[str] = [
-        f"Table name: {table.name}",
-        f"Headers: {', '.join(table.headers)}",
+        f"Table name: {baseline.name}",
+        f"Headers: {', '.join(baseline.headers)}",
         "",
         "Available roles:",
     ]
-    for role, description in _ROLE_DESCRIPTIONS.items():
+    for role, description in COLUMN_ROLE_DESCRIPTIONS.items():
         lines.append(f"- {role.value}: {description}")
 
     lines.extend(
@@ -140,7 +115,7 @@ def _build_prompt(
             "Current deterministic annotations:",
         ]
     )
-    for header in table.headers:
+    for header in baseline.headers:
         annotation = baseline.column_annotations.get(header)
         if annotation is None:
             lines.append(f"- {header}: unclassified")
@@ -160,8 +135,8 @@ def _build_prompt(
             "Sample rows:",
         ]
     )
-    for index, row in enumerate(table.sample_rows[:5], start=1):
-        parts = [f"{header}={row.get(header, '')!r}" for header in table.headers]
+    for index, row in enumerate(baseline.sample_rows[:5], start=1):
+        parts = [f"{header}={row.get(header, '')!r}" for header in baseline.headers]
         lines.append(f"{index}. " + "; ".join(parts))
 
     lines.extend(
@@ -177,7 +152,6 @@ def _build_prompt(
 
 
 def _merge_assisted_decisions(
-    table: NormalisedTable,
     baseline: AnnotatedTable,
     candidate_headers: list[str],
     decisions: list[AssistedColumnDecision],

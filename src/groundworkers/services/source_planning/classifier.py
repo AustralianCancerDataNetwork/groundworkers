@@ -11,6 +11,7 @@ from groundworkers.services.source_planning.models import (
     ColumnRole,
     NormalisedTable,
     SourceFormat,
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
 )
 from groundworkers.services.source_planning.warnings import PlanningWarning
 
@@ -45,8 +46,6 @@ _NON_TARGET_TABLE_NAMES: frozenset[str] = frozenset(
 
 _XLSX_POSITIONAL_SHEET_THRESHOLD = 3
 _XLSX_GROUNDABLE_RATIO_THRESHOLD = 0.15
-_UNCERTAIN_CONFIDENCE_THRESHOLD = 0.8
-
 _RE_CODES = re.compile(r"\bcode\b|\bidentifier\b", re.IGNORECASE)
 _RE_CODES_EXCLUDE = re.compile(r"system|vocab|vocabulary|\?$", re.IGNORECASE)
 _RE_LABEL = re.compile(r"\bname\b|\blabel\b|\bquestion\b|\btitle\b", re.IGNORECASE)

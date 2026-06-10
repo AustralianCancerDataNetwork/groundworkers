@@ -9,34 +9,13 @@ from typing import Any
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.services.source_planning import (
+    COLUMN_ROLE_DESCRIPTIONS,
     ColumnRole,
     IngestionStrategy,
     PreIngestBundle,
     SourcePlanningService,
 )
 from groundworkers.services.source_planning.canonical_headers import builtin_catalogue
-
-_COLUMN_ROLE_DESCRIPTIONS: dict[ColumnRole, str] = {
-    ColumnRole.label: "Human-readable label or preferred term for a groundable concept.",
-    ColumnRole.codes: "Primary code value to ground against OMOP vocabularies.",
-    ColumnRole.values: "Packed or repeated allowed-value set associated with a label/attribute.",
-    ColumnRole.annotation: "Supplementary cross-reference or external annotation column.",
-    ColumnRole.entity: "Entity identifier or subject column that names what the row describes.",
-    ColumnRole.attribute: "Stable attribute or field identifier used to carry source context.",
-    ColumnRole.section: "Section, form, module, or top-level grouping column.",
-    ColumnRole.subsection: "Sub-grouping column within a larger section.",
-    ColumnRole.source_vocab: "Declared source vocabulary or coding-system column.",
-    ColumnRole.description: "Long-form descriptive text or definition column.",
-    ColumnRole.mapping_context: "Context column that helps interpret mappings without being groundable itself.",
-    ColumnRole.data_type: "Declared source data type metadata.",
-    ColumnRole.field_type_ctrl: "Source control/type metadata such as REDCap field type.",
-    ColumnRole.local_pk: "Local primary key or durable row identifier.",
-    ColumnRole.pii_flag: "Column that marks or implies personally identifying information.",
-    ColumnRole.required: "Column indicating whether an input field is required.",
-    ColumnRole.frequency: "Column describing frequency, cadence, or repetition metadata.",
-    ColumnRole.pipeline_meta: "Internal pipeline metadata preserved for traceability.",
-    ColumnRole.irrelevant: "Column retained structurally but not relevant to grounding.",
-}
 
 _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
     IngestionStrategy.DATA_DICT_IDEAL: "Table has codes plus enough semantic context for direct data-dictionary ingestion.",
@@ -96,7 +75,8 @@ def register_source_planning_tools(
 
         This tool is the explicit second-step source-planning path for cases
         where deterministic classification was not strong enough. It preserves
-        fallback provenance in the returned planning artifacts.
+        fallback provenance in the returned planning artifacts. When no LLM
+        adapter is configured, the tool returns ``BACKEND_UNAVAIL``.
         """
 
         try:
@@ -139,7 +119,7 @@ def register_source_planning_resources(server: GroundcrewServer) -> None:
                 role.value: {
                     "description": description,
                 }
-                for role, description in _COLUMN_ROLE_DESCRIPTIONS.items()
+                for role, description in COLUMN_ROLE_DESCRIPTIONS.items()
             }
         )
 

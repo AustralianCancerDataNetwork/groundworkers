@@ -18,6 +18,7 @@ from groundworkers.services.source_planning.models import (
     PreIngestBundle,
     RawTable,
     SourceFormat,
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
 )
 from groundworkers.services.source_planning.normalisation import (
     NormalisationPolicy,
@@ -25,9 +26,6 @@ from groundworkers.services.source_planning.normalisation import (
 )
 from groundworkers.services.source_planning.router import IngesterRouter
 from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
-
-_UNCERTAIN_TABLE_THRESHOLD = 0.8
-
 
 class SourcePlanningService:
     """Thin composition root for the stateless source-planning pipeline.
@@ -178,9 +176,9 @@ class SourcePlanningService:
                     "LLM-assisted source planning is unavailable because no LLM adapter is configured.",
                 )
             annotated_tables = [
-                self._assisted_classifier.classify(table, baseline=annotated)
+                self._assisted_classifier.classify(baseline=annotated)
                 if _table_needs_assistance(annotated) else annotated
-                for table, annotated in zip(normalised_tables, annotated_tables)
+                for annotated in annotated_tables
             ]
 
         strategies: list[IngestionStrategy] = []
@@ -216,6 +214,7 @@ class SourcePlanningService:
             errors=errors,
             uncertain_tables=uncertain_tables,
         )
+        llm_tier_used = any(table.llm_fallback_used for table in routed_tables)
 
         return PreIngestBundle(
             plan=plan,
@@ -225,6 +224,7 @@ class SourcePlanningService:
             warnings=warnings,
             errors=errors,
             elapsed_ms=elapsed_ms,
+            llm_tier_used=llm_tier_used,
         )
 
 
@@ -239,17 +239,6 @@ def plan_source(
     return SourcePlanningService().plan_source(content, filename=filename, caller_hint=caller_hint)
 
 
-def plan_source_assisted(
-    content: str | bytes,
-    *,
-    filename: str | None = None,
-    caller_hint: str | None = None,
-) -> PreIngestBundle:
-    """Convenience wrapper for one-shot assisted source planning."""
-
-    return SourcePlanningService().plan_source_assisted(content, filename=filename, caller_hint=caller_hint)
-
-
 def plan_tables(
     tables: Sequence[RawTable],
     *,
@@ -258,16 +247,6 @@ def plan_tables(
     """Convenience wrapper for planning already-decomposed tables."""
 
     return SourcePlanningService().plan_tables(tables, caller_hint=caller_hint)
-
-
-def plan_tables_assisted(
-    tables: Sequence[RawTable],
-    *,
-    caller_hint: str | None = None,
-) -> PreIngestBundle:
-    """Convenience wrapper for assisted planning of already-decomposed tables."""
-
-    return SourcePlanningService().plan_tables_assisted(tables, caller_hint=caller_hint)
 
 
 def _coerce_content_bytes(content: str | bytes) -> bytes:
@@ -303,7 +282,7 @@ def _collect_uncertain_tables(
         reason_parts: list[str] = []
         if table.uncertain_columns:
             reason_parts.append("uncertain column roles remain")
-        if table.classification_confidence is not None and table.classification_confidence < _UNCERTAIN_TABLE_THRESHOLD:
+        if table.classification_confidence is not None and table.classification_confidence < UNCERTAIN_CONFIDENCE_THRESHOLD:
             reason_parts.append("overall classification confidence was below threshold")
         warning_codes = {warning.code for warning in table.warnings}
         if "AMBIGUOUS_DOMAIN_HINT" in warning_codes:
@@ -331,7 +310,7 @@ def _table_needs_assistance(table: AnnotatedTable) -> bool:
         return False
     if table.uncertain_columns:
         return True
-    if table.classification_confidence is not None and table.classification_confidence < _UNCERTAIN_TABLE_THRESHOLD:
+    if table.classification_confidence is not None and table.classification_confidence < UNCERTAIN_CONFIDENCE_THRESHOLD:
         return True
     if table.groundable_column_count == 0:
         return True

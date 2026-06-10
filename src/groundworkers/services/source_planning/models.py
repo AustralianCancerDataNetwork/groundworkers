@@ -56,6 +56,32 @@ class ColumnRole(StrEnum):
     irrelevant = "irrelevant"
 
 
+UNCERTAIN_CONFIDENCE_THRESHOLD = 0.8
+
+
+COLUMN_ROLE_DESCRIPTIONS: dict[ColumnRole, str] = {
+    ColumnRole.label: "Human-readable label or preferred term.",
+    ColumnRole.codes: "Primary code value to ground.",
+    ColumnRole.values: "Allowed values or packed value-set column.",
+    ColumnRole.annotation: "Supplementary cross-reference or external annotation.",
+    ColumnRole.entity: "Entity or subject column.",
+    ColumnRole.attribute: "Stable source field or variable identifier.",
+    ColumnRole.section: "Form, module, section, or grouping column.",
+    ColumnRole.subsection: "Sub-grouping within a section.",
+    ColumnRole.source_vocab: "Declared coding system or source vocabulary column.",
+    ColumnRole.description: "Long-form descriptive text or definition.",
+    ColumnRole.mapping_context: "Reference context for mapping, not directly groundable.",
+    ColumnRole.data_type: "Declared source data type metadata.",
+    ColumnRole.field_type_ctrl: "Source control or field-type metadata.",
+    ColumnRole.local_pk: "Local row identifier or primary key.",
+    ColumnRole.pii_flag: "Column marking personally identifying information.",
+    ColumnRole.required: "Column indicating a field is required.",
+    ColumnRole.frequency: "Frequency or cadence metadata.",
+    ColumnRole.pipeline_meta: "Pipeline metadata retained for traceability.",
+    ColumnRole.irrelevant: "Structurally retained but not relevant to grounding.",
+}
+
+
 _GROUNDABLE_ROLES = frozenset(
     {
         ColumnRole.label,
