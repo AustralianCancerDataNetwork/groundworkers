@@ -7,7 +7,7 @@ from groundworkers.base.server import GroundcrewServer
 from groundworkers.services import MappingService
 
 
-def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingService | None) -> None:
+def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingService) -> None:
     @server.tool("concept_search_normalized")
     def concept_search_normalized(
         query: str,
@@ -25,8 +25,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         making this more robust to punctuation and whitespace variation than
         concept_search_exact while remaining fully deterministic (no ranking).
         """
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         safe_limit = max(1, min(limit, 50))
         try:
             return mapping_service.concept_search_normalized(
@@ -76,8 +74,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         the specified concept_ids; the embedding channel does not apply this filter.
         active_only filters out retired (invalid) concepts.
         """
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         channel_limit = max(1, min(per_channel_limit, 20))
         safe_union_limit = max(1, min(overall_limit, 100))
         try:
@@ -123,8 +119,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         Useful when a source concept is non-standard and navigate_to_standard returns
         no direct "Maps to" mapping.
         """
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         safe_depth = max(1, min(max_depth, 10))
         safe_limit = max(1, min(candidate_limit, 20))
         try:
@@ -165,8 +159,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         neighbors, and (optionally) embedding neighbors for one concept_id in a single call.
         Use this to gather everything an agent needs to evaluate or justify a mapping choice.
         """
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
             return mapping_service.concept_mapping_context(
                 concept_id,
@@ -192,8 +184,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
     @server.tool("concept_map_to_value")
     def concept_map_to_value(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
         """Return "Maps to value" target concepts for a given vocabulary/code pair."""
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
             return mapping_service.concept_map_to_value(vocabulary_id, concept_code)
         except ValueError as exc:
@@ -217,8 +207,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         deduplicates the combined result set. Useful for batch-resolving a pre-defined
         concept set from source vocabulary codes.
         """
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
             return mapping_service.concept_resolve_mapping_expression(
                 items,
@@ -243,12 +231,10 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
     ) -> dict[str, Any]:
         """Evaluate predicted concept mappings against reference mappings.
 
-        Computes precision, recall, and F1 by comparing predicted concept_ids against
+        Computes accuracy and coverage by comparing predicted concept_ids against
         a reference set. group_by_domain breaks metrics down per OMOP domain.
         top_k evaluates only the top-k predictions per source term.
         """
-        if mapping_service is None:
-            return {"error": True, "code": "BACKEND_UNAVAIL", "message": "mapping service is not configured"}
         try:
             return mapping_service.mapping_evaluate_candidates(
                 predicted_mappings,

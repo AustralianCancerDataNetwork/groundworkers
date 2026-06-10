@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 
@@ -15,6 +16,8 @@ from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
 from sqlalchemy import create_engine
 from groundworkers.services import MappingService, TextService, VocabService
+from groundworkers.services.source_planning import AssistedColumnRoleClassifier
+from groundworkers.services.source_planning import SourcePlanningService
 
 
 @dataclass
@@ -30,6 +33,7 @@ class Services:
     vocab: VocabService | None = None
     mapping: MappingService | None = None
     text: TextService | None = None
+    source_planning: SourcePlanningService | None = None
 
 
 @dataclass
@@ -143,6 +147,8 @@ def build_adapters(config: AppConfig) -> Adapters:
 
 def build_services(adapters: Adapters) -> Services:
     services = Services()
+    assisted_classifier = AssistedColumnRoleClassifier(adapters.llm) if adapters.llm is not None else None
+    services.source_planning = SourcePlanningService(assisted_classifier=assisted_classifier)
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)
         services.mapping = MappingService(

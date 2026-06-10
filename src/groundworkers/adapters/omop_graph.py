@@ -52,6 +52,7 @@ class OmopGraphAdapter:
         self._embedding_client: EmbeddingClient | None = embedding_client
         self.min_fulltext_overlap = min_fulltext_overlap
         self._kg: KnowledgeGraph | None = None
+        self._root_ids_cache: dict[str, list[int]] = {}
 
     def set_embedding_client(self, client: EmbeddingClient, model_name: str | None = None) -> None:
         """Configure an EmbeddingClient so concept_ground can encode query strings on-the-fly.
@@ -182,7 +183,11 @@ class OmopGraphAdapter:
         ]
         if self.emb_model_name or self._embedding_client is not None:
             tiers.append((EmbeddingResolver(),))
-        tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
+        # Partial matching without a domain/vocabulary constraint runs ILIKE against
+        # the full concept table — extremely slow on large vocabularies.  Only add
+        # this tier when search_constraint narrows the search space.
+        if search_constraint is not None:
+            tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
 
         results: list[Any] = []
         for tier in tiers:
@@ -658,6 +663,7 @@ class OmopGraphAdapter:
         "Drug":        ("SNOMED", "373873005"),  # Pharmaceutical / biologic product
         "Measurement": ("SNOMED", "363787002"),  # Observable entity
         "Device":      ("SNOMED", "260787004"),  # Physical object
+        "Observation": 27,
     }
 
     def _get_domain_root_ids(self, domain: str | None) -> tuple[int, ...]:
@@ -667,8 +673,6 @@ class OmopGraphAdapter:
         back to a GROUP BY query over concept_ancestor to find the most-connected root.
         Results are cached per domain.
         """
-        if not hasattr(self, "_root_ids_cache"):
-            self._root_ids_cache: dict[str, tuple[int, ...]] = {}
         cache_key = domain or ""
         if cache_key in self._root_ids_cache:
             return self._root_ids_cache[cache_key]

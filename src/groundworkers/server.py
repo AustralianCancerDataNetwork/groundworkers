@@ -10,6 +10,10 @@ from groundworkers.tools.embedding_tools import register_embedding_resources, re
 from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 from groundworkers.tools.search_tools import register_search_tools
+from groundworkers.tools.source_planning_tools import (
+    register_source_planning_resources,
+    register_source_planning_tools,
+)
 from groundworkers.tools.system_tools import register_system_resources, register_system_tools
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 
@@ -17,8 +21,6 @@ from groundworkers.tools.text_tools import register_text_prompts, register_text_
 def create_server(config: AppConfig) -> GroundcrewServer:
     server = GroundcrewServer(config.app_name)
     app = build_application(config)
-    server.adapters = app.adapters  # type: ignore[attr-defined]
-    server.services = app.services  # type: ignore[attr-defined]
     if app.adapters.omop_graph is not None:
         register_concept_tools(server, app.adapters.omop_graph)
         register_resolver_tools(server, app.adapters.omop_graph)
@@ -33,6 +35,8 @@ def create_server(config: AppConfig) -> GroundcrewServer:
         register_embedding_resources(server, app.adapters.omop_emb)
     if app.services.text is not None:
         register_text_tools(server, app.services.text)
+    register_source_planning_tools(server, app.services.source_planning)
+    register_source_planning_resources(server)
     register_text_prompts(server)
     register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
     register_system_resources(server, config, app.adapters.omop_graph)

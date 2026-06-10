@@ -15,7 +15,7 @@ from groundworkers.services.text import (
     Interpretation,
     NormalizeResult,
 )
-from groundworkers.services.text import _build_user_prompt, _SYSTEM_PROMPTS
+from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 
 
@@ -225,7 +225,7 @@ def test_normalize_prompt_content_contains_text():
 
 def test_normalize_prompt_system_folded_into_user_content():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
-    assert _SYSTEM_PROMPTS["normalize"] in result[0]["content"]["text"]
+    assert SYSTEM_PROMPTS["normalize"] in result[0]["content"]["text"]
 
 
 def test_normalize_prompt_domain_hint_flows_through():
@@ -278,16 +278,16 @@ def test_disambiguate_prompt_max_interpretations_default_in_content():
 
 
 def test_prompt_and_service_use_same_user_turn():
-    """normalize prompt content matches what _build_user_prompt produces directly."""
+    """normalize prompt content matches what build_user_prompt produces directly."""
     text = "DM2"
     domain = "Condition"
     prompt_result = _prompt_server().call_prompt("normalize_clinical_term", text=text, domain_hint=domain)
-    expected_user = _build_user_prompt("normalize", text, domain_hint=domain)
+    expected_user = build_user_prompt("normalize", text, domain_hint=domain)
     assert expected_user in prompt_result[0]["content"]["text"]
 
 
 def test_decompose_prompt_and_service_use_same_user_turn():
     text = "T2DM and HTN"
     prompt_result = _prompt_server().call_prompt("decompose_clinical_text", text=text, max_terms=7)
-    expected_user = _build_user_prompt("decompose", text, max_terms=7)
+    expected_user = build_user_prompt("decompose", text, max_terms=7)
     assert expected_user in prompt_result[0]["content"]["text"]

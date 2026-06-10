@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from groundworkers.app import build_application
+from groundworkers.base.server import GroundcrewServer
 from groundworkers.config import AppConfig
 from groundworkers.server import build_adapters, create_server
 
@@ -24,7 +25,14 @@ def test_server_starts_without_domain_tools_when_no_adapters_configured():
     server = create_server(config)
     # system_status and system_vocabulary_catalogue are always registered
     # regardless of adapter availability so clients can always query availability.
-    assert server.list_tools() == ["system_status", "system_vocabulary_catalogue"]
+    assert server.list_tools() == ["source_plan", "source_plan_assisted", "system_status", "system_vocabulary_catalogue"]
+    assert server.list_resources() == [
+        "config://active",
+        "source-planning://canonical-headers",
+        "source-planning://column-roles",
+        "source-planning://ingestion-strategies",
+        "vocabularies://catalogue",
+    ]
 
 
 def test_server_registers_concept_tools_when_omop_graph_is_configured():
@@ -79,6 +87,7 @@ def test_build_application_exposes_services_container():
     app = build_application(config)
     assert app.adapters.omop_graph is None
     assert app.services.mapping is None
+    assert app.services.source_planning is not None
 
 
 def test_app_config_accepts_all_vocab_sections():
@@ -135,3 +144,38 @@ def test_embedding_wiring_failure_emits_warning(caplog):
         build_adapters(config)
 
     assert any("embedding tier" in r.message for r in caplog.records)
+
+
+def test_streamable_http_transport_runs_in_stateless_json_mode(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] = {}
+
+    class FakeFastMCP:
+        def __init__(self, name: str, **kwargs):
+            captured["name"] = name
+            captured["kwargs"] = kwargs
+
+        def tool(self, name=None, description=None):
+            return lambda func: func
+
+        def prompt(self, name=None, description=None):
+            return lambda func: func
+
+        def resource(self, uri, description=None):
+            return lambda func: func
+
+        def run(self, transport: str):
+            captured["transport"] = transport
+
+    monkeypatch.setattr("mcp.server.fastmcp.FastMCP", FakeFastMCP)
+
+    server = GroundcrewServer("groundworkers-test")
+    server.run(transport="streamable-http", host="0.0.0.0", port=18080)
+
+    assert captured["name"] == "groundworkers-test"
+    assert captured["transport"] == "streamable-http"
+    assert captured["kwargs"] == {
+        "host": "0.0.0.0",
+        "port": 18080,
+        "json_response": True,
+        "stateless_http": True,
+    }

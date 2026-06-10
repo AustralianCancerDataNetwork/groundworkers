@@ -53,7 +53,7 @@ class MappingService:
             raise ValueError("query must contain searchable content after normalization")
 
         results = self._vocab.search_normalized(
-            query,
+            normalized_query,
             domain=domain or None,
             vocabulary_id=vocabulary_id or None,
             standard_only=standard_only,
@@ -278,7 +278,12 @@ class MappingService:
             seed_concept = self._graph.get_concept(seed["concept_id"])
             if seed_concept is None:
                 raise GroundworkersError("NOT_FOUND", f"Concept {seed['concept_id']} was not found")
-            selection_reason = "exact_standard_match" if seed.get("match_kind") == "EXACT" else "nearest_standard_ancestor"
+            seed_is_standard = seed_concept is not None and seed_concept.get("standard_concept")
+            selection_reason = (
+                "exact_standard_match"
+                if seed.get("match_kind") == "EXACT" and seed_is_standard
+                else "nearest_standard_ancestor"
+            )
         else:
             assert concept_id is not None
             seed_concept = self._graph.get_concept(concept_id)

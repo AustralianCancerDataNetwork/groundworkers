@@ -4,7 +4,8 @@ from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
-from groundworkers.services.text import TextService, _SYSTEM_PROMPTS, _build_user_prompt
+from groundworkers.services.text import TextService
+from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
 
 
 def register_text_tools(server: GroundcrewServer, text_service: TextService) -> None:
@@ -121,8 +122,8 @@ def register_text_prompts(server: GroundcrewServer) -> None:
         text: str,
         domain_hint: str = "",
     ) -> list[dict]:
-        system = _SYSTEM_PROMPTS["normalize"]
-        user = _build_user_prompt("normalize", text, domain_hint=domain_hint or None)
+        system = SYSTEM_PROMPTS["normalize"]
+        user = build_user_prompt("normalize", text, domain_hint=domain_hint or None)
         return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
 
     @server.prompt(
@@ -137,8 +138,8 @@ def register_text_prompts(server: GroundcrewServer) -> None:
         domain_hint: str = "",
         max_terms: int = 10,
     ) -> list[dict]:
-        system = _SYSTEM_PROMPTS["decompose"]
-        user = _build_user_prompt("decompose", text, domain_hint=domain_hint or None, max_terms=max_terms)
+        system = SYSTEM_PROMPTS["decompose"]
+        user = build_user_prompt("decompose", text, domain_hint=domain_hint or None, max_terms=max_terms)
         return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
 
     @server.prompt(
@@ -153,8 +154,8 @@ def register_text_prompts(server: GroundcrewServer) -> None:
         domain_hint: str = "",
         max_interpretations: int = 5,
     ) -> list[dict]:
-        system = _SYSTEM_PROMPTS["disambiguate"]
-        user = _build_user_prompt(
+        system = SYSTEM_PROMPTS["disambiguate"]
+        user = build_user_prompt(
             "disambiguate", text, domain_hint=domain_hint or None, max_interpretations=max_interpretations
         )
         return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
