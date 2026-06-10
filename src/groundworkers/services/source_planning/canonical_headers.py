@@ -85,6 +85,25 @@ _BUILTIN: dict[str, _Entry] = {
 _MERGED = {_normalise(key): value for key, value in _BUILTIN.items()}
 
 
+def builtin_catalogue() -> dict[str, dict[str, object]]:
+    """Return the authoritative Tier A canonical header catalogue.
+
+    This exposes the recognized header surfaces and their deterministic
+    annotation metadata in a JSON-friendly shape for inspection tools and
+    caller-facing resources.
+    """
+
+    return {
+        header: {
+            "role": role.value,
+            "confidence": confidence,
+            "inferred_vocab": inferred_vocab,
+            "packed_value": packed_value,
+        }
+        for header, (role, confidence, inferred_vocab, packed_value) in _BUILTIN.items()
+    }
+
+
 def lookup(header: str) -> _Entry | None:
     """Return the canonical annotation for ``header`` if one is known."""
 

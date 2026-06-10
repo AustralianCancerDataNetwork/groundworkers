@@ -15,6 +15,7 @@ from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
 from sqlalchemy import create_engine
 from groundworkers.services import MappingService, TextService, VocabService
+from groundworkers.services.source_planning import SourcePlanningService
 
 
 @dataclass
@@ -30,6 +31,7 @@ class Services:
     vocab: VocabService | None = None
     mapping: MappingService | None = None
     text: TextService | None = None
+    source_planning: SourcePlanningService | None = None
 
 
 @dataclass
@@ -143,6 +145,7 @@ def build_adapters(config: AppConfig) -> Adapters:
 
 def build_services(adapters: Adapters) -> Services:
     services = Services()
+    services.source_planning = SourcePlanningService()
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)
         services.mapping = MappingService(

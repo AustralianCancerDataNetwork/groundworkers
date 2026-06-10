@@ -25,7 +25,14 @@ def test_server_starts_without_domain_tools_when_no_adapters_configured():
     server = create_server(config)
     # system_status and system_vocabulary_catalogue are always registered
     # regardless of adapter availability so clients can always query availability.
-    assert server.list_tools() == ["system_status", "system_vocabulary_catalogue"]
+    assert server.list_tools() == ["source_plan", "system_status", "system_vocabulary_catalogue"]
+    assert server.list_resources() == [
+        "config://active",
+        "source-planning://canonical-headers",
+        "source-planning://column-roles",
+        "source-planning://ingestion-strategies",
+        "vocabularies://catalogue",
+    ]
 
 
 def test_server_registers_concept_tools_when_omop_graph_is_configured():
@@ -80,6 +87,7 @@ def test_build_application_exposes_services_container():
     app = build_application(config)
     assert app.adapters.omop_graph is None
     assert app.services.mapping is None
+    assert app.services.source_planning is not None
 
 
 def test_app_config_accepts_all_vocab_sections():
