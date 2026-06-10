@@ -188,7 +188,7 @@ def _merge_assisted_decisions(
     uncertain_columns = [
         header
         for header, annotation in annotations.items()
-        if annotation.confidence < _UNCERTAIN_CONFIDENCE_THRESHOLD
+        if annotation.confidence < UNCERTAIN_CONFIDENCE_THRESHOLD
     ]
     confidences = [annotation.confidence for annotation in annotations.values()]
     confidence = sum(confidences) / len(confidences) if confidences else 0.0

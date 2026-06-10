@@ -281,9 +281,9 @@ class StubRouter:
 
 
 class StubAssistedClassifier:
-    def classify(self, table: NormalisedTable, *, baseline: AnnotatedTable, model_name: str | None = None) -> AnnotatedTable:
+    def classify(self, *, baseline: AnnotatedTable, model_name: str | None = None) -> AnnotatedTable:
         return baseline.__class__.from_normalised(
-            table,
+            baseline,
             column_annotations={
                 "Question Name": ColumnAnnotation(
                     role=ColumnRole.label,

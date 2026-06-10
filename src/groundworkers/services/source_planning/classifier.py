@@ -159,7 +159,7 @@ class ColumnRoleClassifier:
             column_annotations[header] = ann
             if ann.packed_value:
                 packed_value_columns.append(header)
-            if ann.confidence < _UNCERTAIN_CONFIDENCE_THRESHOLD:
+            if ann.confidence < UNCERTAIN_CONFIDENCE_THRESHOLD:
                 uncertain_columns.append(header)
             tier_used = _max_tier(tier_used, ann.detection_tier)
 
