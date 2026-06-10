@@ -12,6 +12,7 @@ from groundworkers.services.source_planning.models import (
     NormalisedTable,
     SourceFormat,
     UNCERTAIN_CONFIDENCE_THRESHOLD,
+    _GROUNDABLE_ROLES,
 )
 from groundworkers.services.source_planning.warnings import PlanningWarning
 
@@ -85,19 +86,6 @@ _CODE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^[A-TV-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?$", re.IGNORECASE), "ICD10CM"),
     (re.compile(r"^\d{1,6}-\d{1,2}$"), "LOINC"),
 )
-
-_GROUNDABLE_ROLES = frozenset(
-    {
-        ColumnRole.label,
-        ColumnRole.codes,
-        ColumnRole.values,
-        ColumnRole.annotation,
-        ColumnRole.description,
-        ColumnRole.source_vocab,
-        ColumnRole.attribute,
-    }
-)
-
 
 class ColumnRoleClassifier:
     """Classify normalized columns using deterministic header and sample rules.

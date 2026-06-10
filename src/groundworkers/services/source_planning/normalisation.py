@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from html import unescape
 import re
 from typing import Any, Iterable
+import warnings
 
 from groundworkers.services.source_planning.models import NormalisedTable, RawTable
 from groundworkers.services.source_planning.provenance import HeaderProvenance
@@ -166,10 +167,15 @@ def normalise_tables(
     return [normalise_table(table, policy=policy) for table in tables]
 
 
-def normalise_headers(table: RawTable) -> NormalisedTable:
+def normalise_headers(*args: Any, **kwargs: Any) -> NormalisedTable:
     """Backward-compatible alias for the PR1 helper name."""
 
-    return normalise_table(table)
+    warnings.warn(
+        "normalise_headers is deprecated; use normalise_table instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return normalise_table(*args, **kwargs)
 
 
 def _clean_header(value: Any) -> tuple[str, list[str]]:

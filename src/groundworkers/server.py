@@ -21,8 +21,6 @@ from groundworkers.tools.text_tools import register_text_prompts, register_text_
 def create_server(config: AppConfig) -> GroundcrewServer:
     server = GroundcrewServer(config.app_name)
     app = build_application(config)
-    server.adapters = app.adapters  # type: ignore[attr-defined]
-    server.services = app.services  # type: ignore[attr-defined]
     if app.adapters.omop_graph is not None:
         register_concept_tools(server, app.adapters.omop_graph)
         register_resolver_tools(server, app.adapters.omop_graph)

@@ -101,8 +101,8 @@ class IngestionStrategy(StrEnum):
     DATA_DICT_IDEAL = "DATA_DICT_IDEAL"
     DATA_DICT_SCHEMA = "DATA_DICT_SCHEMA"
     DATA_DICT_PACKED_VALUES = "DATA_DICT_PACKED_VALUES"
-    OWL_ONTOLOGY = "OWL_ONTOLOGY"
-    FREE_TEXT_EXTRACT = "FREE_TEXT_EXTRACT"
+    OWL_ONTOLOGY = "OWL_ONTOLOGY"          # TODO: not yet routed by source planner
+    FREE_TEXT_EXTRACT = "FREE_TEXT_EXTRACT"  # TODO: not yet routed by source planner
     UNSUPPORTED = "UNSUPPORTED"
 
 

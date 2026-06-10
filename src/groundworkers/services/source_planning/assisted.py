@@ -19,18 +19,7 @@ from groundworkers.services.source_planning.models import (
     ColumnAnnotation,
     ColumnRole,
     UNCERTAIN_CONFIDENCE_THRESHOLD,
-)
-
-_GROUNDABLE_ROLES = frozenset(
-    {
-        ColumnRole.label,
-        ColumnRole.codes,
-        ColumnRole.values,
-        ColumnRole.annotation,
-        ColumnRole.description,
-        ColumnRole.source_vocab,
-        ColumnRole.attribute,
-    }
+    _GROUNDABLE_ROLES,
 )
 
 _SYSTEM_PROMPT = """\

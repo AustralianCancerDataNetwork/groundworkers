@@ -21,8 +21,8 @@ _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
     IngestionStrategy.DATA_DICT_IDEAL: "Table has codes plus enough semantic context for direct data-dictionary ingestion.",
     IngestionStrategy.DATA_DICT_SCHEMA: "Table has label/attribute-style structure but lacks explicit code columns.",
     IngestionStrategy.DATA_DICT_PACKED_VALUES: "Table encodes value sets inside cells and should be expanded during ingestion.",
-    IngestionStrategy.OWL_ONTOLOGY: "Table shape resembles ontology-style source content.",
-    IngestionStrategy.FREE_TEXT_EXTRACT: "Table should be treated as free text requiring extraction before grounding.",
+    IngestionStrategy.OWL_ONTOLOGY: "Declared for ontology-style sources; not yet routed by the source planner.",
+    IngestionStrategy.FREE_TEXT_EXTRACT: "Declared for free-text sources requiring extraction; not yet routed by the source planner.",
     IngestionStrategy.UNSUPPORTED: "No supported ingestion path was selected for the table.",
 }
 

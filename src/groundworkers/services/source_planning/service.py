@@ -293,6 +293,9 @@ def _collect_uncertain_tables(
         if not reason_parts:
             continue
 
+        if getattr(table, 'classification_tier_used', None) == 'quick_reject':
+            continue
+
         uncertain.append(
             {
                 "table_name": table.name,
