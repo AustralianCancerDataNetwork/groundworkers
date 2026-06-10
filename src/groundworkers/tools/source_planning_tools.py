@@ -84,6 +84,36 @@ def register_source_planning_tools(
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
+    @server.tool("source_plan_assisted")
+    def source_plan_assisted(
+        content: str,
+        filename: str | None = None,
+        caller_hint: str | None = None,
+        content_encoding: str | None = "utf-8",
+        include_intermediate: bool = False,
+    ) -> dict[str, Any]:
+        """Plan submitted source content with explicit LLM-assisted classification.
+
+        This tool is the explicit second-step source-planning path for cases
+        where deterministic classification was not strong enough. It preserves
+        fallback provenance in the returned planning artifacts.
+        """
+
+        try:
+            raw_content = _decode_content(content, content_encoding)
+            bundle = source_planning_service.plan_source_assisted(
+                raw_content,
+                filename=filename,
+                caller_hint=caller_hint,
+            )
+            return serialize_pre_ingest_bundle(bundle, include_intermediate=include_intermediate)
+        except ValueError as exc:
+            return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
+        except GroundworkersError as exc:
+            return exc.to_dict()
+        except Exception as exc:
+            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+
 
 def register_source_planning_resources(server: GroundcrewServer) -> None:
     @server.resource(

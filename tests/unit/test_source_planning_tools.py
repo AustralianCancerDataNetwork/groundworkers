@@ -65,6 +65,17 @@ def test_source_plan_rejects_invalid_base64() -> None:
     assert result["code"] == "INVALID_INPUT"
 
 
+def test_source_plan_assisted_returns_backend_unavail_without_llm() -> None:
+    result = _server().call(
+        "source_plan_assisted",
+        content="code,label\nE11.9,Type 2 diabetes mellitus\n",
+        filename="diagnoses.csv",
+    )
+
+    assert result["error"] is True
+    assert result["code"] == "BACKEND_UNAVAIL"
+
+
 def test_source_planning_resources_are_registered_and_json_readable() -> None:
     server = _server()
 

@@ -21,6 +21,7 @@ from groundworkers.services.source_planning.classifier import (
     classify_columns,
     classify_tables,
 )
+from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
 from groundworkers.services.source_planning.decomposer import TableDecomposer
 from groundworkers.services.source_planning.detector import FormatDetector
 from groundworkers.services.source_planning.normalisation import (
@@ -38,12 +39,15 @@ from groundworkers.services.source_planning.router import (
 from groundworkers.services.source_planning.service import (
     SourcePlanningService,
     plan_source,
+    plan_source_assisted,
     plan_tables,
+    plan_tables_assisted,
 )
 from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
 
 __all__ = [
     "AnnotatedTable",
+    "AssistedColumnRoleClassifier",
     "ColumnAnnotation",
     "ColumnRole",
     "ColumnRoleClassifier",
@@ -67,7 +71,9 @@ __all__ = [
     "normalise_table",
     "normalise_tables",
     "plan_source",
+    "plan_source_assisted",
     "plan_tables",
+    "plan_tables_assisted",
     "route_table",
     "route_tables",
 ]

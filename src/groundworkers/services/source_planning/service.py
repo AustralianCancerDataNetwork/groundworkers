@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from time import perf_counter
 
+from groundworkers.base.errors import GroundworkersError
+from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
 from groundworkers.services.source_planning.classifier import ColumnRoleClassifier
 from groundworkers.services.source_planning.decomposer import TableDecomposer
 from groundworkers.services.source_planning.detector import FormatDetector
@@ -42,12 +44,14 @@ class SourcePlanningService:
         detector: FormatDetector | None = None,
         decomposer: TableDecomposer | None = None,
         classifier: ColumnRoleClassifier | None = None,
+        assisted_classifier: AssistedColumnRoleClassifier | None = None,
         router: IngesterRouter | None = None,
         normalisation_policy: NormalisationPolicy | None = None,
     ) -> None:
         self._detector = detector or FormatDetector()
         self._decomposer = decomposer or TableDecomposer()
         self._classifier = classifier or ColumnRoleClassifier()
+        self._assisted_classifier = assisted_classifier
         self._router = router or IngesterRouter()
         self._normalisation_policy = normalisation_policy
 
@@ -90,6 +94,46 @@ class SourcePlanningService:
             elapsed_ms=_elapsed_ms(started),
         )
 
+    def plan_source_assisted(
+        self,
+        content: str | bytes,
+        *,
+        filename: str | None = None,
+        caller_hint: str | None = None,
+    ) -> PreIngestBundle:
+        """Plan one submitted source artifact with explicit LLM assistance."""
+
+        started = perf_counter()
+        raw_content = _coerce_content_bytes(content)
+        source_format = self._detector.detect(raw_content, filename)
+        raw_tables = self._decomposer.decompose(raw_content, source_format, filename)
+        return self._plan_from_raw_tables(
+            raw_tables,
+            source_format=source_format,
+            caller_hint=caller_hint,
+            elapsed_ms=_elapsed_ms(started),
+            use_assisted_classification=True,
+        )
+
+    def plan_tables_assisted(
+        self,
+        tables: Sequence[RawTable],
+        *,
+        caller_hint: str | None = None,
+    ) -> PreIngestBundle:
+        """Plan already-decomposed tables with explicit LLM assistance."""
+
+        started = perf_counter()
+        raw_tables = list(tables)
+        source_format = raw_tables[0].source_format if raw_tables else SourceFormat.CSV
+        return self._plan_from_raw_tables(
+            raw_tables,
+            source_format=source_format,
+            caller_hint=caller_hint,
+            elapsed_ms=_elapsed_ms(started),
+            use_assisted_classification=True,
+        )
+
     def classify_columns(self, table: NormalisedTable) -> AnnotatedTable:
         """Expose deterministic classification directly when needed."""
 
@@ -102,6 +146,7 @@ class SourcePlanningService:
         source_format: SourceFormat,
         caller_hint: str | None,
         elapsed_ms: int,
+        use_assisted_classification: bool = False,
     ) -> PreIngestBundle:
         warnings: list[PlanningWarning] = []
         errors: list[PlanningError] = []
@@ -126,6 +171,17 @@ class SourcePlanningService:
 
         normalised_tables = normalise_tables(raw_tables, policy=self._normalisation_policy)
         annotated_tables = [self._classifier.classify(table) for table in normalised_tables]
+        if use_assisted_classification:
+            if self._assisted_classifier is None:
+                raise GroundworkersError(
+                    "BACKEND_UNAVAIL",
+                    "LLM-assisted source planning is unavailable because no LLM adapter is configured.",
+                )
+            annotated_tables = [
+                self._assisted_classifier.classify(table, baseline=annotated)
+                if _table_needs_assistance(annotated) else annotated
+                for table, annotated in zip(normalised_tables, annotated_tables)
+            ]
 
         strategies: list[IngestionStrategy] = []
         routed_tables: list[AnnotatedTable] = []
@@ -183,6 +239,17 @@ def plan_source(
     return SourcePlanningService().plan_source(content, filename=filename, caller_hint=caller_hint)
 
 
+def plan_source_assisted(
+    content: str | bytes,
+    *,
+    filename: str | None = None,
+    caller_hint: str | None = None,
+) -> PreIngestBundle:
+    """Convenience wrapper for one-shot assisted source planning."""
+
+    return SourcePlanningService().plan_source_assisted(content, filename=filename, caller_hint=caller_hint)
+
+
 def plan_tables(
     tables: Sequence[RawTable],
     *,
@@ -191,6 +258,16 @@ def plan_tables(
     """Convenience wrapper for planning already-decomposed tables."""
 
     return SourcePlanningService().plan_tables(tables, caller_hint=caller_hint)
+
+
+def plan_tables_assisted(
+    tables: Sequence[RawTable],
+    *,
+    caller_hint: str | None = None,
+) -> PreIngestBundle:
+    """Convenience wrapper for assisted planning of already-decomposed tables."""
+
+    return SourcePlanningService().plan_tables_assisted(tables, caller_hint=caller_hint)
 
 
 def _coerce_content_bytes(content: str | bytes) -> bytes:
@@ -247,6 +324,18 @@ def _collect_uncertain_tables(
             }
         )
     return uncertain
+
+
+def _table_needs_assistance(table: AnnotatedTable) -> bool:
+    if table.classification_tier_used == "quick_reject":
+        return False
+    if table.uncertain_columns:
+        return True
+    if table.classification_confidence is not None and table.classification_confidence < _UNCERTAIN_TABLE_THRESHOLD:
+        return True
+    if table.groundable_column_count == 0:
+        return True
+    return False
 
 
 def _hint_matches(

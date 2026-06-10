@@ -20,6 +20,7 @@ from groundworkers.services.source_planning.service import (
     SourcePlanningService,
     plan_source,
 )
+from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
 
 
 def _raw_table(
@@ -193,6 +194,55 @@ def test_plan_source_uses_injected_dependencies_in_order():
     assert bundle.plan.strategies == [IngestionStrategy.DATA_DICT_IDEAL]
 
 
+def test_plan_tables_assisted_marks_fallback_provenance():
+    service = SourcePlanningService(
+        classifier=StubClassifier(
+            AnnotatedTable(
+                name="demo",
+                headers=["Question Name"],
+                rows=[{"Question Name": "Primary diagnosis"}],
+                sample_rows=[{"Question Name": "Primary diagnosis"}],
+                source_format=SourceFormat.CSV,
+                row_count=1,
+                metadata={},
+                original_headers=["Question Name"],
+                header_provenance={
+                    "Question Name": HeaderProvenance(
+                        original="Question Name",
+                        normalised="Question Name",
+                        operations=[],
+                    )
+                },
+                normalisation_notes=[],
+                warnings=[],
+                column_annotations={
+                    "Question Name": ColumnAnnotation(
+                        role=ColumnRole.label,
+                        detection_tier="B",
+                        confidence=0.75,
+                    )
+                },
+                classification_tier_used="B",
+                classification_confidence=0.75,
+                uncertain_columns=["Question Name"],
+                groundable_column_count=1,
+            )
+        ),
+        assisted_classifier=StubAssistedClassifier(),
+        router=StubRouter(IngestionStrategy.DATA_DICT_SCHEMA),
+    )
+
+    bundle = service.plan_tables_assisted(
+        [_raw_table(headers=["Question Name"], rows=[{"Question Name": "Primary diagnosis"}])]
+    )
+
+    table = bundle.plan.tables[0]
+    assert table.llm_fallback_used is True
+    assert table.classification_tier_used == "LLM"
+    assert table.fallback_columns == ["Question Name"]
+    assert table.uncertain_columns == []
+
+
 class StubDetector:
     def __init__(self, source_format: SourceFormat) -> None:
         self._source_format = source_format
@@ -228,6 +278,26 @@ class StubRouter:
 
     def route(self, table: AnnotatedTable) -> tuple[IngestionStrategy, AnnotatedTable]:
         return self._strategy, table
+
+
+class StubAssistedClassifier:
+    def classify(self, table: NormalisedTable, *, baseline: AnnotatedTable, model_name: str | None = None) -> AnnotatedTable:
+        return baseline.__class__.from_normalised(
+            table,
+            column_annotations={
+                "Question Name": ColumnAnnotation(
+                    role=ColumnRole.label,
+                    detection_tier="LLM",
+                    confidence=0.95,
+                )
+            },
+            classification_tier_used="LLM",
+            classification_confidence=0.95,
+            uncertain_columns=[],
+            llm_fallback_used=True,
+            fallback_columns=["Question Name"],
+            groundable_column_count=1,
+        )
 
 
 class RecordingDetector:
