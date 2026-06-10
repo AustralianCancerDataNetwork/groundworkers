@@ -30,6 +30,11 @@ from groundworkers.services.source_planning.normalisation import (
     normalise_tables,
 )
 from groundworkers.services.source_planning.provenance import HeaderProvenance
+from groundworkers.services.source_planning.router import (
+    IngesterRouter,
+    route_table,
+    route_tables,
+)
 from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
 
 __all__ = [
@@ -39,6 +44,7 @@ __all__ = [
     "ColumnRoleClassifier",
     "FormatDetector",
     "HeaderProvenance",
+    "IngesterRouter",
     "IngestionPlan",
     "IngestionStrategy",
     "NormalisedTable",
@@ -54,4 +60,6 @@ __all__ = [
     "normalise_headers",
     "normalise_table",
     "normalise_tables",
+    "route_table",
+    "route_tables",
 ]
