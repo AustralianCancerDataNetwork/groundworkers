@@ -6,7 +6,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from groundworkers.source_planning.models import (
+from groundworkers.services.source_planning.models import (
     AnnotatedTable,
     ColumnAnnotation,
     ColumnRole,
@@ -17,8 +17,8 @@ from groundworkers.source_planning.models import (
     RawTable,
     SourceFormat,
 )
-from groundworkers.source_planning.provenance import HeaderProvenance
-from groundworkers.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.provenance import HeaderProvenance
+from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
 
 
 def _raw_table() -> RawTable:

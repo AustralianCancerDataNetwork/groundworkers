@@ -6,8 +6,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from groundworkers.source_planning.models import RawTable, SourceFormat
-from groundworkers.source_planning.normalisation import (
+from groundworkers.services.source_planning.models import RawTable, SourceFormat
+from groundworkers.services.source_planning.normalisation import (
     NormalisationPolicy,
     normalise_headers,
     normalise_table,

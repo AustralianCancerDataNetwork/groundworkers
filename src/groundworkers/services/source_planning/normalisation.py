@@ -13,9 +13,9 @@ from html import unescape
 import re
 from typing import Any, Iterable
 
-from groundworkers.source_planning.models import NormalisedTable, RawTable
-from groundworkers.source_planning.provenance import HeaderProvenance
-from groundworkers.source_planning.warnings import PlanningWarning
+from groundworkers.services.source_planning.models import NormalisedTable, RawTable
+from groundworkers.services.source_planning.provenance import HeaderProvenance
+from groundworkers.services.source_planning.warnings import PlanningWarning
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"\s+")

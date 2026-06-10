@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
-from groundworkers.source_planning.provenance import HeaderProvenance
-from groundworkers.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.provenance import HeaderProvenance
+from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
 
 
 class SourceFormat(StrEnum):
@@ -74,7 +74,7 @@ class IngestionStrategy(StrEnum):
 
     DATA_DICT_IDEAL = "DATA_DICT_IDEAL"
     DATA_DICT_SCHEMA = "DATA_DICT_SCHEMA"
-    REDCAP = "REDCAP"
+    DATA_DICT_PACKED_VALUES = "DATA_DICT_PACKED_VALUES"
     OWL_ONTOLOGY = "OWL_ONTOLOGY"
     FREE_TEXT_EXTRACT = "FREE_TEXT_EXTRACT"
     UNSUPPORTED = "UNSUPPORTED"
@@ -97,7 +97,8 @@ class RawTable:
     """Post-decomposition table artifact before structural normalization.
 
     ``RawTable`` stays close to the extracted source shape. It may preserve
-    typed or format-specific cell values and should not imply OMOP meaning.
+    typed or format-specific cell values and should not imply downstream
+    semantic meaning.
     """
 
     name: str
@@ -162,7 +163,7 @@ class NormalisedTable:
 class AnnotatedTable(NormalisedTable):
     """Normalized table plus semantic annotation.
 
-    This is the first stage that may infer OMOP-targeting semantics. It should
+    This is the first stage that may infer downstream semantic intent. It should
     retain enough signal for caller-facing orchestration to decide whether the
     result is strong enough to accept, assist, or route for review.
     """

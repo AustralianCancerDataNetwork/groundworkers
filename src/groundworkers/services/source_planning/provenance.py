@@ -1,7 +1,8 @@
 """Provenance records for structural source normalization.
 
 These records explain *how representation changed* during normalization.
-They do not assign OMOP meaning and they do not imply caller-facing policy.
+They do not assign downstream semantic meaning and they do not imply
+caller-facing policy.
 """
 
 from __future__ import annotations

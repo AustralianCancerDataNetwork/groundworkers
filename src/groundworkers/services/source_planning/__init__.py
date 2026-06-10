@@ -1,11 +1,11 @@
-"""Stateless source-planning artifacts for OMOP-grounding-adjacent ingestion.
+"""Stateless source-planning artifacts.
 
 This package defines the neutral planning objects that dependency-facing
 services can produce without knowing anything about ACP session state,
 review queues, or persistence models.
 """
 
-from groundworkers.source_planning.models import (
+from groundworkers.services.source_planning.models import (
     AnnotatedTable,
     ColumnAnnotation,
     ColumnRole,
@@ -16,19 +16,22 @@ from groundworkers.source_planning.models import (
     RawTable,
     SourceFormat,
 )
-from groundworkers.source_planning.normalisation import (
+from groundworkers.services.source_planning.decomposer import TableDecomposer
+from groundworkers.services.source_planning.detector import FormatDetector
+from groundworkers.services.source_planning.normalisation import (
     NormalisationPolicy,
     normalise_headers,
     normalise_table,
     normalise_tables,
 )
-from groundworkers.source_planning.provenance import HeaderProvenance
-from groundworkers.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.provenance import HeaderProvenance
+from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
 
 __all__ = [
     "AnnotatedTable",
     "ColumnAnnotation",
     "ColumnRole",
+    "FormatDetector",
     "HeaderProvenance",
     "IngestionPlan",
     "IngestionStrategy",
@@ -39,6 +42,7 @@ __all__ = [
     "PreIngestBundle",
     "RawTable",
     "SourceFormat",
+    "TableDecomposer",
     "normalise_headers",
     "normalise_table",
     "normalise_tables",
