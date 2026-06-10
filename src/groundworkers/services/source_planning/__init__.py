@@ -16,6 +16,11 @@ from groundworkers.services.source_planning.models import (
     RawTable,
     SourceFormat,
 )
+from groundworkers.services.source_planning.classifier import (
+    ColumnRoleClassifier,
+    classify_columns,
+    classify_tables,
+)
 from groundworkers.services.source_planning.decomposer import TableDecomposer
 from groundworkers.services.source_planning.detector import FormatDetector
 from groundworkers.services.source_planning.normalisation import (
@@ -31,6 +36,7 @@ __all__ = [
     "AnnotatedTable",
     "ColumnAnnotation",
     "ColumnRole",
+    "ColumnRoleClassifier",
     "FormatDetector",
     "HeaderProvenance",
     "IngestionPlan",
@@ -43,6 +49,8 @@ __all__ = [
     "RawTable",
     "SourceFormat",
     "TableDecomposer",
+    "classify_columns",
+    "classify_tables",
     "normalise_headers",
     "normalise_table",
     "normalise_tables",

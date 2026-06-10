@@ -186,7 +186,7 @@ class AnnotatedTable(NormalisedTable):
     def from_normalised(cls, table: NormalisedTable, **kwargs: Any) -> AnnotatedTable:
         """Build semantic annotation output from a normalized table."""
 
-        return cls(
+        payload = dict(
             name=table.name,
             headers=list(table.headers),
             rows=list(table.rows),
@@ -198,8 +198,9 @@ class AnnotatedTable(NormalisedTable):
             header_provenance=dict(table.header_provenance),
             normalisation_notes=list(table.normalisation_notes),
             warnings=list(table.warnings),
-            **kwargs,
         )
+        payload.update(kwargs)
+        return cls(**payload)
 
     def code_columns(self) -> list[str]:
         return [header for header, ann in self.column_annotations.items() if ann.role == ColumnRole.codes]
