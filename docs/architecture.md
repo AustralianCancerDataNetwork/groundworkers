@@ -59,6 +59,8 @@ want to call directly without going through MCP.
   assemble mapping context packets.
 - `TextService` — LLM-backed clinical text preprocessing. Provides `normalize`,
   `decompose`, and `disambiguate` via `LLMAdapter`.
+- `DomainService` — LLM-backed batch OMOP domain classification for structured
+  data-dictionary fields. Provides `classify_attributes` via `LLMAdapter`.
 
 Not everything needs a service. `resolver_tools.py` calls omop-graph directly because
 it adds nothing the graph library does not already expose. The service layer is not a
@@ -87,6 +89,7 @@ If you are building an MCP client, this is the layer you interact with.
 | Remote tool calls, agent interoperability | MCP tools |
 | Vocabulary search or mapping workflows from Python | `app.services.vocab` or `app.services.mapping` |
 | LLM-backed text preprocessing from Python | `app.services.text` |
+| LLM-backed batch domain classification for structured fields | `app.services.domain` |
 | Exact control over embedding or graph operations | `app.adapters.omop_emb` or `app.adapters.omop_graph` |
 
 ## Request flow
@@ -120,7 +123,7 @@ sequenceDiagram
 flowchart LR
     CFG[AppConfig] --> APP[build_application]
     APP --> ADP[Adapters\ncdm · omop_graph · omop_emb · llm]
-    APP --> SRV[Services\nvocab · mapping · text]
+    APP --> SRV[Services\nvocab · mapping · text · domain]
     SERVER[create_server] --> APP
     SERVER --> MCP[registered MCP tools]
 ```

@@ -109,11 +109,12 @@ When `omop_emb.enabled` is true:
 
 ### `llm`
 
-Configures the LLM adapter for text preprocessing tools.
+Configures the LLM adapter for LLM-backed text preprocessing and domain
+classification tools.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `bool` | `false` | Must be `true` for text tools to be registered. |
+| `enabled` | `bool` | `false` | Must be `true` for text and domain tools to be registered. |
 | `provider` | `str` | `openai-compatible` | API provider label. Use `"openai-compatible"` for OpenAI-compatible endpoints (including Ollama). |
 | `api_base` | `str` | `null` | Base URL for the model API. |
 | `api_key` | `str` | `null` | API key. Use `"ollama"` as a placeholder for Ollama (which does not require authentication). |
@@ -121,9 +122,11 @@ Configures the LLM adapter for text preprocessing tools.
 
 When `llm.enabled` is true:
 
-- `LLMAdapter` is built and `TextService` is wired on top of it
+- `LLMAdapter` is built and both `TextService` and `DomainService` are wired on top of it
 - `text_normalize`, `text_decompose`, and `text_disambiguate` MCP tools are registered
+- `domain_classify` MCP tool is registered
 - `TextService` becomes available via `app.services.text`
+- `DomainService` becomes available via `app.services.domain`
 - All vocabulary, search, mapping, and embedding tools remain fully functional
   regardless of whether `llm` is configured
 

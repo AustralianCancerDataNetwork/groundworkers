@@ -20,6 +20,10 @@
 
 ::: groundworkers.tools.embedding_tools
 
+## Domain Tools
+
+::: groundworkers.tools.domain_tools
+
 ## System Tools
 
 ::: groundworkers.tools.system_tools
