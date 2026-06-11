@@ -30,3 +30,11 @@ module.
 (`text_normalize`, `text_decompose`, `text_disambiguate`) delegate to this service.
 
 ::: groundworkers.services.text
+
+## DomainService
+
+`DomainService` provides LLM-backed batch OMOP domain classification for structured
+field labels and example values. The `domain_classify` MCP tool delegates to this
+service.
+
+::: groundworkers.services.domain

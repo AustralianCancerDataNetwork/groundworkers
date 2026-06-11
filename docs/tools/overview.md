@@ -1,6 +1,6 @@
 # Tools Overview
 
-groundworkers registers seven tool groups. Tools appear only when the relevant
+groundworkers registers eight tool groups. Tools appear only when the relevant
 adapters or services are available in the config.
 
 | Group | Tools | Requires |
@@ -11,6 +11,7 @@ adapters or services are available in the config.
 | **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `omop_graph` |
 | **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` |
 | **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | `llm` |
+| **Domain** | `domain_classify` | `llm` |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
 !!! info "System tools are always registered"
@@ -21,6 +22,11 @@ adapters or services are available in the config.
     `text_normalize`, `text_decompose`, and `text_disambiguate` are registered only
     when `llm` is configured in `AppConfig`. They are absent from `--describe` output
     when no LLM is configured.
+
+!!! info "Domain tools require LLM configuration"
+    `domain_classify` is registered only when `llm` is configured in `AppConfig`.
+    It is intended for structured field sets such as data-dictionary attributes,
+    not for free-text concept grounding.
 
 ## Tool groups at a glance
 
@@ -40,9 +46,13 @@ often wants multiple evidence channels side by side. Backed by `MappingService`.
 the input contains abbreviations, lay language, or ambiguous clinical phrases.
 Backed by `TextService`.
 
+**Domain tools** classify structured field labels into OMOP domains in one batch.
+Use them when a caller already has field labels and example values and wants a
+best-effort domain hint before downstream mapping. Backed by `DomainService`.
+
 ## Services and direct Python use
 
-The mapping, search, and text groups are also available directly through
+The mapping, search, text, and domain groups are also available directly through
 `app.services.*`.
 
 ```mermaid
@@ -50,7 +60,7 @@ flowchart LR
     MCP[MCP caller] --> MT[tool]
     PY[Python caller] --> SVC[service]
     MT --> SVC
-    SVC[VocabService\nMappingService\nTextService] --> ADP[CDMAdapter\nOmopGraphAdapter\nOmopEmbAdapter\nLLMAdapter]
+    SVC[VocabService\nMappingService\nTextService\nDomainService] --> ADP[CDMAdapter\nOmopGraphAdapter\nOmopEmbAdapter\nLLMAdapter]
 ```
 
 If you are building a Python application, call `app.services.*` directly rather

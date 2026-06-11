@@ -52,6 +52,7 @@ flowchart LR
 | Embedding | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | Backed by `OmopEmbAdapter` |
 | Text tools | `text_normalize`, `text_decompose`, `text_disambiguate` | LLM-backed clinical text preprocessing via `TextService`; registered when `llm` is configured |
 | Text prompts | `normalize_clinical_term`, `decompose_clinical_text`, `disambiguate_clinical_term` | MCP prompts exposing the same LLM message sequences; registered alongside text tools |
+| Domain | `domain_classify` | LLM-backed batch OMOP domain classification for data dictionary fields via `DomainService`; registered when `llm` is configured |
 | System | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
 ## Quick start

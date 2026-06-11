@@ -28,6 +28,7 @@ flowchart TD
 - **Concept and hierarchy lookup** for deterministic OMOP operations
 - **Search and grounding** for lexical and semantic retrieval
 - **Mapping workflows** for candidate bundles, parent backoff, and context packets
+- **Structured domain classification** for data-dictionary-style field sets
 - **One configuration model** for both MCP and direct Python use
 
 For direct Python consumers, the main entrypoint is `build_application(config)` and
@@ -38,7 +39,7 @@ For direct Python consumers, the main entrypoint is `build_application(config)` 
 - [Architecture](architecture.md) for the package structure and layer boundaries
 - [Integrations](usage/integrations.md) for end-to-end MCP and Python examples
 - [Mapping Tools](tools/mapping.md) for mapping-oriented workflows
-- [API Reference](reference/ref_services.md) for `MappingService` and `build_application`
+- [API Reference](reference/ref_services.md) for the service surface and `build_application`
 
 ## Relation to groundcrew
 

@@ -42,11 +42,13 @@ nav:
       - Mapping Tools: tools/mapping.md
       - Embedding Tools: tools/embedding.md
       - Text Tools: tools/text.md
+      - Domain Tools: tools/domain.md
       - System Tools: tools/system.md
   - Services:
       - Vocab Service: services/vocab.md
       - Mapping Service: services/mapping.md
       - Text Service: services/text.md
+      - Domain Service: services/domain.md
   - Adapters:
       - CDM: adapters/cdm.md
       - OmopGraph: adapters/omop_graph.md

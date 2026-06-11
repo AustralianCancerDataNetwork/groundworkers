@@ -6,6 +6,7 @@ from groundworkers.app import build_adapters, build_application
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.config import AppConfig
 from groundworkers.tools.concept_tools import register_concept_tools
+from groundworkers.tools.domain_tools import register_domain_tools
 from groundworkers.tools.embedding_tools import register_embedding_resources, register_embedding_tools
 from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
@@ -35,6 +36,8 @@ def create_server(config: AppConfig) -> GroundcrewServer:
         register_embedding_resources(server, app.adapters.omop_emb)
     if app.services.text is not None:
         register_text_tools(server, app.services.text)
+    if app.services.domain is not None:
+        register_domain_tools(server, app.services.domain)
     register_source_planning_tools(server, app.services.source_planning)
     register_source_planning_resources(server)
     register_text_prompts(server)

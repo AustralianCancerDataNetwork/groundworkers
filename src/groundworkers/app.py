@@ -15,7 +15,7 @@ from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
 from sqlalchemy import create_engine
-from groundworkers.services import MappingService, TextService, VocabService
+from groundworkers.services import DomainService, MappingService, TextService, VocabService
 from groundworkers.services.source_planning import AssistedColumnRoleClassifier
 from groundworkers.services.source_planning import SourcePlanningService
 
@@ -34,6 +34,7 @@ class Services:
     mapping: MappingService | None = None
     text: TextService | None = None
     source_planning: SourcePlanningService | None = None
+    domain: DomainService | None = None
 
 
 @dataclass
@@ -158,6 +159,7 @@ def build_services(adapters: Adapters) -> Services:
         )
     if adapters.llm is not None:
         services.text = TextService(adapters.llm)
+        services.domain = DomainService(adapters.llm)
     return services
 
 
