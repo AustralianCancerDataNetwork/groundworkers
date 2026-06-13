@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
+
+logger = logging.getLogger(__name__)
+
+
+def _short_text(value: str, *, limit: int = 120) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[:limit - 3]}..."
 
 
 def register_resolver_tools(server: GroundcrewServer, graph_adapter: OmopGraphAdapter) -> None:
@@ -74,10 +85,27 @@ def register_resolver_tools(server: GroundcrewServer, graph_adapter: OmopGraphAd
             }
         safe_limit = max(1, min(limit, 20))
         resolved_parent_ids = tuple(parent_ids) if parent_ids else None
+        started = time.perf_counter()
+        logger.info(
+            "concept_ground tool start query=%r limit=%d domain=%r vocabulary_id=%r parent_ids=%s",
+            _short_text(stripped),
+            safe_limit,
+            domain,
+            vocabulary_id,
+            list(resolved_parent_ids) if resolved_parent_ids is not None else None,
+        )
         try:
             ground_result = graph_adapter.ground(
                 stripped, safe_limit, domain or None, vocabulary_id or None,
                 parent_ids=resolved_parent_ids,
+            )
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            logger.info(
+                "concept_ground tool done query=%r duration_ms=%.1f result_count=%d explanation=%s",
+                _short_text(stripped),
+                duration_ms,
+                len(ground_result["results"]),
+                ground_result["grounding_explanation"],
             )
             return {
                 "query": stripped,
@@ -85,6 +113,20 @@ def register_resolver_tools(server: GroundcrewServer, graph_adapter: OmopGraphAd
                 "grounding_explanation": ground_result["grounding_explanation"],
             }
         except GroundworkersError as exc:
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            logger.warning(
+                "concept_ground tool failed query=%r duration_ms=%.1f code=%s message=%s",
+                _short_text(stripped),
+                duration_ms,
+                exc.code,
+                exc.message,
+            )
             return exc.to_dict()
         except Exception as exc:
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            logger.exception(
+                "concept_ground tool unexpected error query=%r duration_ms=%.1f",
+                _short_text(stripped),
+                duration_ms,
+            )
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

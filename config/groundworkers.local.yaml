@@ -3,3 +3,9 @@ app_name: groundworkers-local
 omop_graph:
   db_url: "postgresql+psycopg://airflow:airflow@localhost:15432/airflow_vector"
   vocab_schema: cdm
+
+llm:
+  enabled: true
+  provider: ollama
+  api_base: http://localhost:11434/v1
+  default_model_name: qwen3:8b

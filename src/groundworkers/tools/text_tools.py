@@ -36,6 +36,37 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
+    @server.tool("text_mapping_cleanup")
+    def text_mapping_cleanup(
+        text: str,
+        context: dict[str, Any] | None = None,
+        domain_hint: str | None = None,
+        model_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Rewrite source text into the best single search phrase for downstream OMOP mapping.
+
+        Preserves meaning while stripping formatting noise, score prefixes, duplicated
+        fragments, or value-label boilerplate when context shows they are not essential.
+        Accepts optional context such as parent label, sibling values, child values,
+        source code, or preferred domain to keep the rewrite faithful to the source.
+
+        Returns: replacement, original, changed, confidence (high/medium/low), notes.
+        """
+        try:
+            result = text_service.mapping_cleanup(
+                text,
+                context=context,
+                domain_hint=domain_hint,
+                model_name=model_name,
+            )
+            return result.model_dump()
+        except ValueError as exc:
+            return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
+        except GroundworkersError as exc:
+            return exc.to_dict()
+        except Exception as exc:
+            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+
     @server.tool("text_decompose")
     def text_decompose(
         text: str,
@@ -99,11 +130,12 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
 
 
 def register_text_prompts(server: GroundcrewServer) -> None:
-    """Register MCP prompt handlers for the three text preprocessing operations.
+    """Register MCP prompt handlers for the text preprocessing operations.
 
     These prompts let MCP clients request the exact message sequences that would
-    be sent to the LLM for normalize, decompose, and disambiguate — useful for
-    inspection, testing, or manual invocation via prompt UIs.
+    be sent to the LLM for normalize, mapping cleanup, decompose, and
+    disambiguate — useful for inspection, testing, or manual invocation via
+    prompt UIs.
 
     System prompts are folded into the user turn because MCP only supports
     "user" and "assistant" roles; there is no "system" role in prompt messages.
@@ -124,6 +156,22 @@ def register_text_prompts(server: GroundcrewServer) -> None:
     ) -> list[dict]:
         system = SYSTEM_PROMPTS["normalize"]
         user = build_user_prompt("normalize", text, domain_hint=domain_hint or None)
+        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
+
+    @server.prompt(
+        "cleanup_mapping_text",
+        description=(
+            "Return the message sequence for rewriting source text into a "
+            "clean OMOP-grounding search phrase."
+        ),
+    )
+    def cleanup_mapping_text(
+        text: str,
+        domain_hint: str = "",
+        context: dict[str, Any] | None = None,
+    ) -> list[dict]:
+        system = SYSTEM_PROMPTS["mapping_cleanup"]
+        user = build_user_prompt("mapping_cleanup", text, domain_hint=domain_hint or None, context=context or {})
         return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
 
     @server.prompt(
