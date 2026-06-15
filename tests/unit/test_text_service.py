@@ -13,6 +13,7 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.services.text import (
     DecomposeResult,
     DisambiguateResult,
+    MappingCleanupResult,
     NormalizeResult,
     TextService,
 )
@@ -148,6 +149,60 @@ def test_decompose_schema_mismatch_raises_query_error():
     svc = _service({"wrong": "shape"})
     with pytest.raises(GroundworkersError) as exc_info:
         svc.decompose("some text")
+    assert exc_info.value.code == "QUERY_ERROR"
+
+
+# ---------------------------------------------------------------------------
+# mapping_cleanup
+# ---------------------------------------------------------------------------
+
+def test_mapping_cleanup_returns_typed_result():
+    svc = _service({
+        "replacement": "orientation difficulty with time relationships",
+        "original": "Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        "changed": True,
+        "confidence": "high",
+        "notes": "Dropped score prefix and kept the clinically meaningful phrase.",
+    })
+    result = svc.mapping_cleanup(
+        "Questionable = 0.5 Fully oriented except for slight difficulty with time relationships"
+    )
+    assert isinstance(result, MappingCleanupResult)
+    assert result.changed is True
+    assert result.replacement == "orientation difficulty with time relationships"
+
+
+def test_mapping_cleanup_empty_text_raises_value_error():
+    svc = _service({"replacement": "x", "original": "x", "changed": False, "confidence": "high"})
+    with pytest.raises(ValueError, match="non-empty"):
+        svc.mapping_cleanup("   ")
+
+
+def test_mapping_cleanup_context_flows_into_prompt():
+    llm = MagicMock()
+    llm.complete_structured.return_value = {
+        "replacement": "orientation difficulty with time relationships",
+        "original": "Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        "changed": True,
+        "confidence": "high",
+        "notes": None,
+    }
+    svc = TextService(llm)
+    svc.mapping_cleanup(
+        "Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        domain_hint="Measurement",
+        context={"parent_label": "2. Orientation", "sibling_values": ["None = 0 Fully oriented"]},
+    )
+    prompt = llm.complete_structured.call_args[0][0]
+    assert "Measurement" in prompt
+    assert "parent_label" in prompt
+    assert "sibling_values" in prompt
+
+
+def test_mapping_cleanup_schema_mismatch_raises_query_error():
+    svc = _service({"replacement": 123})
+    with pytest.raises(GroundworkersError) as exc_info:
+        svc.mapping_cleanup("Questionable = 0.5")
     assert exc_info.value.code == "QUERY_ERROR"
 
 

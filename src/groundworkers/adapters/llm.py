@@ -6,6 +6,9 @@ from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
 
+_STATUS_TIMEOUT_SECONDS = 2.0
+_COMPLETION_TIMEOUT_SECONDS = 180.0
+
 
 class LLMAdapter:
     """Adapter for OpenAI-compatible LLM chat completion APIs.
@@ -51,7 +54,7 @@ class LLMAdapter:
         """
         try:
             client = self._get_client()
-            client.models.list(timeout=2.0)
+            client.models.list(timeout=_STATUS_TIMEOUT_SECONDS)
             return {
                 "available": True,
                 "provider": self._provider,
@@ -89,6 +92,7 @@ class LLMAdapter:
                 model=resolved_model,
                 messages=messages,
                 temperature=temperature,
+                timeout=_COMPLETION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
             raise GroundworkersError("BACKEND_UNAVAIL", f"LLM call failed: {exc}") from exc
@@ -137,6 +141,7 @@ class LLMAdapter:
                 messages=messages,
                 temperature=temperature,
                 response_format={"type": "json_object"},
+                timeout=_COMPLETION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
             raise GroundworkersError("BACKEND_UNAVAIL", f"LLM call failed: {exc}") from exc

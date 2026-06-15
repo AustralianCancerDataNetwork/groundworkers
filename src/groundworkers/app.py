@@ -135,6 +135,8 @@ def build_adapters(config: AppConfig) -> Adapters:
                 kwargs["api_key"] = api_key
             if api_base is not None:
                 kwargs["base_url"] = api_base
+            kwargs["max_retries"] = 0
+            kwargs["timeout"] = 30.0
             return OpenAI(**kwargs)
 
         adapters.llm = LLMAdapter(

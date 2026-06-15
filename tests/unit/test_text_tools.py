@@ -13,6 +13,7 @@ from groundworkers.services.text import (
     DecomposeTerm,
     DisambiguateResult,
     Interpretation,
+    MappingCleanupResult,
     NormalizeResult,
 )
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
@@ -30,15 +31,18 @@ class StubTextService:
         normalize_result: NormalizeResult | None = None,
         decompose_result: DecomposeResult | None = None,
         disambiguate_result: DisambiguateResult | None = None,
+        mapping_cleanup_result: MappingCleanupResult | None = None,
         raises: Exception | None = None,
     ) -> None:
         self._normalize = normalize_result
         self._decompose = decompose_result
         self._disambiguate = disambiguate_result
+        self._mapping_cleanup = mapping_cleanup_result
         self._raises = raises
         self.normalize_calls: list[dict] = []
         self.decompose_calls: list[dict] = []
         self.disambiguate_calls: list[dict] = []
+        self.mapping_cleanup_calls: list[dict] = []
 
     def normalize(self, text, *, domain_hint=None, model_name=None):
         self.normalize_calls.append({"text": text, "domain_hint": domain_hint, "model_name": model_name})
@@ -57,6 +61,14 @@ class StubTextService:
         if self._raises:
             raise self._raises
         return self._disambiguate
+
+    def mapping_cleanup(self, text, *, context=None, domain_hint=None, model_name=None):
+        self.mapping_cleanup_calls.append(
+            {"text": text, "context": context, "domain_hint": domain_hint, "model_name": model_name}
+        )
+        if self._raises:
+            raise self._raises
+        return self._mapping_cleanup
 
 
 def _server(service) -> GroundcrewServer:
@@ -108,6 +120,54 @@ def test_text_normalize_passes_domain_hint_and_model_name():
     _server(svc).call("text_normalize", text="MI", domain_hint="Condition", model_name="gpt-4o")
     call = svc.normalize_calls[0]
     assert call["domain_hint"] == "Condition"
+    assert call["model_name"] == "gpt-4o"
+
+
+# ---------------------------------------------------------------------------
+# text_mapping_cleanup
+# ---------------------------------------------------------------------------
+
+def test_text_mapping_cleanup_returns_model_dump():
+    svc = StubTextService(mapping_cleanup_result=MappingCleanupResult(
+        replacement="orientation difficulty with time relationships",
+        original="Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        changed=True,
+        confidence="high",
+        notes=None,
+    ))
+    result = _server(svc).call(
+        "text_mapping_cleanup",
+        text="Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+    )
+    assert result["changed"] is True
+    assert result["replacement"] == "orientation difficulty with time relationships"
+
+
+def test_text_mapping_cleanup_invalid_input_from_service():
+    svc = StubTextService(raises=ValueError("text must be a non-empty string"))
+    result = _server(svc).call("text_mapping_cleanup", text="")
+    assert result["error"] is True
+    assert result["code"] == "INVALID_INPUT"
+
+
+def test_text_mapping_cleanup_passes_context_domain_and_model_name():
+    svc = StubTextService(mapping_cleanup_result=MappingCleanupResult(
+        replacement="orientation difficulty with time relationships",
+        original="Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        changed=True,
+        confidence="high",
+        notes=None,
+    ))
+    _server(svc).call(
+        "text_mapping_cleanup",
+        text="Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        context={"parent_label": "2. Orientation"},
+        domain_hint="Measurement",
+        model_name="gpt-4o",
+    )
+    call = svc.mapping_cleanup_calls[0]
+    assert call["context"] == {"parent_label": "2. Orientation"}
+    assert call["domain_hint"] == "Measurement"
     assert call["model_name"] == "gpt-4o"
 
 
@@ -206,6 +266,7 @@ def test_register_text_prompts_registers_three_prompts():
     server = _prompt_server()
     assert set(server.list_prompts()) == {
         "normalize_clinical_term",
+        "cleanup_mapping_text",
         "decompose_clinical_text",
         "disambiguate_clinical_term",
     }
@@ -236,6 +297,17 @@ def test_normalize_prompt_domain_hint_flows_through():
 def test_normalize_prompt_empty_domain_hint_shows_not_specified():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MI", domain_hint="")
     assert "not specified" in result[0]["content"]["text"]
+
+
+def test_cleanup_mapping_prompt_contains_context():
+    result = _prompt_server().call_prompt(
+        "cleanup_mapping_text",
+        text="Questionable = 0.5 Fully oriented except for slight difficulty with time relationships",
+        domain_hint="Measurement",
+        context={"parent_label": "2. Orientation"},
+    )
+    assert "Measurement" in result[0]["content"]["text"]
+    assert "parent_label" in result[0]["content"]["text"]
 
 
 def test_decompose_prompt_returns_single_user_message():

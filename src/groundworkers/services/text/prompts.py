@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -22,6 +23,14 @@ SYSTEM_PROMPTS: dict[str, str] = {
         "Given a clinical term or abbreviation, list all plausible clinical interpretations in standard OMOP terminology. "
         "Order interpretations from most to least common in clinical research contexts. "
         "If the term has only one plausible clinical meaning, return a single interpretation and set is_ambiguous to false."
+    ),
+    "mapping_cleanup": (
+        "You are a clinical terminology expert preparing source text for OMOP vocabulary grounding. "
+        "Rewrite the source text into the single best search phrase for downstream OMOP mapping while preserving meaning. "
+        "Use any supplied context such as parent label, sibling values, child values, domain hints, and source codes. "
+        "Remove scoring syntax, code prefixes, duplicated label fragments, and formatting noise only when they do not carry essential meaning. "
+        "Do not invent facts or broaden/narrow the concept beyond what the source and context support. "
+        "If the original text is already the best search phrase, return it unchanged."
     ),
 }
 
@@ -58,5 +67,14 @@ def build_user_prompt(operation: str, text: str, **kwargs: Any) -> str:
             f"Return at most {safe_max} interpretations.\n"
             f"Term: {text!r}\n"
             f"Domain hint: {domain_hint or 'not specified'}"
+        )
+    if operation == "mapping_cleanup":
+        context = kwargs.get("context") or {}
+        return (
+            "Rewrite the following source item into the single best OMOP search phrase.\n"
+            f"Original text: {text!r}\n"
+            f"Domain hint: {domain_hint or 'not specified'}\n"
+            f"Context: {json.dumps(context, ensure_ascii=True, sort_keys=True)}\n"
+            "Return JSON with: replacement, original, changed, confidence, notes."
         )
     raise ValueError(f"Unknown operation: {operation!r}")

@@ -14,6 +14,16 @@ class NormalizeResult(BaseModel):
     notes: str | None = None
 
 
+class MappingCleanupResult(BaseModel):
+    """Result of rewriting source text into a more mappable search phrase."""
+
+    replacement: str
+    original: str
+    changed: bool
+    confidence: Literal["high", "medium", "low"]
+    notes: str | None = None
+
+
 class DecomposeTerm(BaseModel):
     """One extracted clinical concept from a decomposition."""
 

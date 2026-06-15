@@ -10,6 +10,7 @@ from .models import (
     DecomposeTerm,
     DisambiguateResult,
     Interpretation,
+    MappingCleanupResult,
     NormalizeResult,
 )
 from .prompts import SYSTEM_PROMPTS, build_user_prompt
@@ -20,6 +21,7 @@ __all__ = [
     "DecomposeTerm",
     "DisambiguateResult",
     "Interpretation",
+    "MappingCleanupResult",
     "NormalizeResult",
     "SYSTEM_PROMPTS",
     "TextService",

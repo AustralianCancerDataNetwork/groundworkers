@@ -9,6 +9,7 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.services.text.models import (
     DecomposeResult,
     DisambiguateResult,
+    MappingCleanupResult,
     NormalizeResult,
 )
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
@@ -44,6 +45,21 @@ class TextService:
             raise ValueError("text must be a non-empty string")
         prompt = build_user_prompt("normalize", text, domain_hint=domain_hint)
         return self._call(prompt, NormalizeResult, "normalize", model_name)
+
+    def mapping_cleanup(
+        self,
+        text: str,
+        *,
+        context: dict[str, object] | None = None,
+        domain_hint: str | None = None,
+        model_name: str | None = None,
+    ) -> MappingCleanupResult:
+        """Rewrite source text into a more mappable OMOP search phrase."""
+
+        if not text.strip():
+            raise ValueError("text must be a non-empty string")
+        prompt = build_user_prompt("mapping_cleanup", text, domain_hint=domain_hint, context=context or {})
+        return self._call(prompt, MappingCleanupResult, "mapping_cleanup", model_name)
 
     def decompose(
         self,

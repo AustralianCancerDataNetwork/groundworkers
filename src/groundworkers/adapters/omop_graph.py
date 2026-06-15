@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from collections import deque
 from collections.abc import Callable
 from datetime import date
@@ -36,6 +38,16 @@ from omop_emb import EmbeddingClient
 
 from groundworkers.base.errors import GroundworkersError
 
+logger = logging.getLogger(__name__)
+
+
+def _short_text(value: str, *, limit: int = 120) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[:limit - 3]}..."
+
+
 class OmopGraphAdapter:
     def __init__(
         self,
@@ -52,7 +64,7 @@ class OmopGraphAdapter:
         self._embedding_client: EmbeddingClient | None = embedding_client
         self.min_fulltext_overlap = min_fulltext_overlap
         self._kg: KnowledgeGraph | None = None
-        self._root_ids_cache: dict[str, list[int]] = {}
+        self._root_ids_cache: dict[str, tuple[int, ...]] = {}
 
     def set_embedding_client(self, client: EmbeddingClient, model_name: str | None = None) -> None:
         """Configure an EmbeddingClient so concept_ground can encode query strings on-the-fly.
@@ -134,6 +146,7 @@ class OmopGraphAdapter:
           results              — ranked list of grounded concepts with scoring fields
           grounding_explanation — summary of which tier matched and what constraints ran
         """
+        overall_started = time.perf_counter()
         kg = self._get_kg()
 
         # Normalise domain to its canonical OMOP casing (e.g. "condition" → "Condition").
@@ -156,17 +169,28 @@ class OmopGraphAdapter:
         if parent_ids is not None:
             resolved_parent_ids: tuple[int, ...] = parent_ids
             parent_ids_source = "explicit"
-        elif domain is not None:
-            resolved_parent_ids = self._get_domain_root_ids(domain)
-            parent_ids_source = "domain_root"
         else:
-            # No domain filter: collect roots across all known domains so hierarchy
-            # anchoring doesn't silently drop every candidate.
-            all_roots: list[int] = []
-            for d in self._DOMAIN_ROOT_CODES:
-                all_roots.extend(self._get_domain_root_ids(d))
-            resolved_parent_ids = tuple(all_roots)
-            parent_ids_source = "all_domain_roots"
+            # DEPRECATED fallback: no explicit anchors were supplied, so we anchor to the
+            # hard-coded SNOMED domain roots. This gives low, uneven per-domain coverage and is
+            # misplaced policy (anchor selection belongs to the caller, e.g. groundcrew grounding
+            # profiles). Retained only until all callers pass parent_ids; do not extend it.
+            logger.warning(
+                "concept_ground called without explicit parent_ids (domain=%r); falling back to "
+                "hard-coded domain-root anchoring with low, uneven coverage. Supply anchors via the "
+                "caller's grounding profiles.",
+                domain,
+            )
+            if domain is not None:
+                resolved_parent_ids = self._get_domain_root_ids(domain)
+                parent_ids_source = "domain_root"
+            else:
+                # No domain filter: collect roots across all known domains so hierarchy
+                # anchoring doesn't silently drop every candidate.
+                all_roots: list[int] = []
+                for d in self._DOMAIN_ROOT_CODES:
+                    all_roots.extend(self._get_domain_root_ids(d))
+                resolved_parent_ids = tuple(all_roots)
+                parent_ids_source = "all_domain_roots"
 
         if not resolved_parent_ids:
             raise GroundworkersError(
@@ -185,17 +209,39 @@ class OmopGraphAdapter:
             tiers.append((EmbeddingResolver(),))
         # Partial matching without a domain/vocabulary constraint runs ILIKE against
         # the full concept table — extremely slow on large vocabularies.  Only add
-        # this tier when search_constraint narrows the search space.
-        if search_constraint is not None:
+        # this tier when search_constraint narrows the search space AND the query
+        # is short enough for ILIKE to be practical (long survey descriptions
+        # saturate the connection pool for 30-90s with no useful match).
+        _MAX_PARTIAL_QUERY_LEN = 60
+        if search_constraint is not None and len(query) <= _MAX_PARTIAL_QUERY_LEN:
             tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
+
+        logger.info(
+            "concept_ground plan query=%r domain=%r vocabulary_id=%r parent_ids_source=%s parent_ids=%s search_constraint=%s tiers=%s",
+            _short_text(query),
+            domain,
+            vocabulary_id,
+            parent_ids_source,
+            list(resolved_parent_ids),
+            bool(search_constraint),
+            ["+".join(type(resolver).__name__ for resolver in tier) for tier in tiers],
+        )
 
         results: list[Any] = []
         for tier in tiers:
+            tier_started = time.perf_counter()
+            tier_name = "+".join(type(resolver).__name__ for resolver in tier)
             is_fts_tier = any(
                 isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier
             )
             pipeline = ResolverPipeline(resolvers=tier)
             try:
+                logger.info(
+                    "concept_ground tier start query=%r tier=%s limit=%d",
+                    _short_text(query),
+                    tier_name,
+                    limit,
+                )
                 raw = ground_term(
                     pipeline, kg, query,
                     query_embedding=None,  # embedding is handled by the KG via its emb_config
@@ -203,9 +249,17 @@ class OmopGraphAdapter:
                     max_candidates=limit,
                 )
             except Exception as exc:
+                logger.warning(
+                    "concept_ground tier failed query=%r tier=%s duration_ms=%.1f exc=%r",
+                    _short_text(query),
+                    tier_name,
+                    (time.perf_counter() - tier_started) * 1000.0,
+                    exc,
+                )
                 raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
             # Drop FTS hits where fewer than min_fulltext_overlap of the query tokens appear
             # in the matched concept name, then fall through to a higher-quality tier.
+            raw_count = len(raw)
             if raw and is_fts_tier and self.min_fulltext_overlap > 0.0:
                 query_tokens = set(query.lower().split())
                 filtered = [
@@ -216,6 +270,14 @@ class OmopGraphAdapter:
                 results = filtered
             else:
                 results = list(raw)
+            logger.info(
+                "concept_ground tier done query=%r tier=%s duration_ms=%.1f raw_results=%d kept_results=%d",
+                _short_text(query),
+                tier_name,
+                (time.perf_counter() - tier_started) * 1000.0,
+                raw_count,
+                len(results),
+            )
             if results:
                 break
 
@@ -228,7 +290,7 @@ class OmopGraphAdapter:
         matched_tier = self._label_match_kind_name(results[0].match_kind) if results else None
         used_embedding = any(getattr(r, "embedding_score", None) is not None for r in results)
 
-        return {
+        summary = {
             "results": [self._serialise_ground_result(r, views) for r in results],
             "grounding_explanation": {
                 "matched_tier": matched_tier,
@@ -237,6 +299,15 @@ class OmopGraphAdapter:
                 "parent_ids_source": parent_ids_source,
             },
         }
+        logger.info(
+            "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r used_embedding=%s result_count=%d",
+            _short_text(query),
+            (time.perf_counter() - overall_started) * 1000.0,
+            matched_tier,
+            used_embedding,
+            len(summary["results"]),
+        )
+        return summary
 
     # Valid predicate kind names accepted by get_neighbors (case-insensitive).
     _PREDICATE_KIND_NAMES: dict[str, PredicateKind] = {pk.name.upper(): pk for pk in PredicateKind}
@@ -655,15 +726,15 @@ class OmopGraphAdapter:
         return self._kg
 
     # Stable SNOMED concept codes for the top-level concept in each standard OMOP domain.
-    # These are consistent across all Athena vocabulary releases (concept_ids may differ
-    # between instances, but concept_codes are stable).
-    _DOMAIN_ROOT_CODES: dict[str, tuple[str, str]] = {
+    _DOMAIN_ROOT_CODES: dict[str, tuple[str, str] | None] = {
         "Condition":   ("SNOMED", "404684003"),  # Clinical finding
         "Procedure":   ("SNOMED", "71388002"),   # Procedure
         "Drug":        ("SNOMED", "373873005"),  # Pharmaceutical / biologic product
         "Measurement": ("SNOMED", "363787002"),  # Observable entity
         "Device":      ("SNOMED", "260787004"),  # Physical object
-        "Observation": 27,
+        # Observation does not currently have a stable SNOMED top-level anchor
+        # wired here, so we deliberately fall back to the descendant-count query.
+        "Observation": None,
     }
 
     def _get_domain_root_ids(self, domain: str | None) -> tuple[int, ...]:
@@ -682,25 +753,27 @@ class OmopGraphAdapter:
 
         if domain and domain in self._DOMAIN_ROOT_CODES:
             # Fast path: single-row lookup by the stable SNOMED root concept_code.
-            vocab_id, code = self._DOMAIN_ROOT_CODES[domain]
-            stmt = (
-                select(Concept.concept_id)
-                .where(
-                    Concept.concept_code == code,
-                    Concept.vocabulary_id == vocab_id,
-                    Concept.standard_concept == "S",
+            anchor = self._DOMAIN_ROOT_CODES[domain]
+            if anchor is not None:
+                vocab_id, code = anchor
+                stmt = (
+                    select(Concept.concept_id)
+                    .where(
+                        Concept.concept_code == code,
+                        Concept.vocabulary_id == vocab_id,
+                        Concept.standard_concept == "S",
+                    )
+                    .limit(1)
                 )
-                .limit(1)
-            )
-            try:
-                with kg.session_factory() as session:
-                    rows = session.execute(stmt).all()
-                result = tuple(int(r[0]) for r in rows)
-            except Exception as exc:
-                raise GroundworkersError(
-                    "QUERY_ERROR",
-                    f"Failed to resolve hierarchy anchors for domain {domain!r}: {exc}",
-                ) from exc
+                try:
+                    with kg.session_factory() as session:
+                        rows = session.execute(stmt).all()
+                    result = tuple(int(r[0]) for r in rows)
+                except Exception as exc:
+                    raise GroundworkersError(
+                        "QUERY_ERROR",
+                        f"Failed to resolve hierarchy anchors for domain {domain!r}: {exc}",
+                    ) from exc
 
         if not result and domain:
             # Fallback for unknown domains, or when the known-code lookup missed.
