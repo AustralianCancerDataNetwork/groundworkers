@@ -209,8 +209,11 @@ class OmopGraphAdapter:
             tiers.append((EmbeddingResolver(),))
         # Partial matching without a domain/vocabulary constraint runs ILIKE against
         # the full concept table — extremely slow on large vocabularies.  Only add
-        # this tier when search_constraint narrows the search space.
-        if search_constraint is not None:
+        # this tier when search_constraint narrows the search space AND the query
+        # is short enough for ILIKE to be practical (long survey descriptions
+        # saturate the connection pool for 30-90s with no useful match).
+        _MAX_PARTIAL_QUERY_LEN = 60
+        if search_constraint is not None and len(query) <= _MAX_PARTIAL_QUERY_LEN:
             tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
 
         logger.info(
