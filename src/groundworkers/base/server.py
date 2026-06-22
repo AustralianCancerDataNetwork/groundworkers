@@ -99,16 +99,22 @@ class GroundcrewServer:
                 "The official MCP Python SDK is required to run the server. Install project dependencies first."
             ) from exc
 
-        # groundworkers is a pure request/response MCP dependency.  Stateful
-        # HTTP mode keeps one server instance alive for the duration of each
-        # client session, avoiding per-request re-initialisation overhead
-        # (SQLAlchemy model registration, connection-pool setup, etc.).
+        # groundworkers is a pure request/response MCP dependency.  Use
+        # stateless_http=True so that each POST is handled independently —
+        # with stateful mode and json_response=True the underlying
+        # StreamableHTTPServerTransport tears down its server runner task
+        # when the first HTTP connection closes, removing the session from
+        # _server_instances.  Subsequent calls with the same session ID then
+        # hit the "Session not found" 404 path.  Stateless mode avoids this:
+        # each request gets a fresh transport context while the adapters
+        # (SQLAlchemy engines, connection pools, OMOP graph state) remain
+        # alive for the process lifetime.
         app = FastMCP(
             self.name,
             host=host,
             port=port,
             json_response=transport == "streamable-http",
-            stateless_http=False,
+            stateless_http=True,
         )
         for tool_name, func in self._tools.items():
             app.tool(name=tool_name, description=inspect.getdoc(func) or "")(func)
