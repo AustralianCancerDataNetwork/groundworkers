@@ -22,7 +22,15 @@ def register_domain_tools(server: GroundcrewServer, domain_service: DomainServic
         labels that received a confident domain assignment.  Labels that could not be
         classified are omitted so callers can fall through to the next resolution tier.
 
-        Valid domains: Measurement, Condition, Observation, Procedure, Drug, Device.
+        Valid domains: Measurement, Condition, Observation, Procedure, Drug, Device,
+        Metadata, Identifier.
+
+        "Metadata" signals administrative/operational fields (examiner initials, site
+        codes, form completion data, data-entry timestamps) that describe the data
+        collection process rather than the subject's clinical state.
+        "Identifier" signals fields whose sole purpose is unique record linkage
+        (participant IDs, case numbers, medical record numbers).
+        Groundcrew treats both as skip signals and will not create SourceItems for them.
 
         Returns ``BACKEND_UNAVAIL`` when the LLM is not reachable.
         """

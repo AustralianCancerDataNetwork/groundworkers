@@ -79,7 +79,14 @@ _BUILTIN: dict[str, _Entry] = {
     "cpt_code": (ColumnRole.codes, 1.0, "CPT4", False),
     "hcpcs_code": (ColumnRole.codes, 1.0, "HCPCS", False),
     "rxnorm_code": (ColumnRole.codes, 1.0, "RxNorm", False),
-    "ndc_code": (ColumnRole.codes, 1.0, "NDC", False),
+    "ndc_code":    (ColumnRole.codes, 1.0, "NDC",    False),
+    "sctid":       (ColumnRole.codes,    1.0, "SNOMED", False),
+    "ncitc":       (ColumnRole.codes,    1.0, "NCIT",   False),
+    # O3 / oncology data dictionary column shapes
+    "valuename":   (ColumnRole.label,    1.0, None,     False),
+    "definition":  (ColumnRole.description, 1.0, None,  False),
+    "stringcode":  (ColumnRole.local_pk, 1.0, None,     False),
+    "numericcode": (ColumnRole.local_pk, 0.9, None,     False),
 }
 
 _MERGED = {_normalise(key): value for key, value in _BUILTIN.items()}

@@ -5,8 +5,12 @@ mapping of label → OMOP domain string for any label that can be confidently
 classified.  Labels that yield null or an unrecognised domain are omitted so that
 callers fall through to the next resolution tier (keyword heuristics).
 
-Valid OMOP domains returned: Measurement, Condition, Observation, Procedure,
-Drug, Device.
+Valid domains returned: Measurement, Condition, Observation, Procedure, Drug,
+Device, Metadata, Identifier.
+
+"Metadata" and "Identifier" are groundcrew-internal sentinel values, not OMOP
+CDM domains.  The ingester treats them as skip signals and does not create
+SourceItems for those rows.
 """
 from __future__ import annotations
 
@@ -14,26 +18,51 @@ from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.base.errors import GroundworkersError
 
 _VALID_DOMAINS = frozenset(
-    {"Measurement", "Condition", "Observation", "Procedure", "Drug", "Device"}
+    {
+        "Measurement",
+        "Condition",
+        "Observation",
+        "Procedure",
+        "Drug",
+        "Device",
+        "Metadata",
+        "Identifier",
+    }
 )
 
 _DOMAIN_SYSTEM = """\
-You are a clinical data analyst assigning OMOP CDM domains to data dictionary fields.
+You are a clinical data analyst assigning domains to data dictionary fields.
 Given field labels and their possible response values, classify each label into the
-most appropriate OMOP domain.
+most appropriate domain.
 Respond with raw JSON only — no markdown fences, no prose.
-Valid domains: Measurement, Condition, Observation, Procedure, Drug, Device.
+
+Valid domains:
+  Measurement  — quantitative observations or test results (lab values, vitals, scores, indices)
+  Condition    — diagnoses, diseases, disorders, symptoms, or clinical findings
+  Observation  — qualitative assessments, social history, behavioural, or lifestyle factors
+  Procedure    — clinical interventions, surgeries, therapies, or diagnostic actions
+  Drug         — medications, substances, or pharmaceutical agents
+  Device       — medical devices, equipment, or implants
+  Metadata     — administrative or operational data describing the data collection process
+                 rather than the subject's clinical state: form completion fields, examiner
+                 or staff initials or names, data entry timestamps, site or facility codes,
+                 form version numbers, quality flags, or any field that tracks how or by
+                 whom data was recorded
+  Identifier   — fields whose sole purpose is to uniquely label a record or entity:
+                 participant IDs, subject numbers, case numbers, medical record numbers,
+                 study enrolment IDs, or any opaque token used only for linkage
+
 Use null when a label cannot be confidently classified into a single domain.
 """
 
 _DOMAIN_RESPONSE_SCHEMA: dict = {
     "type": "object",
-    "description": "Mapping from field label to OMOP domain string, or null when uncertain.",
+    "description": "Mapping from field label to domain string, or null when uncertain.",
     "additionalProperties": {
         "oneOf": [
             {
                 "type": "string",
-                "enum": list(_VALID_DOMAINS),
+                "enum": sorted(_VALID_DOMAINS),
             },
             {"type": "null"},
         ]
