@@ -343,3 +343,40 @@ class RecordingRouter:
     def route(self, table: AnnotatedTable) -> tuple[IngestionStrategy, AnnotatedTable]:
         self._events.append(f"route:{table.name}")
         return self._strategy, table
+
+
+# ---------------------------------------------------------------------------
+# P1-H: _collect_uncertain_tables excludes quick_reject tables
+# ---------------------------------------------------------------------------
+
+def _make_annotated(name: str, tier: str, uncertain_cols: list[str]) -> AnnotatedTable:
+    return AnnotatedTable(
+        name=name,
+        headers=uncertain_cols or ["Code"],
+        rows=[],
+        sample_rows=[],
+        source_format=SourceFormat.CSV,
+        row_count=0,
+        classification_tier_used=tier,
+        uncertain_columns=uncertain_cols,
+        groundable_column_count=len(uncertain_cols),
+    )
+
+
+def test_collect_uncertain_tables_excludes_quick_reject_even_with_uncertain_columns():
+    """A quick_reject table with uncertain columns must not appear in the uncertain_tables
+    output — only genuine uncertain tables should prompt for human assistance."""
+    from groundworkers.services.source_planning.service import _collect_uncertain_tables
+
+    quick_reject = _make_annotated("noise_table", "quick_reject", ["Code"])
+    genuine = _make_annotated("labs", "B", ["Code"])
+
+    result = _collect_uncertain_tables(
+        [quick_reject, genuine],
+        [IngestionStrategy.UNSUPPORTED, IngestionStrategy.DATA_DICT_IDEAL],
+    )
+
+    table_names = [r["table_name"] for r in result]
+    assert "noise_table" not in table_names, "quick_reject table must be excluded"
+    assert "labs" in table_names, "genuine uncertain table must be included"
+    assert len(result) == 1

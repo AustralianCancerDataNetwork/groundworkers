@@ -35,19 +35,20 @@ class _FakeKnowledgeGraph:
         return self.session
 
 
-def test_get_domain_root_ids_observation_uses_fallback_query():
+def test_get_domain_root_ids_observation_uses_direct_concept_id():
+    """Observation now has a direct concept_id anchor (27); no DB query should be issued."""
     adapter = object.__new__(OmopGraphAdapter)
     adapter._kg = None
     adapter._root_ids_cache = {}
     adapter._DOMAIN_ROOT_CODES = dict(OmopGraphAdapter._DOMAIN_ROOT_CODES)
 
-    fake_kg = _FakeKnowledgeGraph([(111,), (222,), (333,)])
+    fake_kg = _FakeKnowledgeGraph([])
     adapter._get_kg = lambda: fake_kg
 
     roots = adapter._get_domain_root_ids("Observation")
 
-    assert roots == (111, 222, 333)
-    assert len(fake_kg.session.executed) == 1
+    assert roots == (27,)
+    assert len(fake_kg.session.executed) == 0
 
 
 def test_get_domain_root_ids_known_domain_uses_stable_anchor_lookup():

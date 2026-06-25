@@ -27,10 +27,9 @@ def create_server(config: AppConfig) -> GroundcrewServer:
         register_resolver_tools(server, app.adapters.omop_graph)
     if app.services.vocab is not None:
         register_search_tools(server, app.services.vocab)
-        register_mapping_tools(
-            server,
-            app.services.mapping,
-        )
+        if app.services.mapping is not None:
+            register_mapping_tools(server, app.services.mapping)
+        
     if app.adapters.omop_emb is not None:
         register_embedding_tools(server, app.adapters.omop_emb)
         register_embedding_resources(server, app.adapters.omop_emb)
@@ -38,7 +37,8 @@ def create_server(config: AppConfig) -> GroundcrewServer:
         register_text_tools(server, app.services.text)
     if app.services.domain is not None:
         register_domain_tools(server, app.services.domain)
-    register_source_planning_tools(server, app.services.source_planning)
+    if app.services.source_planning is not None:
+        register_source_planning_tools(server, app.services.source_planning)
     register_source_planning_resources(server)
     register_text_prompts(server)
     register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)

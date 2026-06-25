@@ -92,7 +92,7 @@ def test_complete_text_returns_response():
     assert result["text"] == "Hello world"
     assert result["model"] == "test-model"
     assert result["provider"] == "openai-compatible"
-    assert mock_client.chat.completions.create.call_args.kwargs["timeout"] == 30.0
+    assert mock_client.chat.completions.create.call_args.kwargs["timeout"] == 180.0
 
 
 def test_complete_text_uses_system_prompt():
@@ -180,7 +180,7 @@ def test_complete_structured_requests_json_object_format():
 
     call_kwargs = mock_client.chat.completions.create.call_args[1]
     assert call_kwargs.get("response_format") == {"type": "json_object"}
-    assert call_kwargs["timeout"] == 30.0
+    assert call_kwargs["timeout"] == 180.0
 
 
 def test_complete_structured_raises_query_error_on_invalid_json():

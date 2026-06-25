@@ -115,3 +115,24 @@ def test_pre_ingest_bundle_is_an_envelope_not_an_alias_for_plan():
     assert bundle.plan is plan
     assert bundle.raw_tables is not None
     assert bundle.normalised_tables is None
+
+
+def test_groundable_roles_and_uncertain_threshold_are_shared_singletons():
+    """_GROUNDABLE_ROLES and UNCERTAIN_CONFIDENCE_THRESHOLD must be imported by reference
+    from models so classifier and assisted never silently diverge from the canonical value."""
+    from groundworkers.services.source_planning.models import (
+        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_models,
+        _GROUNDABLE_ROLES as gr_models,
+    )
+    from groundworkers.services.source_planning.classifier import (
+        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_classifier,
+        _GROUNDABLE_ROLES as gr_classifier,
+    )
+    from groundworkers.services.source_planning.assisted import (
+        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_assisted,
+        _GROUNDABLE_ROLES as gr_assisted,
+    )
+    assert gr_classifier is gr_models, "classifier must share _GROUNDABLE_ROLES with models"
+    assert gr_assisted is gr_models, "assisted must share _GROUNDABLE_ROLES with models"
+    assert uct_classifier is uct_models, "classifier must share UNCERTAIN_CONFIDENCE_THRESHOLD with models"
+    assert uct_assisted is uct_models, "assisted must share UNCERTAIN_CONFIDENCE_THRESHOLD with models"

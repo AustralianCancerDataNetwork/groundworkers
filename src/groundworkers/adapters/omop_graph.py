@@ -104,6 +104,7 @@ class OmopGraphAdapter:
     def close(self) -> None:
         self.engine.dispose()
         self._kg = None
+        self._root_ids_cache = {}
 
     def get_concept(self, concept_id: int) -> dict[str, Any] | None:
         try:
@@ -726,23 +727,21 @@ class OmopGraphAdapter:
         return self._kg
 
     # Stable SNOMED concept codes for the top-level concept in each standard OMOP domain.
-    _DOMAIN_ROOT_CODES: dict[str, tuple[str, str] | None] = {
+    _DOMAIN_ROOT_CODES: dict[str, tuple[str, str] | int | None] = {
         "Condition":   ("SNOMED", "404684003"),  # Clinical finding
         "Procedure":   ("SNOMED", "71388002"),   # Procedure
         "Drug":        ("SNOMED", "373873005"),  # Pharmaceutical / biologic product
         "Measurement": ("SNOMED", "363787002"),  # Observable entity
         "Device":      ("SNOMED", "260787004"),  # Physical object
-        # Observation does not currently have a stable SNOMED top-level anchor
-        # wired here, so we deliberately fall back to the descendant-count query.
-        "Observation": None,
+        "Observation": 27,                        # Observation concept_id (OMOP CDM standard)
     }
 
     def _get_domain_root_ids(self, domain: str | None) -> tuple[int, ...]:
         """Return top-level concept IDs to use as hierarchy anchors for the given domain.
 
-        Known domains use a stable SNOMED code lookup (single row). Unknown domains fall
-        back to a GROUP BY query over concept_ancestor to find the most-connected root.
-        Results are cached per domain.
+        Known domains use a stable SNOMED code lookup (single row) or a direct concept_id.
+        Unknown domains fall back to a GROUP BY query over concept_ancestor to find the
+        most-connected root.  Results are cached per domain.
         """
         cache_key = domain or ""
         if cache_key in self._root_ids_cache:
@@ -752,9 +751,11 @@ class OmopGraphAdapter:
         kg = self._get_kg()
 
         if domain and domain in self._DOMAIN_ROOT_CODES:
-            # Fast path: single-row lookup by the stable SNOMED root concept_code.
+            # Fast path: direct concept_id or single-row code lookup.
             anchor = self._DOMAIN_ROOT_CODES[domain]
-            if anchor is not None:
+            if isinstance(anchor, int):
+                result = (anchor,)
+            elif anchor is not None:
                 vocab_id, code = anchor
                 stmt = (
                     select(Concept.concept_id)

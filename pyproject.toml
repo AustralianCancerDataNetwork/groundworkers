@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+llm = [
+  "openai>=1.0",
+]
 xlsx = [
   "openpyxl>=3.1,<4",
 ]

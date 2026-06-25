@@ -473,6 +473,33 @@ def test_embedding_channel_notes_parent_ids_limitation_when_parent_ids_provided(
     assert any("parent_ids" in note for note in emb_notes)
 
 
+def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_standard_match():
+    """An EXACT label match on a non-standard concept must NOT take the early-return path
+    (exact_standard_match); it must navigate to a standard ancestor instead."""
+
+    class ExactNonStandardGraph(StubGraphAdapter):
+        def ground(self, query, limit, domain, vocabulary_id, parent_ids=None):
+            return {
+                "results": [{
+                    "concept_id": 102,
+                    "concept_name": "Type 2 diabetes mellitus",
+                    "match_kind": "EXACT",
+                    "standard_concept": False,
+                }],
+                "grounding_explanation": {"matched_tier": "EXACT"},
+            }
+
+    service = MappingService(StubVocabAdapter(), graph_adapter=ExactNonStandardGraph())
+    result = service.concept_nearest_standard_ancestor(query="Type 2 diabetes mellitus")
+
+    assert result["found"] is True
+    assert result["selection_reason"] == "nearest_standard_ancestor", (
+        "EXACT match on a non-standard concept must not short-circuit to exact_standard_match"
+    )
+    assert result["selected_parent"] is not None
+    assert result["selected_parent"]["concept_id"] == 301
+
+
 def test_embedding_channel_no_parent_ids_note_when_parent_ids_absent():
     service, _ = _service_with_recording_vocab(emb=StubEmbAdapter())
 
