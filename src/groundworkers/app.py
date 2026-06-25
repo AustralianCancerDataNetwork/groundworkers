@@ -84,6 +84,16 @@ def build_adapters(config: AppConfig) -> Adapters:
             api_base, api_key = api_credentials
 
             def build_client(model_name: str) -> EmbeddingClient:
+                if api_key is None:
+                    raise RuntimeError(
+                        "Embedding client cannot be built because no API key was configured. "
+                        "Set omop_emb.api_key in the config or set the OPENAI_API_KEY environment variable."
+                    )
+                if api_base is None:
+                    raise RuntimeError(
+                        "Embedding client cannot be built because no API base URL was configured. "
+                        "Set omop_emb.api_base in the config or set the OPENAI_API_BASE environment variable."
+                    )
                 return EmbeddingClient(
                     model=model_name,
                     api_base=api_base,
