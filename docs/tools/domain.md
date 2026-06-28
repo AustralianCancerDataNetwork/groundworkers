@@ -56,6 +56,12 @@ Valid returned domains are:
 - `Procedure`
 - `Drug`
 - `Device`
+- `Metadata` — administrative or operational fields describing the data collection
+  process (examiner initials, site codes, form completion flags, data-entry
+  timestamps). Groundcrew treats this as a skip signal and will not create
+  `SourceItem` records for these fields.
+- `Identifier` — fields whose sole purpose is unique record linkage (participant IDs,
+  case numbers, medical record numbers). Also treated as a skip signal by Groundcrew.
 
 **When to use it:**
 

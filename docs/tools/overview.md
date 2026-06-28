@@ -1,6 +1,6 @@
 # Tools Overview
 
-groundworkers registers eight tool groups. Tools appear only when the relevant
+groundworkers registers nine tool groups. Tools appear only when the relevant
 adapters or services are available in the config.
 
 | Group | Tools | Requires |
@@ -10,18 +10,20 @@ adapters or services are available in the config.
 | **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_graph` |
 | **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `omop_graph` |
 | **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` |
-| **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | `llm` |
+| **Text** | `text_normalize`, `text_mapping_cleanup`, `text_decompose`, `text_disambiguate` | `llm` |
 | **Domain** | `domain_classify` | `llm` |
+| **Source Planning** | `source_plan`, `source_plan_assisted` | Always registered (`source_plan_assisted` requires `llm`) |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
-!!! info "System tools are always registered"
-    `system_status` and `system_vocabulary_catalogue` are always present so clients can
-    check what is available in the current deployment.
+!!! info "System and source planning tools are always registered"
+    `system_status`, `system_vocabulary_catalogue`, and `source_plan` are always
+    present regardless of adapter configuration. `source_plan_assisted` is also
+    always registered but returns `BACKEND_UNAVAIL` when no `llm` is configured.
 
 !!! info "Text tools require LLM configuration"
-    `text_normalize`, `text_decompose`, and `text_disambiguate` are registered only
-    when `llm` is configured in `AppConfig`. They are absent from `--describe` output
-    when no LLM is configured.
+    `text_normalize`, `text_mapping_cleanup`, `text_decompose`, and `text_disambiguate`
+    are registered only when `llm` is configured in `AppConfig`. They are absent from
+    `--describe` output when no LLM is configured.
 
 !!! info "Domain tools require LLM configuration"
     `domain_classify` is registered only when `llm` is configured in `AppConfig`.
@@ -49,6 +51,38 @@ Backed by `TextService`.
 **Domain tools** classify structured field labels into OMOP domains in one batch.
 Use them when a caller already has field labels and example values and wants a
 best-effort domain hint before downstream mapping. Backed by `DomainService`.
+
+**Source planning tools** decompose, normalize, and annotate source data files
+into neutral grounding artifacts. They accept raw source content (CSV, XLSX, PDF,
+DOCX, XML, JSON, DDL SQL) and produce `IngestionPlan` objects describing column
+roles and ingestion strategies. Backed by `SourcePlanningService`.
+
+## MCP resources
+
+groundworkers also exposes read-only MCP resources that clients can fetch
+without calling a tool. Resources are always registered when their adapter is
+configured.
+
+| URI | Description | Requires |
+|---|---|---|
+| `config://active` | Sanitised view of the active server configuration (adapters, key settings; API keys masked) | Always |
+| `vocabularies://catalogue` | Full OMOP vocabulary/domain/concept-class catalogue with concept counts | `omop_graph` |
+| `embedding://models` | Available embedding models with backend type, provider, dimensions, and indexed concept count | `omop_emb` |
+| `source-planning://canonical-headers` | Tier A canonical header catalogue used for deterministic source-planning classification | Always |
+| `source-planning://column-roles` | `ColumnRole` values and descriptions for interpreting annotated source-planning outputs | Always |
+| `source-planning://ingestion-strategies` | `IngestionStrategy` values and descriptions for interpreting route decisions | Always |
+
+## MCP prompts
+
+Four MCP prompts expose the exact LLM message sequences used by the text tools.
+They are useful for inspection, testing, or manual invocation via prompt UIs.
+
+| Prompt | Description |
+|---|---|
+| `normalize_clinical_term` | Message sequence for normalizing a clinical term or abbreviation |
+| `cleanup_mapping_text` | Message sequence for rewriting source text into a clean grounding phrase |
+| `decompose_clinical_text` | Message sequence for decomposing a free-text clinical description into terms |
+| `disambiguate_clinical_term` | Message sequence for listing plausible interpretations of an ambiguous term |
 
 ## Services and direct Python use
 

@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+hades = [
+  "hades-results-alchemy @ git+ssh://git@github.com/AustralianCancerDataNetwork/hades-results-alchemy.git",
+]
 llm = [
   "openai>=1.0",
 ]

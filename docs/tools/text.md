@@ -1,7 +1,7 @@
 # Text Tools
 
-Three tools preprocess clinical free text into forms suitable for concept grounding.
-They are registered only when `llm` is configured. All three are thin wrappers over
+Four tools preprocess clinical free text into forms suitable for concept grounding.
+They are registered only when `llm` is configured. All four are thin wrappers over
 `TextService`.
 
 These tools are preprocessing steps, not grounding tools. Their outputs are inputs
@@ -51,7 +51,67 @@ alternatives or ambiguity, otherwise `null`.
 Use `text_normalize` when you have a single term that needs to be converted to
 OMOP-compatible form before searching. If you have a multi-concept phrase, use
 `text_decompose` first. If you are unsure whether the term is ambiguous, use
-`text_disambiguate`.
+`text_disambiguate`. If the input is noisy source text that needs cleaning before
+grounding (not a clinical abbreviation but a messy label), use `text_mapping_cleanup`.
+
+**Error cases:**
+
+| Error code | Condition |
+|---|---|
+| `INVALID_INPUT` | Empty or whitespace-only `text` |
+| `BACKEND_UNAVAIL` | LLM API unreachable or authentication failure |
+| `QUERY_ERROR` | Model API error or response could not be parsed |
+
+---
+
+## `text_mapping_cleanup`
+
+Rewrites source text into the best single search phrase for downstream OMOP mapping.
+Unlike `text_normalize`, which expands abbreviations and converts lay language, this
+tool removes formatting noise, score prefixes, duplicated fragments, and value-label
+boilerplate that would confuse a concept search without changing the clinical meaning.
+
+```json
+{
+  "text": "2=Moderate",
+  "context": {
+    "parent_label": "Pain severity",
+    "sibling_values": ["1=Mild", "3=Severe"],
+    "domain_hint": "Measurement"
+  },
+  "domain_hint": "Measurement",
+  "model_name": null
+}
+```
+
+`text` is required. `context`, `domain_hint`, and `model_name` are optional.
+
+`context` accepts any subset of: `parent_label`, `sibling_values`, `child_values`,
+`source_code`, `domain_hint`. These help the model keep the rewrite faithful to
+the source structure and avoid stripping semantically important parts.
+
+**Response:**
+
+```json
+{
+  "replacement": "Moderate",
+  "original": "2=Moderate",
+  "changed": true,
+  "confidence": "high",
+  "notes": null
+}
+```
+
+`changed` is `true` when the rewrite differs from the original. `confidence` is one
+of `"high"`, `"medium"`, or `"low"`. `notes` is a free-text string when the model
+has commentary, otherwise `null`.
+
+**When to use this vs the others:**
+
+Use `text_mapping_cleanup` when the input is a coded or formatted source value that
+carries noise around its core clinical meaning (e.g. `"1=Yes"`, `"3 - Severe pain"`,
+`"HTN (confirmed)"`). For abbreviation expansion or lay-to-clinical conversion, use
+`text_normalize`. For multi-concept phrases, use `text_decompose`.
 
 **Error cases:**
 

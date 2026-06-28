@@ -43,6 +43,7 @@ nav:
       - Embedding Tools: tools/embedding.md
       - Text Tools: tools/text.md
       - Domain Tools: tools/domain.md
+      - Source Planning Tools: tools/source_planning.md
       - System Tools: tools/system.md
   - Services:
       - Vocab Service: services/vocab.md
