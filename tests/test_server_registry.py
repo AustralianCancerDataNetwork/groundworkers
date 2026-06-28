@@ -25,9 +25,10 @@ def test_server_starts_without_domain_tools_when_no_adapters_configured():
     server = create_server(config)
     # system_status and system_vocabulary_catalogue are always registered
     # regardless of adapter availability so clients can always query availability.
-    assert server.list_tools() == ["source_plan", "source_plan_assisted", "system_status", "system_vocabulary_catalogue"]
+    assert server.list_tools() == ["knowledge_catalogue", "source_plan", "source_plan_assisted", "system_status", "system_vocabulary_catalogue"]
     assert server.list_resources() == [
         "config://active",
+        "knowledge://catalogue",
         "source-planning://canonical-headers",
         "source-planning://column-roles",
         "source-planning://ingestion-strategies",

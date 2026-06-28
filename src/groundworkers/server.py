@@ -15,6 +15,7 @@ from groundworkers.tools.source_planning_tools import (
     register_source_planning_resources,
     register_source_planning_tools,
 )
+from groundworkers.tools.knowledge_tools import register_knowledge_tools
 from groundworkers.tools.system_tools import register_system_resources, register_system_tools
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 
@@ -40,6 +41,7 @@ def create_server(config: AppConfig) -> GroundcrewServer:
     if app.services.source_planning is not None:
         register_source_planning_tools(server, app.services.source_planning)
     register_source_planning_resources(server)
+    register_knowledge_tools(server)
     register_text_prompts(server)
     register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
     register_system_resources(server, config, app.adapters.omop_graph)

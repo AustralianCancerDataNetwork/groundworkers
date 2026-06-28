@@ -298,3 +298,4 @@ class PreIngestBundle:
     errors: list[PlanningError] = field(default_factory=list)
     elapsed_ms: int = 0
     llm_tier_used: bool = False
+    detected_source_system: str | None = None

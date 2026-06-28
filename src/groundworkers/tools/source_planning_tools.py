@@ -150,6 +150,7 @@ def serialize_pre_ingest_bundle(
 
     return {
         "plan": _jsonable(bundle.plan),
+        "detected_source_system": bundle.detected_source_system,
         "raw_tables": _jsonable(bundle.raw_tables) if include_intermediate else None,
         "normalised_tables": _jsonable(bundle.normalised_tables) if include_intermediate else None,
         "annotated_tables": _jsonable(bundle.annotated_tables) if include_intermediate else None,

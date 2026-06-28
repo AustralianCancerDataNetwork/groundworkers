@@ -25,6 +25,7 @@ from groundworkers.services.source_planning.normalisation import (
     normalise_tables,
 )
 from groundworkers.services.source_planning.router import IngesterRouter
+from groundworkers.services.source_planning.source_profiles.registry import SourceProfileRegistry
 from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
 
 class SourcePlanningService:
@@ -45,6 +46,7 @@ class SourcePlanningService:
         assisted_classifier: AssistedColumnRoleClassifier | None = None,
         router: IngesterRouter | None = None,
         normalisation_policy: NormalisationPolicy | None = None,
+        source_profile_registry: SourceProfileRegistry | None = None,
     ) -> None:
         self._detector = detector or FormatDetector()
         self._decomposer = decomposer or TableDecomposer()
@@ -52,6 +54,7 @@ class SourcePlanningService:
         self._assisted_classifier = assisted_classifier
         self._router = router or IngesterRouter()
         self._normalisation_policy = normalisation_policy
+        self._source_profile_registry = source_profile_registry or SourceProfileRegistry()
 
     def plan_source(
         self,
@@ -168,6 +171,15 @@ class SourcePlanningService:
         warnings.extend(_mixed_format_warnings(raw_tables, source_format))
 
         normalised_tables = normalise_tables(raw_tables, policy=self._normalisation_policy)
+
+        # Use original_headers for detection — normalisation may prune structurally
+        # empty columns that are still part of the platform's schema fingerprint.
+        all_headers = frozenset(
+            h for table in normalised_tables for h in table.original_headers
+        )
+        source_profile = self._source_profile_registry.match(all_headers)
+        detected_source_system = source_profile.name if source_profile is not None else None
+
         annotated_tables = [self._classifier.classify(table) for table in normalised_tables]
         if use_assisted_classification:
             if self._assisted_classifier is None:
@@ -225,6 +237,7 @@ class SourcePlanningService:
             errors=errors,
             elapsed_ms=elapsed_ms,
             llm_tier_used=llm_tier_used,
+            detected_source_system=detected_source_system,
         )
 
 
