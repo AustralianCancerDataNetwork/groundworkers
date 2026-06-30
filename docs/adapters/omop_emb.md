@@ -1,38 +1,56 @@
 # OmopEmb Adapter
 
 `OmopEmbAdapter` wraps [omop-emb](https://australiancancerdatanetwork.github.io/omop-emb/)
-to provide embedding index queries.  It supports two storage backends and operates in
-one of two modes depending on whether an encoding client is configured.
+for embedding-backed concept retrieval.
 
-## Storage backends
+## What it owns
 
-| Backend | Config | Description |
-|---|---|---|
-| `sqlitevec` | `db_path: /path/to/index.db` | File-based; zero external dependencies |
-| `pgvector` | `db_url: postgresql://...` | PostgreSQL; scales to larger indexes |
+The adapter is responsible for:
 
-FAISS can be layered on top of either backend via `faiss_cache_dir` to accelerate
-nearest-neighbour queries. FAISS is a read-time sidecar cache — it is not a standalone
-backend and requires `sqlitevec` or `pgvector` to be configured alongside it.
+- nearest-neighbour lookup against the configured embedding store
+- optional on-the-fly query encoding through an embedding client
+- exposing backend availability and registered model metadata
+
+The adapter does **not** resolve stack config itself. `build_application(...)`
+constructs it from the already-resolved `omop-emb` package config and any
+required engines.
+
+## Backends
+
+`groundworkers` currently supports the same primary storage backends it wires
+from `omop-emb`:
+
+| Backend | omop-emb config |
+|---|---|
+| `sqlitevec` | `backend = "sqlitevec"` plus `sqlite_path` |
+| `pgvector` | `backend = "pgvector"` plus a configured embedding resource |
+
+FAISS remains a sidecar acceleration layer rather than a standalone primary
+backend.
 
 ## Operation modes
 
-### Index lookup mode (no encoding client required)
+### Index lookup mode
 
-`embedding_neighbours` fetches the stored vector for a concept ID from the index and
-returns the nearest neighbours by similarity. No API key is needed — all data is in
-the index.
+No live model API is required.
 
-### Text search mode (encoding client required)
+- `embedding_neighbours` reads an existing concept vector from the index
+- `index_status` reports registered models and concept counts
 
-`embedding_search` and `embedding_encode` encode text on the fly using a live embedding
-model (`api_base` + `api_key`).
+### Text search mode
 
-- `embedding_search`: encodes a query string and returns the nearest matching concepts
-  with optional domain, vocabulary, standard, and active-status filtering.
-- `embedding_encode`: returns the raw embedding vector for a text string.
+Requires an embedding client configured through `omop-emb` package settings.
 
-## `index_status` response
+- `embedding_search` encodes a text query on the fly
+- `embedding_encode` returns a raw embedding vector
+
+## Availability model
+
+The underlying backend is built lazily on first use. If the backend cannot be
+opened, the adapter reports unavailability rather than crashing the service at
+startup.
+
+Representative `index_status()` shape:
 
 ```json
 {
@@ -50,8 +68,9 @@ model (`api_base` + `api_key`).
 }
 ```
 
-## Lazy backend initialisation
+## Where it is used
 
-The underlying backend object is created on first use (not at server startup).  If
-the backend is unavailable, `index_status` returns `"available": false` with an empty
-`models` list rather than crashing.
+- embedding MCP tools
+- the embedding channel inside `MappingService.concept_candidate_bundle(...)`
+- optional embedding-tier support inside graph grounding when an embedding client
+  is successfully wired into `OmopGraphAdapter`

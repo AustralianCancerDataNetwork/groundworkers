@@ -35,6 +35,8 @@ nav:
       - Configuration: usage/configuration.md
       - Integrations: usage/integrations.md
       - Testing: usage/testing.md
+  - Development:
+      - Extending groundworkers: development/extending.md
   - Tools:
       - Overview: tools/overview.md
       - Concept Tools: tools/concept.md

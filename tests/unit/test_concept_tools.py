@@ -88,34 +88,12 @@ class StubGraphAdapter:
         self.calls.append(("get_descendants", {"concept_id": concept_id, "max_depth": max_depth}))
         return []
 
-    def ground(
-        self,
-        query: str,
-        limit: int,
-        domain: str | None,
-        vocabulary_id: str | None,
-        parent_ids: tuple[int, ...] | None = None,
-    ) -> dict:
-        self.calls.append(("ground", {
-            "query": query,
-            "limit": limit,
-            "domain": domain,
-            "vocabulary_id": vocabulary_id,
-            "parent_ids": parent_ids,
-        }))
-        all_results = [
-            _ground_result(100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"),
-            _ground_result(101, name="Diabetes mellitus type 2", score=0.8, match_kind="PARTIAL"),
-        ]
-        return {
-            "results": all_results[:limit],
-            "grounding_explanation": {
-                "matched_tier": all_results[0]["match_kind"],
-                "used_embedding": False,
-                "effective_parent_ids": list(parent_ids) if parent_ids else [4002649],
-                "parent_ids_source": "explicit" if parent_ids else "domain_root",
-            },
-        }
+    def map_to_standard(self, vocabulary_id: str, code: str) -> dict:
+        self.calls.append(("map_to_standard", (vocabulary_id, code)))
+        if code == "unknown":
+            raise GroundworkersError("NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found")
+        source = _concept(123, name="Source concept")
+        return {"source": source, "standard_concepts": [_concept(456, name="Standard concept")]}
 
     def get_edges(self, concept_id: int) -> dict:
         self.calls.append(("get_edges", (concept_id,)))
@@ -205,18 +183,46 @@ class StubGraphAdapter:
             ],
         }
 
-    def map_to_standard(self, vocabulary_id: str, code: str) -> dict:
-        self.calls.append(("map_to_standard", (vocabulary_id, code)))
-        if code == "unknown":
-            raise GroundworkersError("NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found")
-        source = _concept(123, name="Source concept")
-        return {"source": source, "standard_concepts": [_concept(456, name="Standard concept")]}
+
+class StubGroundingService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def ground(
+        self,
+        query: str,
+        *,
+        limit: int,
+        domain: str | None,
+        vocabulary_id: str | None,
+        parent_ids: tuple[int, ...] | None = None,
+    ) -> dict:
+        self.calls.append(("ground", {
+            "query": query,
+            "limit": limit,
+            "domain": domain,
+            "vocabulary_id": vocabulary_id,
+            "parent_ids": parent_ids,
+        }))
+        all_results = [
+            _ground_result(100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"),
+            _ground_result(101, name="Diabetes mellitus type 2", score=0.8, match_kind="PARTIAL"),
+        ]
+        return {
+            "results": all_results[:limit],
+            "grounding_explanation": {
+                "matched_tier": all_results[0]["match_kind"],
+                "used_embedding": False,
+                "effective_parent_ids": list(parent_ids) if parent_ids else [4002649],
+                "parent_ids_source": "explicit" if parent_ids else "domain_root",
+            },
+        }
 
 
-def build_server(adapter) -> GroundcrewServer:
+def build_server(adapter, grounding_service=None) -> GroundcrewServer:
     server = GroundcrewServer("test-server")
     register_concept_tools(server, adapter)
-    register_resolver_tools(server, adapter)
+    register_resolver_tools(server, grounding_service or StubGroundingService())
     return server
 
 
@@ -322,18 +328,19 @@ def test_concept_by_code_always_returns_list_shape():
 
 def test_concept_ground_empty_query_returns_invalid_input():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    grounding = StubGroundingService()
+    server = build_server(adapter, grounding)
 
     result = server.call("concept_ground", query="   ")
 
     assert result["error"] is True
     assert result["code"] == "INVALID_INPUT"
-    assert adapter.calls == []
+    assert grounding.calls == []
 
 
 def test_concept_ground_valid_query_returns_results_and_explanation():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    server = build_server(adapter, StubGroundingService())
 
     result = server.call("concept_ground", query="diabetes", limit=5)
 
@@ -348,7 +355,7 @@ def test_concept_ground_valid_query_returns_results_and_explanation():
 
 def test_concept_ground_results_include_scoring_fields():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    server = build_server(adapter, StubGroundingService())
 
     result = server.call("concept_ground", query="diabetes", limit=5)
 
@@ -365,7 +372,7 @@ def test_concept_ground_results_include_scoring_fields():
 
 def test_concept_ground_results_sorted_by_score():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    server = build_server(adapter, StubGroundingService())
 
     result = server.call("concept_ground", query="diabetes", limit=5)
 
@@ -375,7 +382,7 @@ def test_concept_ground_results_sorted_by_score():
 
 def test_concept_ground_exact_match_appears_first():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    server = build_server(adapter, StubGroundingService())
 
     result = server.call("concept_ground", query="Type 2 diabetes mellitus", limit=5)
 
@@ -384,18 +391,19 @@ def test_concept_ground_exact_match_appears_first():
 
 def test_concept_ground_passes_parent_ids_to_adapter():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    grounding = StubGroundingService()
+    server = build_server(adapter, grounding)
 
     server.call("concept_ground", query="diabetes", parent_ids=[4002649, 443238])
 
-    call = adapter.calls[0]
+    call = grounding.calls[0]
     assert call[0] == "ground"
     assert call[1]["parent_ids"] == (4002649, 443238)
 
 
 def test_concept_ground_explanation_reflects_explicit_parent_ids():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    server = build_server(adapter, StubGroundingService())
 
     result = server.call("concept_ground", query="diabetes", parent_ids=[4002649])
 
@@ -405,22 +413,24 @@ def test_concept_ground_explanation_reflects_explicit_parent_ids():
 
 def test_concept_ground_rejects_non_positive_parent_ids():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    grounding = StubGroundingService()
+    server = build_server(adapter, grounding)
 
     result = server.call("concept_ground", query="diabetes", parent_ids=[4002649, -1])
 
     assert result["error"] is True
     assert result["code"] == "INVALID_INPUT"
-    assert adapter.calls == []
+    assert grounding.calls == []
 
 
 def test_concept_ground_without_parent_ids_passes_none_to_adapter():
     adapter = StubGraphAdapter()
-    server = build_server(adapter)
+    grounding = StubGroundingService()
+    server = build_server(adapter, grounding)
 
     server.call("concept_ground", query="diabetes")
 
-    call = adapter.calls[0]
+    call = grounding.calls[0]
     assert call[1]["parent_ids"] is None
 
 

@@ -1,145 +1,239 @@
 # Configuration
 
-groundworkers uses the same `AppConfig` model for both supported integration styles:
+`groundworkers` uses the shared OMOP stack configuration managed by
+`oa-configurator`. The runtime is resolved into an `AppConfig` object by
+`build_app_config(...)`; callers do not pass a separate YAML file to the
+service or library layer.
 
-- MCP server mode via `groundworkers --config ...`
-- direct Python mode via `AppConfig.load(...)` and `build_application(config)`
+## Runtime entrypoints
 
-There is no separate "server config" and "library config". The same object graph is
-reused by both.
+Use these helpers depending on how much control you need:
 
-## Minimal example (vocabulary only)
-
-```yaml
-omop_graph:
-  db_url: "postgresql+psycopg://user:pass@localhost:5432/omop"
-  vocab_schema: omop_vocab
+```python
+from groundworkers.bootstrap import build_app_config, build_app_config_from_stack
 ```
 
-## With embedding search
+- `build_app_config()` loads the active shared stack config from disk
+- `build_app_config(config_path=..., profile=...)` overrides the file or profile
+- `build_app_config_from_stack(stack)` is useful in tests and programmatic tooling
 
-```yaml
-omop_graph:
-  db_url: "postgresql+psycopg://user:pass@localhost:5432/omop"
-  vocab_schema: omop_vocab
+Then construct the application container:
 
-omop_emb:
-  enabled: true
-  backend_type: pgvector
-  db_url: "postgresql+psycopg://user:pass@localhost:5432/omop"
-  default_model_name: qwen3-embedding:0.6b
-  api_base: "http://localhost:11434/v1"
-  api_key: "ollama"
+```python
+from groundworkers.app import build_application
+from groundworkers.bootstrap import build_app_config
+
+config = build_app_config()
+app = build_application(config)
 ```
 
-## With LLM text tools
+## Configuration ownership
 
-```yaml
-omop_graph:
-  db_url: "postgresql+psycopg://user:pass@localhost:5432/omop"
-  vocab_schema: omop_vocab
+`groundworkers` does not own every setting it consumes. The shared stack keeps
+package ownership explicit:
 
-llm:
-  enabled: true
-  provider: openai-compatible
-  api_base: "http://localhost:11434/v1"
-  api_key: "ollama"
-  default_model_name: qwen3:8b
+| Concern | Package that owns it |
+|---|---|
+| Shared CDM resource and schema naming | `omop-alchemy` |
+| Graph traversal tuning | `omop-graph` |
+| Embedding backend, model, cache, and embedding store | `omop-emb` |
+| MCP defaults, REST defaults, LLM worker settings, source-planning settings, knowledge-pack settings | `groundworkers` |
+
+This means the `groundworkers` package config stays intentionally small.
+
+## Typical TOML shape
+
+This is the steady-state structure to expect in `config.toml`:
+
+```toml
+[resources.cdm_db]
+database = "cdm_postgres"
+cdm_schema = "omop"
+vocab_schema = "omop_vocab"
+
+[tools.groundworkers]
+default_resource = "cdm_db"
+app_name = "groundworkers"
+
+[tools.groundworkers.mcp]
+transport = "streamable-http"
+host = "127.0.0.1"
+port = 8000
+
+[tools.groundworkers.rest]
+enabled = true
+host = "127.0.0.1"
+port = 8080
+base_path = "/v1"
+
+[tools.groundworkers.llm]
+enabled = true
+provider = "openai-compatible"
+api_base = "http://localhost:11434/v1"
+api_key = "ollama"
+default_model_name = "qwen3:8b"
+
+[tools.groundworkers.grounding]
+embedding_model_name = "qwen3-embedding:0.6b"
+min_fulltext_overlap = 0.5
+
+[tools.groundworkers.source_planning]
+llm_assisted_enabled = true
 ```
 
-## Configuration reference
+If embeddings are enabled, `omop-emb` contributes its own package section:
+
+```toml
+[tools.omop_emb]
+backend = "sqlitevec"
+sqlite_path = ".local/omop-emb.db"
+embedding_model = "qwen3-embedding:0.6b"
+api_base = "http://localhost:11434/v1"
+api_key = "ollama"
+```
+
+## groundworkers-owned fields
 
 ### `app_name`
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `app_name` | `str` | `groundworkers` | MCP server name and application identifier used by `GroundcrewServer`. |
+Application identity used by:
 
-### `omop_graph`
+- MCP server naming
+- REST application title
+- runtime describe output
 
-Connects to the OMOP vocabulary database via omop-graph.
+Default: `groundworkers`
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `db_url` | `str` | — | **Required.** SQLAlchemy connection URL for the OMOP CDM database. |
-| `vocab_schema` | `str` | `omop_vocab` | Schema containing OMOP vocabulary tables. Only letters, digits, and underscores allowed. |
-| `emb_model_name` | `str` | `null` | Default embedding model name used by the `EMBEDDING_NEAREST` grounding tier in `concept_ground`. |
-| `min_fulltext_overlap` | `float` | `0.0` | Minimum proportion of query tokens that must overlap a full-text hit before `concept_ground` accepts it. |
+### `mcp`
 
-When `omop_graph` is configured:
+Default MCP startup settings used when you do not override them on the CLI.
 
-- `CDMAdapter` and `OmopGraphAdapter` are built
-- `VocabService` is built against the same CDM connection
-- `MappingService` is built on top of `VocabService` and `OmopGraphAdapter`
-- concept, resolver, search, mapping, and system tools become available
-- `MappingService` becomes available via `app.services.mapping`
-- `VocabService` becomes available via `app.services.vocab`
+| Field | Type | Default |
+|---|---|---|
+| `transport` | `stdio` \| `sse` \| `streamable-http` | `stdio` |
+| `host` | `str` | `127.0.0.1` |
+| `port` | `int` | `8000` |
 
-!!! note "Full-text search is auto-detected"
-    The `concept_ground` and `concept_search_fulltext` tools use PostgreSQL tsvector
-    sidecar columns (`concept_name_tsvector`, `concept_synonym_name_tsvector`) when
-    they are present. No configuration is required; the adapter inspects the schema
-    on first use.
+### `rest`
 
-### `omop_emb`
+Default REST startup settings.
 
-Configures the embedding index adapter.
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | `bool` | `false` |
+| `host` | `str` | `127.0.0.1` |
+| `port` | `int` | `8080` |
+| `base_path` | `str` | `/v1` |
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | `bool` | `false` | Must be `true` for embedding tools to be registered. |
-| `backend_type` | `sqlitevec` \| `pgvector` | `sqlitevec` | Embedding storage backend. `sqlitevec` and `pgvector` are the only supported primary backends. |
-| `db_path` | `str` | `null` | Path to the sqlite-vec database file (required for `sqlitevec`). |
-| `db_url` | `str` | `null` | SQLAlchemy URL (required for `pgvector`). |
-| `default_model_name` | `str` | `null` | Model to use when no `model_name` argument is supplied by the caller. |
-| `faiss_cache_dir` | `str` | `null` | Directory for a FAISS sidecar cache. FAISS accelerates nearest-neighbour queries but requires a primary backend (`sqlitevec` or `pgvector`) to be configured alongside it. |
-| `api_base` | `str` | `null` | Embedding API base URL for on-the-fly query encoding. |
-| `api_key` | `str` | `null` | API key for the embedding service when `api_base` is set. |
-
-!!! note "`embedding_search` requires `api_base`"
-    `embedding_search` encodes the query string on the fly. This requires a configured
-    `api_base` and `api_key`. `embedding_neighbours` does not encode any text; it
-    looks up an existing concept embedding by ID and does not need `api_base`.
-
-When `omop_emb.enabled` is true:
-
-- embedding MCP tools are registered
-- `MappingService` can optionally use the embedding channel for candidate bundles
-- `concept_mapping_context` can optionally add embedding neighbors
+`base_path` is validated to begin with `/`.
 
 ### `llm`
 
-Configures the LLM adapter for LLM-backed text preprocessing and domain
-classification tools.
+Worker-owned LLM settings used by `TextService`, `DomainService`, and LLM-assisted
+source planning.
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `enabled` | `bool` | `false` | Must be `true` for text and domain tools to be registered. |
-| `provider` | `str` | `openai-compatible` | API provider label. Use `"openai-compatible"` for OpenAI-compatible endpoints (including Ollama). |
-| `api_base` | `str` | `null` | Base URL for the model API. |
-| `api_key` | `str` | `null` | API key. Use `"ollama"` as a placeholder for Ollama (which does not require authentication). |
-| `default_model_name` | `str` | `null` | Model to use when no `model_name` argument is supplied by the caller. |
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | `bool` | `false` |
+| `provider` | `str` | `openai-compatible` |
+| `api_base` | `str \| null` | `null` |
+| `api_key` | `str \| null` | `null` |
+| `default_model_name` | `str \| null` | `null` |
 
-When `llm.enabled` is true:
+### `grounding`
 
-- `LLMAdapter` is built and both `TextService` and `DomainService` are wired on top of it
-- `text_normalize`, `text_decompose`, and `text_disambiguate` MCP tools are registered
-- `domain_classify` MCP tool is registered
-- `TextService` becomes available via `app.services.text`
-- `DomainService` becomes available via `app.services.domain`
-- All vocabulary, search, mapping, and embedding tools remain fully functional
-  regardless of whether `llm` is configured
+Groundworkers-owned grounding behavior that does not belong in `omop-graph` or
+`omop-emb`.
+
+| Field | Type | Default |
+|---|---|---|
+| `embedding_model_name` | `str \| null` | `null` |
+| `min_fulltext_overlap` | `float` | `0.0` |
+
+`min_fulltext_overlap` must be between `0.0` and `1.0`.
+
+### `source_planning`
+
+| Field | Type | Default |
+|---|---|---|
+| `llm_assisted_enabled` | `bool` | `true` |
+
+This controls whether `build_application(...)` wires the assisted classifier
+into `SourcePlanningService` when an LLM adapter is present.
+
+### `knowledge`
+
+| Field | Type | Default |
+|---|---|---|
+| `packs_root` | `str \| null` | `null` |
+
+If you configure a shared knowledge resource for `groundworkers`, that resolved
+resource wins. `packs_root` is a direct path fallback.
+
+## What becomes available at runtime
+
+### With only a shared CDM resource
+
+You get:
+
+- `CDMAdapter`
+- `OmopGraphAdapter`
+- `VocabService`
+- `MappingService`
+- concept, resolver, search, mapping, source-planning, knowledge, and system MCP tools
+
+### With `omop_emb` configured
+
+You additionally get:
+
+- `OmopEmbAdapter`
+- embedding MCP tools
+- embedding-backed channels in `MappingService`
+- optional embedding support in graph grounding
+
+### With `groundworkers.llm.enabled = true`
+
+You additionally get:
+
+- `LLMAdapter`
+- `TextService`
+- `DomainService`
+- text and domain MCP tools
+- LLM-assisted source planning when `source_planning.llm_assisted_enabled = true`
+
+## CLI selection rules
+
+By default:
+
+- `groundworkers` loads the active stack config file
+- the active profile comes from the file unless overridden
+- MCP startup uses the `mcp` defaults unless overridden on the CLI
+
+Available runtime selectors:
+
+```bash
+groundworkers --config-path /path/to/config.toml --profile local --describe
+groundworkers --transport streamable-http --host 0.0.0.0 --port 8000
+groundworkers --transport rest --host 0.0.0.0 --port 8080
+```
+
+Equivalent environment overrides:
+
+- `OA_CONFIG_PATH`
+- `OA_ACTIVE_PROFILE`
 
 ## Direct Python example
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.load("config/groundworkers.local.yaml")
+config = build_app_config(profile="local")
 app = build_application(config)
+
 mapping = app.services.mapping
+text = app.services.text
 ```
 
-The service availability follows the same configuration as the MCP server. If the
-required adapters are absent, the corresponding service attributes are `None`.
+Service attributes are `None` only when their prerequisites are not available in
+the resolved runtime.

@@ -6,6 +6,7 @@ from typing import Any
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
+from groundworkers.services.grounding import GroundingService
 from groundworkers.services.vocab import (
     VocabService,
     normalize_text_for_matching,
@@ -24,10 +25,12 @@ class MappingService:
         *,
         graph_adapter: OmopGraphAdapter | None = None,
         emb_adapter: OmopEmbAdapter | None = None,
+        grounding_service: GroundingService | None = None,
     ) -> None:
         self._vocab = vocab
         self._graph = graph_adapter
         self._emb = emb_adapter
+        self._grounding = grounding_service
 
     def concept_search_normalized(
         self,
@@ -256,11 +259,13 @@ class MappingService:
             raise ValueError("exactly one of query or concept_id must be provided")
 
         if query is not None:
-            grounded = self._graph.ground(
+            if self._grounding is None:
+                raise GroundworkersError("BACKEND_UNAVAIL", "grounding service is not configured")
+            grounded = self._grounding.ground(
                 query.strip(),
-                candidate_limit,
-                domain or None,
-                vocabulary_id or None,
+                limit=candidate_limit,
+                domain=domain or None,
+                vocabulary_id=vocabulary_id or None,
                 parent_ids=tuple(parent_ids) if parent_ids else None,
             )
             results = grounded["results"]

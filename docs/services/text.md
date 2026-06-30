@@ -12,9 +12,9 @@ concept grounding pipeline rather than as standalone outputs.
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.load("config/groundworkers.local.yaml")
+config = build_app_config()
 app = build_application(config)
 
 text = app.services.text
@@ -128,7 +128,7 @@ class Interpretation(BaseModel):
 ## Prompts
 
 Prompts for each method are versioned with the service code in the `services/`
-directory. They are not stored in YAML config or in MCP prompt metadata. This keeps
+directory. They are not stored in runtime config or in MCP prompt metadata. This keeps
 prompt changes traceable through the same version history as the service logic, and
 ensures that a given version of `TextService` produces predictable outputs regardless
 of external configuration.

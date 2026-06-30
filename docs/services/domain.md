@@ -16,9 +16,9 @@ automatically by `build_application()` when `llm` is configured.
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.load("config/groundworkers.local.yaml")
+config = build_app_config()
 app = build_application(config)
 
 domain = app.services.domain

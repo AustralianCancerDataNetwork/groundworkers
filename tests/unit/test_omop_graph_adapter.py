@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 
 
@@ -64,3 +66,19 @@ def test_get_domain_root_ids_known_domain_uses_stable_anchor_lookup():
 
     assert roots == (404684003,)
     assert len(fake_kg.session.executed) == 1
+
+
+def test_set_embedding_client_invalidates_cached_knowledge_graph():
+    adapter = object.__new__(OmopGraphAdapter)
+    adapter._kg = object()
+    adapter._root_ids_cache = {}
+    adapter.emb_model_name = "old-model"
+    adapter._embedding_client = None
+
+    client = SimpleNamespace(name="embedding-client")
+
+    adapter.set_embedding_client(client, model_name="new-model")
+
+    assert adapter._embedding_client is client
+    assert adapter.emb_model_name == "new-model"
+    assert adapter._kg is None

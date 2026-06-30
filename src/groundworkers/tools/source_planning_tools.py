@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import base64
 import json
-from dataclasses import fields, is_dataclass
-from enum import Enum
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
@@ -12,10 +9,13 @@ from groundworkers.services.source_planning import (
     COLUMN_ROLE_DESCRIPTIONS,
     ColumnRole,
     IngestionStrategy,
-    PreIngestBundle,
     SourcePlanningService,
 )
 from groundworkers.services.source_planning.canonical_headers import builtin_catalogue
+from groundworkers.services.source_planning.serialisation import (
+    decode_content,
+    serialize_pre_ingest_bundle,
+)
 
 _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
     IngestionStrategy.DATA_DICT_IDEAL: "Table has codes plus enough semantic context for direct data-dictionary ingestion.",
@@ -49,7 +49,7 @@ def register_source_planning_tools(
         """
 
         try:
-            raw_content = _decode_content(content, content_encoding)
+            raw_content = decode_content(content, content_encoding)
             bundle = source_planning_service.plan_source(
                 raw_content,
                 filename=filename,
@@ -80,7 +80,7 @@ def register_source_planning_tools(
         """
 
         try:
-            raw_content = _decode_content(content, content_encoding)
+            raw_content = decode_content(content, content_encoding)
             bundle = source_planning_service.plan_source_assisted(
                 raw_content,
                 filename=filename,
@@ -139,50 +139,3 @@ def register_source_planning_resources(server: GroundcrewServer) -> None:
                 for strategy, description in _INGESTION_STRATEGY_DESCRIPTIONS.items()
             }
         )
-
-
-def serialize_pre_ingest_bundle(
-    bundle: PreIngestBundle,
-    *,
-    include_intermediate: bool = False,
-) -> dict[str, Any]:
-    """Return a JSON-safe view of a ``PreIngestBundle``."""
-
-    return {
-        "plan": _jsonable(bundle.plan),
-        "detected_source_system": bundle.detected_source_system,
-        "raw_tables": _jsonable(bundle.raw_tables) if include_intermediate else None,
-        "normalised_tables": _jsonable(bundle.normalised_tables) if include_intermediate else None,
-        "annotated_tables": _jsonable(bundle.annotated_tables) if include_intermediate else None,
-        "warnings": _jsonable(bundle.warnings),
-        "errors": _jsonable(bundle.errors),
-        "elapsed_ms": bundle.elapsed_ms,
-        "llm_tier_used": bundle.llm_tier_used,
-    }
-
-
-def _decode_content(content: str, content_encoding: str | None) -> bytes:
-    if content_encoding in {None, "utf-8"}:
-        return content.encode("utf-8")
-    if content_encoding == "base64":
-        try:
-            return base64.b64decode(content, validate=True)
-        except Exception as exc:
-            raise ValueError(
-                "content_encoding is 'base64' but content is not valid base64"
-            ) from exc
-    raise ValueError(
-        f"Unknown content_encoding {content_encoding!r}. Use 'utf-8' or 'base64'."
-    )
-
-
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, Enum):
-        return value.value
-    if is_dataclass(value):
-        return {field.name: _jsonable(getattr(value, field.name)) for field in fields(value)}
-    if isinstance(value, dict):
-        return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_jsonable(item) for item in value]
-    return value

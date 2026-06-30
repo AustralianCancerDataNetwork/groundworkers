@@ -60,10 +60,9 @@ exposes `tsvector_available` in its response so callers can detect degraded mode
 
 ## Error handling
 
-All adapter methods raise `GroundworkersError` on failure.  Tools catch these and convert
-them to the structured error dict format before returning to the MCP client.
+All adapter methods raise `GroundworkersError` on failure. Tools or REST routes
+translate those into transport-level error responses.
 
-Lazy KnowledgeGraph initialisation — the `KnowledgeGraph` object is constructed on
-first use, not at server startup.  A database connectivity check is performed before
-construction; failure raises `GroundworkersError("DB_UNAVAILABLE", ...)` with a clear
-message rather than an opaque SQLAlchemy exception.
+The underlying `KnowledgeGraph` is built lazily on first use rather than at
+server startup. If the database or graph layer is unavailable, callers receive a
+clear `GroundworkersError` instead of an opaque lower-level exception.

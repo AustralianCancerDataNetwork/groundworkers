@@ -5,19 +5,19 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-_logger = logging.getLogger(__name__)
-
 from omop_emb import EmbeddingBackend, EmbeddingClient
+from omop_emb.config import BackendType, ProviderType
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
-from sqlalchemy import create_engine
-from groundworkers.services import DomainService, MappingService, TextService, VocabService
+from groundworkers.services import DomainService, GroundingService, MappingService, TextService, VocabService
 from groundworkers.services.source_planning import AssistedColumnRoleClassifier
 from groundworkers.services.source_planning import SourcePlanningService
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,6 +31,7 @@ class Adapters:
 @dataclass
 class Services:
     vocab: VocabService | None = None
+    grounding: GroundingService | None = None
     mapping: MappingService | None = None
     text: TextService | None = None
     source_planning: SourcePlanningService | None = None
@@ -47,65 +48,64 @@ class GroundworkersApp:
 def build_adapters(config: AppConfig) -> Adapters:
     adapters = Adapters()
 
+    if config.cdm_engine is not None:
+        adapters.cdm = CDMAdapter(config.cdm_engine)
+
     omop_graph = config.omop_graph
-    if omop_graph is not None:
-        engine = create_engine(omop_graph.db_url, future=True)
-        adapters.cdm = CDMAdapter(engine)
+    if omop_graph is not None and config.cdm_engine is not None and config.cdm_resource_name is not None:
+        resolved_resource = config.resolver.resolve_resource(config.cdm_resource_name)
         adapters.omop_graph = OmopGraphAdapter(
-            engine=engine,
-            vocab_schema=omop_graph.vocab_schema,
-            emb_model_name=omop_graph.emb_model_name,
-            min_fulltext_overlap=omop_graph.min_fulltext_overlap,
+            engine=config.cdm_engine,
+            vocab_schema=resolved_resource.vocab_schema,
+            emb_model_name=config.effective_embedding_model_name,
         )
 
     omop_emb = config.omop_emb
-    if omop_emb is not None and omop_emb.enabled:
+    if omop_emb is not None:
         cdm_engine = adapters.cdm.engine if adapters.cdm is not None else None
 
         def build_backend() -> EmbeddingBackend:
-            backend_type = omop_emb.backend_type.lower()
-            if backend_type == "sqlitevec":
+            backend_type = BackendType(omop_emb.backend)
+            if backend_type is BackendType.SQLITEVEC:
                 from omop_emb.backends.sqlitevec import SQLiteVecEmbeddingBackend
-                return SQLiteVecEmbeddingBackend.from_path(omop_emb.required_db_path)
-            if backend_type == "pgvector":
+                if omop_emb.sqlite_path is None:
+                    raise RuntimeError(
+                        "omop_emb.sqlite_path is required when backend='sqlitevec'"
+                    )
+                return SQLiteVecEmbeddingBackend.from_path(omop_emb.sqlite_path)
+            if backend_type is BackendType.PGVECTOR:
                 from omop_emb.backends.pgvector import PGVectorEmbeddingBackend
-                engine = create_engine(omop_emb.required_db_url, future=True)
-                return PGVectorEmbeddingBackend(emb_engine=engine)
+                if config.emb_engine is None:
+                    raise RuntimeError(
+                        "An embedding resource is required when omop_emb.backend='pgvector'. "
+                        "Run 'omop-config configure omop_emb' to provision it."
+                    )
+                return PGVectorEmbeddingBackend(emb_engine=config.emb_engine)
             raise RuntimeError(
-                f"Embedding backend_type {omop_emb.backend_type!r} is not supported. "
-                "Supported values: sqlitevec, pgvector. "
-                "For FAISS-accelerated search, set faiss_cache_dir alongside a supported backend. "
-                "FAISS-primary mode (no primary backend) is not yet supported by omop-emb."
+                f"Embedding backend {omop_emb.backend!r} is not supported. "
+                "Supported values: sqlitevec, pgvector."
             )
 
         client_factory: Callable[[str], EmbeddingClient] | None = None
-        api_credentials = omop_emb.configured_api_credentials
-        if api_credentials is not None:
-            api_base, api_key = api_credentials
+        if omop_emb.api_base and omop_emb.api_key:
+            api_base = omop_emb.api_base
+            api_key = omop_emb.api_key
+            provider_type = omop_emb.provider_type
 
             def build_client(model_name: str) -> EmbeddingClient:
-                if api_key is None:
-                    raise RuntimeError(
-                        "Embedding client cannot be built because no API key was configured. "
-                        "Set omop_emb.api_key in the config or set the OPENAI_API_KEY environment variable."
-                    )
-                if api_base is None:
-                    raise RuntimeError(
-                        "Embedding client cannot be built because no API base URL was configured. "
-                        "Set omop_emb.api_base in the config or set the OPENAI_API_BASE environment variable."
-                    )
                 return EmbeddingClient(
                     model=model_name,
                     api_base=api_base,
                     api_key=api_key,
+                    provider_type=ProviderType(provider_type),
                 )
 
             client_factory = build_client
 
         adapters.omop_emb = OmopEmbAdapter(
             backend_factory=build_backend,
-            backend_type=omop_emb.backend_type,
-            default_model_name=omop_emb.default_model_name,
+            backend_type=omop_emb.backend,
+            default_model_name=omop_emb.embedding_model,
             client_factory=client_factory,
             cdm_engine=cdm_engine,
             faiss_cache_dir=omop_emb.faiss_cache_dir,
@@ -113,10 +113,10 @@ def build_adapters(config: AppConfig) -> Adapters:
 
         if client_factory is not None and adapters.omop_graph is not None:
             try:
-                record = adapters.omop_emb._resolve_model_record(None)
+                model_name = adapters.omop_emb.resolve_model_name()
                 adapters.omop_graph.set_embedding_client(
-                    client_factory(record.model_name),
-                    model_name=record.model_name,
+                    adapters.omop_emb.get_client_for_model(model_name),
+                    model_name=model_name,
                 )
             except Exception as exc:
                 _logger.warning(
@@ -126,7 +126,7 @@ def build_adapters(config: AppConfig) -> Adapters:
                 )
 
     llm_config = config.llm
-    if llm_config is not None and llm_config.enabled:
+    if llm_config.enabled:
         api_key = llm_config.api_key
         api_base = llm_config.api_base
 
@@ -158,16 +158,24 @@ def build_adapters(config: AppConfig) -> Adapters:
     return adapters
 
 
-def build_services(adapters: Adapters) -> Services:
+def build_services(config: AppConfig, adapters: Adapters) -> Services:
     services = Services()
-    assisted_classifier = AssistedColumnRoleClassifier(adapters.llm) if adapters.llm is not None else None
+    assisted_classifier = None
+    if adapters.llm is not None and config.source_planning.llm_assisted_enabled:
+        assisted_classifier = AssistedColumnRoleClassifier(adapters.llm)
     services.source_planning = SourcePlanningService(assisted_classifier=assisted_classifier)
+    if adapters.omop_graph is not None:
+        services.grounding = GroundingService(
+            adapters.omop_graph,
+            min_fulltext_overlap=config.grounding.min_fulltext_overlap,
+        )
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)
         services.mapping = MappingService(
             services.vocab,
             graph_adapter=adapters.omop_graph,
             emb_adapter=adapters.omop_emb,
+            grounding_service=services.grounding,
         )
     if adapters.llm is not None:
         services.text = TextService(adapters.llm)
@@ -180,5 +188,5 @@ def build_application(config: AppConfig) -> GroundworkersApp:
     return GroundworkersApp(
         config=config,
         adapters=adapters,
-        services=build_services(adapters),
+        services=build_services(config, adapters),
     )

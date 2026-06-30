@@ -1,138 +1,144 @@
 # Architecture
 
-This page answers one practical question:
+`groundworkers` is organised so that configuration, domain logic, and transport
+concerns stay separate. That separation matters both for users choosing an
+integration style and for contributors adding new capabilities.
 
-**If you want to use `groundworkers`, which layer should you call?**
-
-## The short answer
-
-- Use **MCP tools** when you want a remote tool interface.
-- Use **`app.services.*`** when you want domain operations directly from Python.
-- Use **`app.adapters.*`** when you need exact control over a specific integration.
-
-## Layers
+## Runtime layers
 
 ```mermaid
 flowchart TD
-    A1[Python app] --> S[services/]
-    A2[MCP client] --> T[tools/]
-    T --> S
-    S --> AD[adapters/]
-    AD --> OG[omop-graph]
-    AD --> OE[omop-emb]
-    AD --> DB[(CDM database)]
-    AD --> LM[LLM API]
+    STACK[StackConfig / config.toml] --> BOOT[bootstrap.py]
+    BOOT --> CFG[AppConfig runtime]
+    CFG --> APP[build_application]
+    APP --> ADP[adapters/]
+    APP --> SVC[services/]
+    MCP[MCP transport] --> TOOLS[tools/]
+    TOOLS --> SVC
+    REST[REST transport] --> API[rest_api.py]
+    API --> SVC
+    PY[Python caller] --> SVC
 ```
 
-## What each layer is for
+## What each layer owns
+
+### Shared stack configuration
+
+The source of truth is the shared OMOP stack configuration loaded through
+`oa-configurator`.
+
+- `omop-alchemy` owns the shared CDM resource
+- `omop-graph` owns graph-specific package settings
+- `omop-emb` owns embedding-store and embedding-model settings
+- `groundworkers` owns transport defaults, LLM-backed worker behavior,
+  source-planning settings, and knowledge-pack settings
+
+`groundworkers` does not maintain a second YAML-era runtime model.
+
+### `bootstrap.py`
+
+`bootstrap.py` resolves the active stack config into the runtime `AppConfig`.
+That includes:
+
+- selecting the active stack file and profile
+- resolving the shared CDM resource and engine
+- loading sibling package config (`omop_graph`, `omop_emb`)
+- loading `groundworkers` package-owned settings
+- resolving optional knowledge-pack roots
+
+If you need to change how configuration is resolved, this is the layer to edit.
+
+### `app.py`
+
+`build_application(config)` is the composition root. It constructs:
+
+- adapters from already-resolved concrete handles
+- services from those adapters
+- a `GroundworkersApp` container that transports can reuse
+
+This keeps the rest of the codebase free of config-file and profile-selection
+knowledge.
 
 ### `adapters/`
 
-Adapters are thin wrappers over external dependencies. Each adapter handles exactly
-one dependency:
+Adapters are dependency-facing wrappers. Each adapter should wrap one external
+system cleanly:
 
-- `CDMAdapter` — holds the SQLAlchemy engine and session factory for a CDM database
-  connection. Shared by `VocabService` and `OmopGraphAdapter`.
-- `OmopGraphAdapter` — wraps the omop-graph `KnowledgeGraph`; owns concept traversal,
-  grounding, and path-finding.
-- `OmopEmbAdapter` — wraps the omop-emb `EmbeddingReaderInterface`; owns embedding
-  search and index access.
-- `LLMAdapter` — wraps an OpenAI-compatible chat completion API; owns structured
-  and unstructured model calls.
+- `CDMAdapter` wraps the SQLAlchemy engine/session factory
+- `OmopGraphAdapter` wraps omop-graph lookup, grounding, traversal, and paths
+- `OmopEmbAdapter` wraps omop-emb index and query behavior
+- `LLMAdapter` wraps the configured model backend
 
-Adapters are config-agnostic. They receive already-constructed handles (Engine,
-reader, API client) rather than config objects. Only `build_application()` reads
-config and constructs those handles.
+Adapters are intentionally config-agnostic. They should accept already-built
+handles or explicit constructor values, not TOML sections or loader logic.
 
 ### `services/`
 
-Services contain domain logic that is useful to Python callers independent of MCP.
-A service layer exists when the logic encodes bespoke domain knowledge — multi-source
-orchestration, mapping policy, scoring — that a downstream Python application would
-want to call directly without going through MCP.
+Services contain reusable domain logic that should work the same regardless of
+transport:
 
-- `VocabService` — vocabulary search and concept navigation over the CDM vocabulary
-  tables. Provides `search_exact`, `search_normalized`, `search_fulltext`,
-  `navigate_to_standard`, `navigate_to_value`, and `navigate_to_unit`.
-- `MappingService` — orchestrates `VocabService`, `OmopGraphAdapter`, and
-  `OmopEmbAdapter` to build candidate bundles, resolve mapping expressions, and
-  assemble mapping context packets.
-- `TextService` — LLM-backed clinical text preprocessing. Provides `normalize`,
-  `decompose`, and `disambiguate` via `LLMAdapter`.
-- `DomainService` — LLM-backed batch OMOP domain classification for structured
-  data-dictionary fields. Provides `classify_attributes` via `LLMAdapter`.
+- `VocabService` for lexical retrieval and OMOP navigation
+- `MappingService` for multi-channel candidate and context workflows
+- `TextService` for LLM-backed text preprocessing
+- `DomainService` for LLM-backed structured-field domain hints
+- `SourcePlanningService` for stateless source-planning pipelines
 
-Not everything needs a service. `resolver_tools.py` calls omop-graph directly because
-it adds nothing the graph library does not already expose. The service layer is not a
-mandatory pass-through — it exists only where the logic is worth reusing.
+If the logic is something a Python caller would reasonably want without going
+through MCP, it probably belongs in a service.
 
-### `tools/`
+### Transport layers
 
-Tools expose services and adapters over MCP. Each tool does three things:
+`groundworkers` currently exposes two transport styles over the same service
+layer:
 
-1. Validate and clamp inputs.
-2. Call a service or adapter method.
-3. Convert exceptions into MCP-safe error dicts.
+- **MCP** via the tool modules in `tools/`
+- **REST** via `rest_api.py`
 
-If you are building an MCP client, this is the layer you interact with.
+The transport layers should stay thin:
 
-### `app.py` and `server.py`
+1. validate or clamp request inputs
+2. call a service or adapter
+3. translate exceptions into transport-appropriate error responses
 
-- `build_application(config)` constructs the shared object graph: adapters, then
-  services that depend on those adapters.
-- `create_server(config)` wraps that graph and registers MCP tools on top of it.
+Business logic should not exist only in MCP wrappers or only in REST routes.
 
-## Which layer to pick
+## Which layer should a caller use?
 
-| If you need... | Use... |
+| Need | Call |
 |---|---|
-| Remote tool calls, agent interoperability | MCP tools |
-| Vocabulary search or mapping workflows from Python | `app.services.vocab` or `app.services.mapping` |
-| LLM-backed text preprocessing from Python | `app.services.text` |
-| LLM-backed batch domain classification for structured fields | `app.services.domain` |
-| Exact control over embedding or graph operations | `app.adapters.omop_emb` or `app.adapters.omop_graph` |
+| Tool discovery, agent interoperability, remote service | MCP tools |
+| Fixed HTTP workflow endpoints | REST API |
+| Domain workflows from Python | `app.services.*` |
+| Low-level dependency-shaped operations | `app.adapters.*` |
 
 ## Request flow
 
 ```mermaid
 sequenceDiagram
-    participant C as Consumer
-    participant T as tools/
-    participant S as services/
-    participant A as adapters/
-    participant D as External deps
+    participant C as Caller
+    participant T as Transport
+    participant S as Service
+    participant A as Adapter
+    participant D as Dependency
 
-    alt MCP
-        C->>T: call tool
-        T->>S: service method
-    else Direct Python
-        C->>S: service method
-    end
-    S->>A: dependency calls
+    C->>T: request
+    T->>S: domain call
+    S->>A: dependency call
     A->>D: query / API call
-    D-->>A: raw results
-    A-->>S: normalized results
-    S-->>T: typed domain result
-    S-->>C: typed domain result
-    T-->>C: MCP-safe dict
+    D-->>A: raw result
+    A-->>S: normalized result
+    S-->>T: domain result
+    T-->>C: MCP / REST / Python response
 ```
 
-## Composition
+## Design rules for contributors
 
-```mermaid
-flowchart LR
-    CFG[AppConfig] --> APP[build_application]
-    APP --> ADP[Adapters\ncdm · omop_graph · omop_emb · llm]
-    APP --> SRV[Services\nvocab · mapping · text · domain]
-    SERVER[create_server] --> APP
-    SERVER --> MCP[registered MCP tools]
-```
+- Put resource and profile resolution in `bootstrap.py`, not in adapters.
+- Keep adapters dependency-shaped and reusable.
+- Keep services transport-agnostic.
+- Add MCP tools only when the capability should participate in tool discovery.
+- Add REST endpoints only for curated workflow operations, not every internal method.
 
-## Practical rules
-
-- If the code coordinates multiple data sources or encodes domain policy, put it in
-  `services/`.
-- If the code mainly wraps a library API or database session, put it in `adapters/`.
-- If the code validates inputs and shapes transport responses, put it in `tools/`.
-- If a tool adds nothing beyond what the library already exposes, skip the service
-  layer and let the tool call the adapter directly.
+The extension guide in [Extending groundworkers](development/extending.md)
+spells out the expected shape for new adapters, services, MCP tools, and REST
+routes.

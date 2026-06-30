@@ -11,9 +11,9 @@ factory to open per-call database sessions.
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.load("config/groundworkers.local.yaml")
+config = build_app_config()
 app = build_application(config)
 
 vocab = app.services.vocab

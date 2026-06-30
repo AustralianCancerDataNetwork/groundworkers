@@ -65,6 +65,15 @@ class OmopEmbAdapter:
         self._backend = None
         self._clients.clear()
 
+    def resolve_model_name(self, model_name: str | None = None) -> str:
+        """Resolve a caller-supplied or default embedding model name."""
+        return self._resolve_model_record(model_name).model_name
+
+    def get_client_for_model(self, model_name: str | None = None) -> EmbeddingClient:
+        """Return a configured query-time embedding client for one model."""
+        resolved_name = self.resolve_model_name(model_name)
+        return self._get_client(resolved_name)
+
     def index_status(self) -> dict[str, Any]:
         """Return index availability and per-model statistics.
 

@@ -260,11 +260,35 @@ class StubEmbAdapter:
         }
 
 
+class StubGroundingService:
+    def ground(
+        self,
+        query: str,
+        *,
+        limit: int,
+        domain: str | None,
+        vocabulary_id: str | None,
+        parent_ids=None,
+    ):
+        return {
+            "results": [
+                {
+                    "concept_id": 102,
+                    "concept_name": "Type 2 diabetes mellitus",
+                    "match_kind": "PARTIAL",
+                    "standard_concept": True,
+                }
+            ],
+            "grounding_explanation": {"matched_tier": "PARTIAL"},
+        }
+
+
 def build_service() -> MappingService:
     return MappingService(
         StubVocabAdapter(),
         graph_adapter=StubGraphAdapter(),
         emb_adapter=StubEmbAdapter(),
+        grounding_service=StubGroundingService(),
     )
 
 
@@ -477,8 +501,8 @@ def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_sta
     """An EXACT label match on a non-standard concept must NOT take the early-return path
     (exact_standard_match); it must navigate to a standard ancestor instead."""
 
-    class ExactNonStandardGraph(StubGraphAdapter):
-        def ground(self, query, limit, domain, vocabulary_id, parent_ids=None):
+    class ExactNonStandardGroundingService:
+        def ground(self, query, *, limit, domain, vocabulary_id, parent_ids=None):
             return {
                 "results": [{
                     "concept_id": 102,
@@ -489,7 +513,11 @@ def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_sta
                 "grounding_explanation": {"matched_tier": "EXACT"},
             }
 
-    service = MappingService(StubVocabAdapter(), graph_adapter=ExactNonStandardGraph())
+    service = MappingService(
+        StubVocabAdapter(),
+        graph_adapter=StubGraphAdapter(),
+        grounding_service=ExactNonStandardGroundingService(),
+    )
     result = service.concept_nearest_standard_ancestor(query="Type 2 diabetes mellitus")
 
     assert result["found"] is True

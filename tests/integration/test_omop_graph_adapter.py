@@ -10,8 +10,9 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 from groundworkers.server import build_adapters
+from groundworkers.services.grounding import GroundingService
 
 
 def _load_graph_adapter():
@@ -20,10 +21,14 @@ def _load_graph_adapter():
     except ImportError:
         pytest.skip("omop_graph is not installed in this environment")
 
-    config_path = os.getenv("GROUNDWORKERS_CONFIG", "config/groundworkers.example.yaml")
-    config = AppConfig.load(config_path)
-    if config.omop_graph is None:
-        pytest.skip("omop_graph is not configured in the selected config")
+    config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv("GROUNDWORKERS_CONFIG")
+    profile = os.getenv("GROUNDWORKERS_PROFILE")
+    try:
+        config = build_app_config(config_path=config_path, profile=profile)
+    except (FileNotFoundError, ValueError) as exc:
+        pytest.skip(f"shared stack config is unavailable: {exc}")
+    if config.omop_graph is None or config.cdm_engine is None:
+        pytest.skip("omop_graph is not configured in the selected stack config")
     adapter = build_adapters(config).omop_graph
     if adapter is None:
         pytest.skip("omop_graph adapter was not built")
@@ -99,8 +104,9 @@ def test_concept_by_code_snomed():
 @pytest.mark.integration
 def test_ground_exact_match():
     adapter = _load_graph_adapter()
+    service = GroundingService(adapter)
 
-    result = adapter.ground("Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None)
+    result = service.ground("Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None)
 
     assert "results" in result
     assert "grounding_explanation" in result
@@ -114,8 +120,9 @@ def test_ground_exact_match():
 @pytest.mark.integration
 def test_ground_partial_match():
     adapter = _load_graph_adapter()
+    service = GroundingService(adapter)
 
-    result = adapter.ground("type 2 diabet", limit=5, domain=None, vocabulary_id=None)
+    result = service.ground("type 2 diabet", limit=5, domain=None, vocabulary_id=None)
 
     results = result["results"]
     assert results
@@ -125,8 +132,9 @@ def test_ground_partial_match():
 @pytest.mark.integration
 def test_ground_returns_standard_concepts_only():
     adapter = _load_graph_adapter()
+    service = GroundingService(adapter)
 
-    result = adapter.ground("diabetes", limit=10, domain=None, vocabulary_id=None)
+    result = service.ground("diabetes", limit=10, domain=None, vocabulary_id=None)
 
     results = result["results"]
     assert results
