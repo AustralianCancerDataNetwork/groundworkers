@@ -1,0 +1,100 @@
+# groundworkers example config — oa-configurator StackConfig format
+#
+# Copy to groundworkers.local.toml and fill in your values.
+# Full reference: https://oa-configurator.readthedocs.io (or run omop-config --help)
+
+# ---------------------------------------------------------------------------
+# Databases — one entry per named connection
+# ---------------------------------------------------------------------------
+
+[databases.cava]
+dialect       = "postgresql+psycopg"
+host          = "localhost"
+port          = 5432
+user          = "readonly"
+password      = "readonly"
+database_name = "cava"
+
+# pgvector embedding store — only needed when omop_emb.backend = "pgvector"
+# [databases.emb]
+# dialect       = "postgresql+psycopg"
+# host          = "localhost"
+# port          = 5432
+# user          = "emb"
+# password      = "emb"
+# database_name = "omop_emb"
+
+# ---------------------------------------------------------------------------
+# Resources — logical role bundles (CDM + vocab schemas)
+# ---------------------------------------------------------------------------
+
+[resources.cdm]
+database     = "cava"
+cdm_schema   = "omop"
+vocab_schema = "omop_vocab"
+
+# pgvector embedding resource — only needed when omop_emb.backend = "pgvector"
+# [resources.emb]
+# database   = "emb"
+# cdm_schema = "public"
+
+# ---------------------------------------------------------------------------
+# Resource aliases — map semantic names to your resource names above
+# ---------------------------------------------------------------------------
+
+[resource_aliases]
+cdm_db = "cdm"
+# emb_db = "emb"   # uncomment for pgvector backend
+
+# ---------------------------------------------------------------------------
+# Tools — package-specific config lives under [tools.<name>.extra]
+# ---------------------------------------------------------------------------
+
+[tools.groundworkers.extra]
+app_name = "groundworkers"
+
+# MCP transport (stdio is the default for Claude Code; streamable-http for HTTP clients)
+[tools.groundworkers.extra.mcp]
+transport = "stdio"
+# host = "127.0.0.1"
+# port = 8000
+
+# REST API (enables HTTP access alongside MCP stdio, e.g. for study-agent-mcp)
+[tools.groundworkers.extra.rest]
+enabled = false
+# host     = "127.0.0.1"
+# port     = 18080
+# base_path = "/v1"
+
+# LLM (used for text decomposition, disambiguation, and source planning)
+[tools.groundworkers.extra.llm]
+enabled            = false
+# provider           = "ollama"
+# api_base           = "http://localhost:11434/v1"
+# api_key            = "ollama"
+# default_model_name = "qwen3:8b"
+
+# Grounding behaviour
+[tools.groundworkers.extra.grounding]
+min_fulltext_overlap  = 0.0    # 0.0–1.0; raise to tighten FTS result acceptance
+# embedding_model_name = null  # override the embedding model used by concept_ground
+
+# ---------------------------------------------------------------------------
+# omop_emb — embedding store (remove section entirely to disable)
+# ---------------------------------------------------------------------------
+
+# SQLite / FAISS backend (no extra database resource needed)
+[tools.omop_emb.extra]
+backend         = "sqlitevec"
+sqlite_path     = "/absolute/path/to/omop_emb.db"
+embedding_model = "bge-small-en-v1.5"
+faiss_cache_dir = "/absolute/path/to/omop_emb-cache"
+api_base        = "http://localhost:11434/v1"
+api_key         = "ollama"
+
+# pgvector backend — uncomment and add emb database/resource/alias above
+# [tools.omop_emb.extra]
+# backend         = "pgvector"
+# embedding_model = "qwen3-embedding:0.6b"
+# api_base        = "http://localhost:11434/v1"
+# api_key         = "ollama"
