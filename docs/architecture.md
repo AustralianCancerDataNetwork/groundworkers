@@ -4,20 +4,56 @@
 concerns stay separate. The same service layer is reused across MCP, REST, and
 direct Python integrations.
 
-## Runtime layers
+## Composition
+
+The startup path is:
+
+1. shared OMOP stack config is loaded
+2. `bootstrap.py` resolves it into one runtime `AppConfig`
+3. `build_application(...)` constructs a reusable `GroundworkersApp`
+4. transports reuse that application container
 
 ```mermaid
 flowchart TD
     STACK[StackConfig / config.toml] --> BOOT[bootstrap.py]
-    BOOT --> CFG[AppConfig runtime]
+    BOOT --> CFG[AppConfig]
     CFG --> APP[build_application]
-    APP --> ADP[adapters/]
-    APP --> SVC[services/]
+    APP --> GW[GroundworkersApp]
+    GW --> ADP[adapters/]
+    GW --> SVC[services/]
+```
+
+## Transport entry points
+
+Different callers enter the same runtime in different ways:
+
+```mermaid
+flowchart TD
     MCP[MCP transport] --> TOOLS[tools/]
+    REST[REST transport] --> API[transports/rest/]
+    PY[Python caller] --> SVC[services/]
     TOOLS --> SVC
-    REST[REST transport] --> API[transports/rest/api.py]
+    TOOLS -. adapter-backed primitives .-> ADP[adapters/]
     API --> SVC
-    PY[Python caller] --> SVC
+```
+
+Most transport-facing workflows call services. MCP also exposes a small number
+of intentionally adapter-shaped capabilities, such as embedding and system
+status surfaces, where introducing a service layer would add indirection without
+adding domain value.
+
+## Dependency flow
+
+Services coordinate reusable domain logic. Adapters isolate concrete
+dependencies.
+
+```mermaid
+flowchart TD
+    SVC[services/] --> ADP[adapters/]
+    ADP --> OG[omop-graph]
+    ADP --> OE[omop-emb]
+    ADP --> DB[(OMOP CDM / vocab)]
+    ADP --> LLM[LLM API]
 ```
 
 ## What each layer owns
@@ -88,9 +124,18 @@ transport:
 If the logic is something a Python caller would reasonably want without going
 through MCP, it probably belongs in a service.
 
+Some services also depend on other services or optional adapters as part of the
+assembled runtime:
+
+- `ConceptGroundingService` depends on `GraphService`
+- `MappingService` depends on `VocabService` and can also use graph, embedding,
+  and grounding capabilities when available
+- `SourcePlanningService` is always present and can be LLM-assisted when that
+  adapter is configured
+
 ### Transport layers
 
-`groundworkers` exposes two transport styles over the same service layer:
+`groundworkers` exposes two transport styles over the same runtime:
 
 - **MCP** via the tool modules in `tools/`
 - **REST** via `transports/rest/`
@@ -113,7 +158,7 @@ Business logic should not exist only in MCP wrappers or only in REST routes.
 | Domain workflows from Python | `app.services.*` |
 | Backend-shaped primitives for a specific dependency | `app.adapters.*` |
 
-## Request flow
+## Typical request flow
 
 ```mermaid
 sequenceDiagram
@@ -132,6 +177,9 @@ sequenceDiagram
     S-->>T: domain result
     T-->>C: MCP / REST / Python response
 ```
+
+For adapter-backed MCP primitives, the `T->>S` and `S->>A` steps collapse into a
+direct transport-to-adapter call by design.
 
 ## Design rules for contributors
 

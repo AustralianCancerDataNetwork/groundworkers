@@ -16,24 +16,28 @@ ways:
 | Fixed request/response workflows, typed HTTP clients, OpenAPI | REST |
 | In-process Python applications, batch evaluation, custom orchestration | Direct Python |
 
-## Runtime shape
+## At a glance
 
 ```mermaid
 flowchart TD
-    STACK[shared OMOP stack config] --> BOOT[build_app_config]
-    BOOT --> APP[build_application]
+    PY[Python app] --> APP[build_application]
+    MCP[MCP client] --> T[tools]
+    REST[REST client] --> R[transports/rest]
     APP --> S[services/]
-    APP --> A[adapters/]
-    MCP[MCP client] --> T[tools/]
     T --> S
-    REST[REST client] --> R[transports/rest/api.py]
     R --> S
-    PY[Python caller] --> S
+    S --> A[adapters/]
     A --> OG[omop-graph]
     A --> OE[omop-emb]
     A --> DB[(OMOP CDM / vocab)]
     A --> LLM[LLM API]
 ```
+
+This is the conceptual shape of the package: transport choices stay thin,
+reusable workflow logic lives in `services/`, and concrete dependencies are
+isolated behind `adapters/`. Configuration and startup wiring are described in
+[Architecture](architecture.md); the home page keeps the focus on the layer
+boundaries that matter to most users.
 
 ## What groundworkers provides
 
@@ -49,7 +53,7 @@ flowchart TD
 - [Installation](usage/installation.md) for package install, stack prerequisites, and service startup
 - [Configuration](usage/configuration.md) for the shared-stack config model and ownership boundaries
 - [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage patterns
-- [Architecture](architecture.md) for the runtime layers and extension boundaries
+- [Architecture](architecture.md) for composition, transport flow, and extension boundaries
 - [Extending groundworkers](development/extending.md) for adding adapters, services, MCP tools, or REST endpoints
 
 ## Relation to groundcrew
