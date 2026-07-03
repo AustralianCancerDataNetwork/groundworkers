@@ -1,6 +1,10 @@
+## 0.3.2
+
+fix: repaired integration tests
+
 ## 0.3.1
 
-version bump
+chore: version bump
 
 ## 0.3.0
 

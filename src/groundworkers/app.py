@@ -186,6 +186,7 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
         services.grounding = ConceptGroundingService(
             services.graph,
             min_fulltext_overlap=config.grounding.min_fulltext_overlap,
+            max_depth=config.omop_graph.max_depth if config.omop_graph is not None else 5,
         )
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)

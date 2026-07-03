@@ -108,8 +108,9 @@ def test_get_concept_returns_correct_fields():
 @pytest.mark.integration
 def test_ancestors_depth_is_monotonically_increasing():
     adapter = _load_graph_adapter()
+    graph = GraphService(adapter)
 
-    ancestors = adapter.get_ancestors(201826, max_depth=5)
+    ancestors = graph.get_ancestors(201826, max_depth=5)
 
     depths = [item["depth"] for item in ancestors]
     assert depths == sorted(depths)
@@ -118,11 +119,12 @@ def test_ancestors_depth_is_monotonically_increasing():
 @pytest.mark.integration
 def test_descendants_returns_list_and_respects_depth():
     adapter = _load_graph_adapter()
+    graph = GraphService(adapter)
 
     # 201826 has descendants; this test verifies shape and depth constraint.
     # A true leaf concept is vocab-specific — use depth=0 equivalent via max_depth=1
     # and verify every result has depth <= 1.
-    descendants = adapter.get_descendants(201826, max_depth=1)
+    descendants = graph.get_descendants(201826, max_depth=1)
 
     assert isinstance(descendants, list)
     assert all(item["depth"] <= 1 for item in descendants)
@@ -205,8 +207,9 @@ def test_ground_parentless_condition_term_standardizes_nonstandard_source():
 @pytest.mark.integration
 def test_get_edges_returns_predicate_kinds():
     adapter = _load_graph_adapter()
+    graph = GraphService(adapter)
 
-    edges = adapter.get_edges(201826)
+    edges = graph.get_edges(201826)
 
     assert "outbound" in edges
     assert "inbound" in edges
@@ -220,13 +223,14 @@ def test_get_edges_returns_predicate_kinds():
 @pytest.mark.integration
 def test_find_path_between_concept_and_its_ancestor():
     adapter = _load_graph_adapter()
+    graph = GraphService(adapter)
 
-    ancestors = adapter.get_ancestors(201826, max_depth=1)
+    ancestors = graph.get_ancestors(201826, max_depth=1)
     if not ancestors:
         pytest.skip("concept has no ancestors in this dataset")
     parent_id = ancestors[0]["concept_id"]
 
-    result = adapter.find_path(201826, parent_id, max_depth=5)
+    result = graph.find_path(201826, parent_id, max_depth=5)
 
     assert result["found"] is True
     assert len(result["paths"]) > 0
@@ -240,8 +244,9 @@ def test_find_path_between_concept_and_its_ancestor():
 @pytest.mark.integration
 def test_map_icd_code_to_standard_snomed():
     adapter = _load_graph_adapter()
+    graph = GraphService(adapter)
 
-    result = adapter.map_to_standard("ICD10CM", "E11.9")
+    result = graph.map_to_standard("ICD10CM", "E11.9")
 
     assert "source" in result
     assert "standard_concepts" in result

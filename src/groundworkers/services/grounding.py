@@ -31,9 +31,11 @@ class ConceptGroundingService:
         graph: GraphService,
         *,
         min_fulltext_overlap: float = 0.0,
+        max_depth: int = 5,
     ) -> None:
         self._graph = graph
         self._min_fulltext_overlap = min_fulltext_overlap
+        self._max_depth = max_depth
 
     def ground(
         self,
@@ -63,6 +65,7 @@ class ConceptGroundingService:
                 constraints=GroundingConstraints(
                     parent_ids=parent_ids,
                     search_constraint=search_constraint,
+                    max_depth=self._max_depth,
                 ),
                 tiers=self._build_tier_plan(
                     query=stripped,
