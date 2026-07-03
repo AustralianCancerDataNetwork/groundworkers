@@ -1,0 +1,22 @@
+# Drug concept granularity selection rules
+# Applied as post-filter to drug domain candidates.
+
+target_concept_class_preference:
+  # Ordered from most preferred (given sufficient source data) to least.
+  - concept_class_id: Clinical Drug
+    requires_source_fields: [strength, dose_form]
+  - concept_class_id: Clinical Drug Form
+    requires_source_fields: [dose_form]
+  - concept_class_id: Clinical Drug Component
+    requires_source_fields: [strength]
+  - concept_class_id: Ingredient
+    requires_source_fields: []  # always acceptable fallback
+
+reject_concept_classes:
+  - Branded Drug        # standard_concept != 'S', brand name not a CDM target
+  - Marketed Product    # packaging level, not a clinical concept
+  - Clinical Pack       # multi-drug packages, not direct mapping targets
+
+vocab_preference_within_class:
+  - RxNorm              # always prefer core RxNorm
+  - RxNorm Extension    # fallback for drugs absent from core RxNorm

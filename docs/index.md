@@ -1,49 +1,64 @@
 # groundworkers
 
-`groundworkers` gives you read-only OMOP concept and mapping tools that can be used
-either over MCP or directly from Python.
+`groundworkers` is the reusable capability layer for OMOP-grounded lookup,
+mapping, source-planning, and knowledge-pack discovery. You can use it in three
+ways:
 
-## Choose the interface that fits your app
+- as an **MCP service** for agentic clients and tool discovery
+- as a **REST service** for controlled workflow applications
+- as a **direct Python library** when you want in-process orchestration
 
-- Use the **MCP server** when you want tool discovery, process isolation, or a shared service for multiple clients.
-- Use the **Python library** when you want in-process calls with normal Python return values and exceptions.
+## Choose the interface that fits your application
 
-## At a glance
+| Use case | Recommended interface |
+|---|---|
+| Agentic clients, tool discovery, shared remote service | MCP |
+| Fixed request/response workflows, typed HTTP clients, OpenAPI | REST |
+| In-process Python applications, batch evaluation, custom orchestration | Direct Python |
+
+## Runtime shape
 
 ```mermaid
 flowchart TD
-    A[Python app] --> APP[build_application]
-    B[MCP client] --> SERVER[create_server]
+    STACK[shared OMOP stack config] --> BOOT[build_app_config]
+    BOOT --> APP[build_application]
     APP --> S[services/]
-    SERVER --> T[tools/]
+    APP --> A[adapters/]
+    MCP[MCP client] --> T[tools/]
     T --> S
-    S --> AD[adapters/]
-    AD --> OG[omop-graph]
-    AD --> OE[omop-emb]
-    AD --> DB[(OMOP DB)]
+    REST[REST client] --> R[transports/rest/api.py]
+    R --> S
+    PY[Python caller] --> S
+    A --> OG[omop-graph]
+    A --> OE[omop-emb]
+    A --> DB[(OMOP CDM / vocab)]
+    A --> LLM[LLM API]
 ```
 
-## What most users care about
+## What groundworkers provides
 
-- **Concept and hierarchy lookup** for deterministic OMOP operations
-- **Search and grounding** for lexical and semantic retrieval
-- **Mapping workflows** for candidate bundles, parent backoff, and context packets
-- **Structured domain classification** for data-dictionary-style field sets
-- **One configuration model** for both MCP and direct Python use
+- **Vocabulary and hierarchy lookup** over OMOP concepts
+- **Multi-channel mapping workflows** combining exact, normalized, full-text, and embedding retrieval
+- **Source planning** for stateless pre-ingest analysis
+- **Knowledge-pack discovery** for reusable mapping and planning context
+- **LLM-backed text normalization and domain classification**
+- **Thin transports** over the same service layer
 
-For direct Python consumers, the main entrypoint is `build_application(config)` and
-`app.services.mapping`.
+## Where to start
 
-## Where to read next
-
-- [Architecture](architecture.md) for the package structure and layer boundaries
-- [Integrations](usage/integrations.md) for end-to-end MCP and Python examples
-- [Mapping Tools](tools/mapping.md) for mapping-oriented workflows
-- [API Reference](reference/ref_services.md) for the service surface and `build_application`
+- [Installation](usage/installation.md) for package install, stack prerequisites, and service startup
+- [Configuration](usage/configuration.md) for the shared-stack config model and ownership boundaries
+- [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage patterns
+- [Architecture](architecture.md) for the runtime layers and extension boundaries
+- [Extending groundworkers](development/extending.md) for adding adapters, services, MCP tools, or REST endpoints
 
 ## Relation to groundcrew
 
-!!! info
-    [groundcrew](https://github.com/AustralianCancerDataNetwork/groundcrew) usually
-    connects to `groundworkers` over MCP. If you are building a Python application,
-    you can also import the same mapping logic directly through `build_application(config)`.
+`groundworkers` and `groundcrew` are intentionally separate:
+
+- `groundworkers` owns reusable stateless capabilities
+- `groundcrew` owns orchestration, session state, and job lifecycle
+
+In the usual deployment shape, `groundcrew` talks to `groundworkers` over MCP.
+If you are building your own Python application, you can call the same service
+layer directly through `build_application(...)`.

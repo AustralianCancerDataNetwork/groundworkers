@@ -1,66 +1,30 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 
 
-class _FakeExecuteResult:
-    def __init__(self, rows):
-        self._rows = rows
-
-    def all(self):
-        return self._rows
-
-
-class _FakeSession:
-    def __init__(self, rows):
-        self._rows = rows
-        self.executed = []
-
-    def execute(self, stmt):
-        self.executed.append(stmt)
-        return _FakeExecuteResult(self._rows)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-class _FakeKnowledgeGraph:
-    def __init__(self, rows):
-        self.session = _FakeSession(rows)
-
-    def session_factory(self):
-        return self.session
-
-
-def test_get_domain_root_ids_observation_uses_direct_concept_id():
-    """Observation now has a direct concept_id anchor (27); no DB query should be issued."""
+def test_set_embedding_client_invalidates_cached_knowledge_graph():
     adapter = object.__new__(OmopGraphAdapter)
-    adapter._kg = None
-    adapter._root_ids_cache = {}
-    adapter._DOMAIN_ROOT_CODES = dict(OmopGraphAdapter._DOMAIN_ROOT_CODES)
+    adapter._kg = object()
+    adapter.emb_model_name = "old-model"
+    adapter._embedding_client = None
 
-    fake_kg = _FakeKnowledgeGraph([])
-    adapter._get_kg = lambda: fake_kg
+    client = SimpleNamespace(name="embedding-client")
 
-    roots = adapter._get_domain_root_ids("Observation")
+    adapter.set_embedding_client(client, model_name="new-model")
 
-    assert roots == (27,)
-    assert len(fake_kg.session.executed) == 0
+    assert adapter._embedding_client is client
+    assert adapter.emb_model_name == "new-model"
+    assert adapter._kg is None
 
 
-def test_get_domain_root_ids_known_domain_uses_stable_anchor_lookup():
-    adapter = object.__new__(OmopGraphAdapter)
-    adapter._kg = None
-    adapter._root_ids_cache = {}
-    adapter._DOMAIN_ROOT_CODES = dict(OmopGraphAdapter._DOMAIN_ROOT_CODES)
+def test_wrap_graph_error_does_not_special_case_parentless_not_implemented():
+    wrapped = OmopGraphAdapter._wrap_graph_error(
+        NotImplementedError("Grounding without parent_ids is not supported."),
+        default_code="QUERY_ERROR",
+    )
 
-    fake_kg = _FakeKnowledgeGraph([(404684003,)])
-    adapter._get_kg = lambda: fake_kg
-
-    roots = adapter._get_domain_root_ids("Condition")
-
-    assert roots == (404684003,)
-    assert len(fake_kg.session.executed) == 1
+    assert wrapped.code == "QUERY_ERROR"
+    assert wrapped.message == "Grounding without parent_ids is not supported."

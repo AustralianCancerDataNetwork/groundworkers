@@ -15,4 +15,6 @@ _design/
 .vscode/
 settings.json
 *.local.yaml
+*.local.toml
 site/
+_knowledge/

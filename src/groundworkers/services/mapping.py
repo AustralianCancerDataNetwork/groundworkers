@@ -4,8 +4,9 @@ from collections import Counter
 from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
-from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
+from groundworkers.services.graph import GraphService
+from groundworkers.services.grounding import ConceptGroundingService
 from groundworkers.services.vocab import (
     VocabService,
     normalize_text_for_matching,
@@ -22,12 +23,14 @@ class MappingService:
         self,
         vocab: VocabService,
         *,
-        graph_adapter: OmopGraphAdapter | None = None,
+        graph_service: GraphService | None = None,
         emb_adapter: OmopEmbAdapter | None = None,
+        grounding_service: ConceptGroundingService | None = None,
     ) -> None:
         self._vocab = vocab
-        self._graph = graph_adapter
+        self._graph = graph_service
         self._emb = emb_adapter
+        self._grounding = grounding_service
 
     def concept_search_normalized(
         self,
@@ -194,6 +197,7 @@ class MappingService:
                     warnings.append(f"embedding channel unavailable: {exc.message}")
 
         candidate_union = self._build_candidate_union(channels, overall_limit)
+        self._backfill_candidate_metadata(candidate_union, warnings)
 
         standardized_candidates: list[dict[str, Any]] = []
         if include_standard_mappings and candidate_union:
@@ -212,7 +216,7 @@ class MappingService:
                 except Exception:
                     row["ancestor_preview"] = []
         elif include_hierarchy_context:
-            warnings.append("graph adapter not configured; hierarchy context omitted")
+            warnings.append("graph service unavailable; hierarchy context omitted")
 
         if include_relationship_summary and self._graph is not None:
             for row in candidate_union[: min(5, len(candidate_union))]:
@@ -222,7 +226,7 @@ class MappingService:
                 except Exception:
                     row["relationship_summary"] = {}
         elif include_relationship_summary:
-            warnings.append("graph adapter not configured; relationship summary omitted")
+            warnings.append("graph service unavailable; relationship summary omitted")
 
         return {
             "query": stripped,
@@ -251,16 +255,18 @@ class MappingService:
         candidate_limit: int = 10,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if (query is None) == (concept_id is None):
             raise ValueError("exactly one of query or concept_id must be provided")
 
         if query is not None:
-            grounded = self._graph.ground(
+            if self._grounding is None:
+                raise GroundworkersError("BACKEND_UNAVAIL", "grounding service is not configured")
+            grounded = self._grounding.ground(
                 query.strip(),
-                candidate_limit,
-                domain or None,
-                vocabulary_id or None,
+                limit=candidate_limit,
+                domain=domain or None,
+                vocabulary_id=vocabulary_id or None,
                 parent_ids=tuple(parent_ids) if parent_ids else None,
             )
             results = grounded["results"]
@@ -340,7 +346,7 @@ class MappingService:
         model_name: str | None = None,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if concept_id <= 0:
             raise ValueError("concept_id must be a positive integer")
         concept = self._graph.get_concept(concept_id)
@@ -386,7 +392,7 @@ class MappingService:
         concept_code: str,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if not vocabulary_id.strip():
             raise ValueError("vocabulary_id must be a non-empty string")
         if not concept_code.strip():
@@ -411,7 +417,7 @@ class MappingService:
         resolve_to_standard: bool = True,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if not items:
             return {"expression_items": [], "resolved_concept_ids": [], "resolved_concepts": [], "excluded_concepts": [], "counts": {"resolved": 0, "excluded": 0}}
         resolved: dict[int, dict[str, Any]] = {}
@@ -541,6 +547,38 @@ class MappingService:
             "missing_reference_cases": missing_reference_cases,
             "extra_prediction_cases": extra_prediction_cases,
         }
+
+    def _backfill_candidate_metadata(
+        self, candidate_union: list[dict[str, Any]], warnings: list[str]
+    ) -> None:
+        """Fill identity metadata for candidates surfaced only via embedding.
+        """
+        incomplete_ids = [
+            row["concept_id"] for row in candidate_union if row.get("vocabulary_id") is None
+        ]
+        if not incomplete_ids:
+            return
+        if self._graph is None:
+            warnings.append(
+                "embedding-only candidates could not be enriched with identity "
+                "metadata (graph service unavailable)"
+            )
+            return
+        views = self._graph.concept_views(incomplete_ids)
+        for row in candidate_union:
+            if row.get("vocabulary_id") is not None:
+                continue
+            view = views.get(row["concept_id"])
+            if view is None:
+                continue
+            row["concept_code"] = view.get("concept_code")
+            row["vocabulary_id"] = view.get("vocabulary_id")
+            row["domain_id"] = view.get("domain_id")
+            row["concept_class_id"] = view.get("concept_class_id")
+            if row.get("concept_name") is None:
+                row["concept_name"] = view.get("concept_name")
+            if row.get("standard_concept") is None:
+                row["standard_concept"] = view.get("standard_concept")
 
     @staticmethod
     def _build_candidate_union(channels: dict[str, dict[str, Any]], overall_limit: int) -> list[dict[str, Any]]:

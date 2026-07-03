@@ -81,7 +81,7 @@ def test_search_raises_backend_unavail_without_client():
 
 def test_search_returns_serialized_matches(monkeypatch):
     adapter = build_adapter()
-    record = SimpleNamespace(model_name="demo-model")
+    record = SimpleNamespace(model_name="demo-model", index_config=None)
     reader = StubReader()
     client = StubClient()
 
@@ -149,3 +149,42 @@ def test_encode_returns_vector_payload(monkeypatch):
         "vector": [0.1, 0.2, 0.3],
     }
     assert client.calls
+
+
+def test_resolve_model_name_uses_public_resolution_seam(monkeypatch):
+    adapter = build_adapter()
+
+    monkeypatch.setattr(
+        adapter,
+        "_resolve_model_record",
+        lambda model_name: SimpleNamespace(model_name="resolved-model"),
+    )
+
+    assert adapter.resolve_model_name() == "resolved-model"
+
+
+def test_get_client_for_model_reuses_cached_public_client(monkeypatch):
+    created: list[str] = []
+
+    def build_client(model_name: str) -> StubClient:
+        created.append(model_name)
+        return StubClient()
+
+    adapter = OmopEmbAdapter(
+        backend_factory=lambda: object(),
+        backend_type="pgvector",
+        default_model_name="demo-model",
+        client_factory=build_client,
+    )
+
+    monkeypatch.setattr(
+        adapter,
+        "_resolve_model_record",
+        lambda model_name: SimpleNamespace(model_name="demo-model"),
+    )
+
+    client_a = adapter.get_client_for_model()
+    client_b = adapter.get_client_for_model()
+
+    assert client_a is client_b
+    assert created == ["demo-model"]

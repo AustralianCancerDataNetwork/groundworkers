@@ -1,93 +1,68 @@
 # Integrations
 
-This page shows two supported downstream integration styles:
+`groundworkers` supports three steady-state integration styles:
 
-1. **MCP integration**: your application talks to `groundworkers` over the MCP
-   protocol
-2. **Direct Python integration**: your application imports `groundworkers` and
-   calls services in-process
+1. **MCP** for agentic clients and tool discovery
+2. **REST** for fixed workflow applications
+3. **Direct Python** for in-process orchestration
 
-Both styles use the same adapter and service composition underneath.
+All three reuse the same runtime config, adapters, and services.
 
-## Choosing an integration style
+## How to choose
 
-Use **MCP** when:
+| If you need... | Use... |
+|---|---|
+| Tool discovery, agent interoperability, remote capability sharing | MCP |
+| Typed HTTP APIs, OpenAPI, fixed workflow contracts | REST |
+| Lowest overhead, batch jobs, library composition inside Python | Direct Python |
 
-- you want process isolation
-- you want tool discovery and protocol-level interoperability
-- your consumer is already an MCP client
-- you want multiple clients to share the same `groundworkers` server
-
-Use **direct Python services** when:
-
-- your application is already Python
-- you want the lowest overhead
-- you want to reuse `groundworkers` logic without a transport hop
-- you want to compose library calls directly inside your own codebase
-
-## End-to-end shape
+## Shared runtime shape
 
 ```mermaid
 sequenceDiagram
-    participant C as Downstream consumer
-    participant M as MCP tools
-    participant S as MappingService
-    participant A as Adapters
-    participant D as OMOP libs / DB
+    participant C as Consumer
+    participant T as Transport
+    participant S as Service
+    participant A as Adapter
+    participant D as OMOP / model dependencies
 
-    alt MCP integration
-        C->>M: call tool (for example concept_candidate_bundle)
-        M->>S: invoke service method
-    else Direct Python integration
-        C->>S: invoke service method
-    end
-    S->>A: coordinate adapter calls
-    A->>D: query libraries / DB
-    D-->>A: results
-    A-->>S: normalized adapter data
-    S-->>M: domain result
-    S-->>C: domain result
-    M-->>C: MCP-safe JSON result
+    C->>T: request
+    T->>S: service call
+    S->>A: dependency call
+    A->>D: query / API call
+    D-->>A: raw result
+    A-->>S: normalized result
+    S-->>T: domain result
+    T-->>C: transport response
 ```
 
 ## MCP integration
 
-### 1. Run `groundworkers` as a subprocess or service
+### Start the service
+
+Local stdio:
 
 ```bash
-groundworkers --config /path/to/groundworkers.yaml
+groundworkers
 ```
 
-For a shared team service:
+Shared HTTP MCP service:
 
 ```bash
 groundworkers \
-  --config /path/to/groundworkers.yaml \
   --transport streamable-http \
   --host 0.0.0.0 \
   --port 8000
 ```
 
-For local inspection:
+Inspect the active tool surface:
 
 ```bash
-groundworkers --config /path/to/groundworkers.yaml --describe
+groundworkers --describe
 ```
 
-That prints the registered tool names, signatures, and docstrings for the
-current configuration.
+### Example client workflow
 
-### 2. Downstream consumer example: mapping review assistant
-
-Imagine a downstream application that helps reviewers map source terms. Its flow
-can be:
-
-1. send the source term to `concept_candidate_bundle`
-2. display the evidence channels side by side
-3. fetch `concept_mapping_context` for the selected candidate
-4. pass that context into an LLM or reviewer UI
-
-The client-side call shape is MCP-client-specific, but the payload is concrete.
 Pseudocode:
 
 ```python
@@ -104,7 +79,7 @@ bundle = mcp_client.call_tool(
 )
 ```
 
-Equivalent JSON arguments:
+Representative request payload:
 
 ```json
 {
@@ -142,64 +117,76 @@ Representative response shape:
 }
 ```
 
-The key point is that the MCP client does not need to know how exact search,
-FTS, embeddings, and standardization are orchestrated. It simply calls the tool.
+MCP is the right interface when the caller wants discoverability and can work in
+terms of tool names and JSON-ish payloads.
 
-### 3. Fetch deterministic context for the selected candidate
+## REST integration
 
-```json
-{
-  "concept_id": 201826,
-  "include_standard_mapping": true,
-  "include_ancestors": true,
-  "include_relationship_summary": true,
-  "include_neighbors": true,
-  "include_embedding_neighbors": true
-}
+### Start the service
+
+```bash
+groundworkers \
+  --transport rest \
+  --host 0.0.0.0 \
+  --port 8080
 ```
 
-This gives a downstream orchestration layer one deterministic context packet for
-prompt assembly instead of forcing it to call multiple lower-level tools itself.
+Current curated routes:
+
+- `GET /healthz`
+- `POST /v1/mapping/candidate-bundle`
+- `POST /v1/source-planning/assisted-plan`
+
+### Example: candidate bundle
+
+```bash
+curl -X POST http://localhost:8080/v1/mapping/candidate-bundle \
+  -H 'content-type: application/json' \
+  -d '{
+    "query": "type 2 diabetes",
+    "domain": "Condition",
+    "include_embedding": true,
+    "include_standard_mappings": true
+  }'
+```
+
+### Example: assisted source planning
+
+```bash
+curl -X POST http://localhost:8080/v1/source-planning/assisted-plan \
+  -H 'content-type: application/json' \
+  -d '{
+    "content": "field_name,field_label\nhba1c,Haemoglobin A1c\n",
+    "filename": "dictionary.csv",
+    "caller_hint": "data_dictionary"
+  }'
+```
+
+REST is curated rather than exhaustive. The REST transport exposes workflow
+operations with stable request and response models; it does not attempt to
+mirror the full MCP tool surface.
 
 ## Direct Python integration
 
-### 1. Build the application container once
+### Build the application once
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.model_validate(
-    {
-        "omop_graph": {
-            "db_url": "postgresql+psycopg://user:pass@localhost:5432/omop",
-            "vocab_schema": "omop_vocab",
-        },
-        "omop_emb": {
-            "enabled": True,
-            "backend_type": "pgvector",
-            "db_url": "postgresql+psycopg://user:pass@localhost:5432/omop",
-            "default_model_name": "qwen3-embedding:0.6b",
-            "api_base": "http://localhost:11434/v1",
-            "api_key": "ollama",
-        },
-    }
-)
-
+config = build_app_config(profile="local")
 app = build_application(config)
+
 mapping = app.services.mapping
 assert mapping is not None
 ```
 
-In a real application, create this once at startup and keep it around rather than
-rebuilding it per request.
-
-### 2. Downstream consumer example: service-backed mapper
+### Example: service-backed mapper
 
 ```python
 class MappingReviewService:
-    def __init__(self) -> None:
-        self._mapping = mapping
+    def __init__(self, mapping_service) -> None:
+        self._mapping = mapping_service
 
     def build_review_packet(self, source_term: str) -> dict:
         bundle = self._mapping.concept_candidate_bundle(
@@ -228,98 +215,20 @@ class MappingReviewService:
         }
 ```
 
-This is the same orchestration shape as the MCP example, just without a transport hop.
+Direct Python is the best fit when your caller is already Python and you want
+the service layer without a transport hop.
 
-### 3. Batch or evaluation workflow example
+For graph-backed direct Python calls, prefer `app.services.graph` and
+`app.services.grounding`. For lexical retrieval, use `app.services.vocab`. For
+review-oriented orchestration, use `app.services.mapping`.
 
-```python
-predicted = [
-    {
-        "source_term": "type 2 diabetes",
-        "domain_id": "Condition",
-        "predicted_standard_concept_ids": [201826],
-    }
-]
-reference = [
-    {
-        "source_term": "type 2 diabetes",
-        "domain_id": "Condition",
-        "reference_standard_concept_id": 201826,
-    }
-]
+## Mixing interfaces
 
-evaluation = mapping.mapping_evaluate_candidates(
-    predicted,
-    reference,
-    match_mode="standard_concept_id",
-)
-print(evaluation["summary_metrics"])
-```
+It is reasonable to combine interfaces in one deployment:
 
-This is the main benefit of the service layer: downstream code can reuse the
-same domain logic as MCP clients, without pretending to be an MCP client.
+- use **MCP** for agentic callers
+- use **REST** for tightly controlled workflow applications
+- use **direct Python** for batch evaluation, tests, or internal orchestration
 
-## MCP and direct services together
-
-Some applications will want both:
-
-- use direct services for in-process batch or evaluation workflows
-- expose the same capabilities over MCP for interactive agents
-
-That is the intended design direction.
-
-Example pattern:
-
-```python
-from groundworkers.app import build_application
-from groundworkers.server import create_server
-from groundworkers.config import AppConfig
-
-config = AppConfig.load("config/groundworkers.local.yaml")
-
-app = build_application(config)
-server = create_server(config)
-
-# direct Python use
-bundle = app.services.mapping.concept_candidate_bundle("hypertension")
-
-# MCP use is available through `server`
-print(server.list_tools())
-```
-
-## Which layer should a downstream app use?
-
-Use `app.services.mapping` when you want:
-
-- candidate bundles
-- parent backoff
-- mapping context
-- `Maps to value`
-- mapping-expression resolution
-- evaluation helpers
-
-Use `app.adapters.*` only when you explicitly want lower-level dependency-shaped
-operations and are comfortable owning more orchestration yourself.
-
-Use MCP tools when you want:
-
-- a stable remote interface
-- tool discovery for agents
-- process separation or team-shared deployment
-
-## Error handling expectations
-
-Direct Python service calls:
-
-- raise exceptions (`ValueError`, `GroundworkersError`, or dependency-level errors)
-
-MCP tool calls:
-
-- return structured error dicts:
-
-```json
-{"error": true, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
-```
-
-This is the boundary to keep in mind: the service layer behaves like a normal
-Python API, while the tool layer behaves like a transport API.
+Because all three sit on the same service layer, the important choice is
+consumer ergonomics and transport fit, not a different implementation path.

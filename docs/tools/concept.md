@@ -1,10 +1,11 @@
 # Concept Tools
 
-Eleven tools provide read-only access to OMOP concepts, hierarchy, relationships,
-standard mappings, and free-text grounding.  All require `omop_graph` to be configured.
+These graph-backed tools provide read-only access to OMOP concepts, hierarchy,
+relationships, neighborhoods, paths, and standard mappings. They are backed by
+`GraphService` and require the omop-graph backend.
 
-For agent-composable search primitives (exact match, full-text, standard navigation)
-see [Search Tools](search.md).
+For free-text grounding see [Resolver Tools](resolver.md). For agent-composable
+lexical search primitives see [Search Tools](search.md).
 
 ---
 
@@ -47,58 +48,6 @@ Returns concepts matching a vocabulary ID and concept code pair.
 ```
 
 **Response**: `{"concepts": [...]}` — array of concept dicts in the same shape as `concept_get`.
-
----
-
-## `concept_ground`
-
-Full-featured free-text grounding — the primary entry point for mapping a text string
-or clinical term to an OMOP standard concept.
-
-```json
-{
-  "query": "lung cancer",
-  "limit": 5,
-  "domain": "Condition",
-  "vocabulary_id": "SNOMED"
-}
-```
-
-All parameters except `query` are optional.  `limit` is clamped to `[1, 20]`.
-
-**Response**:
-```json
-{
-  "query": "lung cancer",
-  "results": [
-    {
-      "concept_id": 4119419,
-      "concept_name": "Malignant neoplasm of bronchus and lung",
-      "vocabulary_id": "SNOMED",
-      "domain_id": "Condition",
-      "concept_class_id": "Clinical Finding",
-      "standard_concept": true,
-      "total_score": 1.0,
-      "match_kind": "EXACT"
-    }
-  ]
-}
-```
-
-`match_kind` indicates which resolver tier produced the result:
-
-| Value | Meaning |
-|---|---|
-| `EXACT` | Case-insensitive exact match on concept_name or synonym |
-| `FULLTEXT` | PostgreSQL full-text search (requires tsvector sidecar column) |
-| `EMBEDDING_NEAREST` | Nearest-neighbour embedding search |
-| `PARTIAL` | `ILIKE` fragment match (last resort) |
-
-The pipeline short-circuits on the first tier that returns any result.
-
-For finer control over resolver selection and quality thresholds, use
-`concept_search_exact`, `concept_search_fulltext`, `embedding_search`, and
-`concept_navigate_to_standard` directly.
 
 ---
 
@@ -272,6 +221,60 @@ When `source_id == target_id`, returns `{"found": true, "paths": [{"length": 0, 
 
 For cross-vocabulary equivalence queries, prefer `concept_equivalency_path` which
 restricts traversal to identity edges only.
+
+---
+
+## `concept_neighbors`
+
+Returns a bounded multi-hop neighborhood around one concept.
+
+```json
+{
+  "concept_id": 4119419,
+  "max_depth": 2,
+  "predicate_kinds": ["HIERARCHY", "ATTRIBUTE"],
+  "max_nodes": 100,
+  "include_edges": true
+}
+```
+
+All parameters except `concept_id` are optional.
+
+- `predicate_kinds` restricts traversal to specific relationship families.
+- `max_depth` is clamped to `1..4`.
+- `max_nodes` is clamped to `10..500`.
+
+**Response**:
+```json
+{
+  "concept_id": 4119419,
+  "neighbor_count": 2,
+  "edge_count": 2,
+  "neighbors": [
+    {
+      "concept_id": 441484,
+      "concept_name": "Neoplasm",
+      "vocabulary_id": "SNOMED",
+      "domain_id": "Condition",
+      "concept_class_id": "Clinical Finding",
+      "standard_concept": true
+    }
+  ],
+  "edges": [
+    {
+      "subject_id": 4119419,
+      "predicate_id": "Is a",
+      "predicate_kind": "HIERARCHY",
+      "object_id": 441484
+    }
+  ],
+  "terminated_early": false,
+  "terminated_reason": null
+}
+```
+
+Use this when you want a local relationship subgraph without committing to a
+single path or hierarchy-only traversal.
 
 ---
 

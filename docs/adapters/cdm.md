@@ -31,16 +31,16 @@ not a config object. Only `build_application()` reads config and calls
 `sqlalchemy.create_engine()`. This means:
 
 - the adapter is testable by passing a SQLite engine or an in-memory engine directly
-- migrating the connection source (e.g. to oa-configurator) means changing
-  `build_application()` only; `CDMAdapter` and every service that uses it are untouched
+- changing the connection source means changing `build_application()` only;
+  `CDMAdapter` and every service that uses it are untouched
 
 ## Usage from `build_application()`
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.load("config/groundworkers.local.yaml")
+config = build_app_config()
 app = build_application(config)
 
 # CDMAdapter is available at:
@@ -59,7 +59,8 @@ the first database connection is deferred until the first query. `is_available()
 performs a lightweight probe (`SELECT 1`) to confirm connectivity without blocking
 unrelated tool calls.
 
-`close()` disposes the engine and releases the connection pool. Call it explicitly
-in teardown (e.g. a test fixture `yield`/`finally` block) when you need to ensure
-connections are returned promptly. The MCP server does not currently wire automatic
-teardown.
+`close()` disposes the engine and releases the connection pool. Call it
+explicitly in teardown (for example in a test fixture `yield`/`finally` block)
+when you need to ensure connections are returned promptly. Process-level startup
+and shutdown wiring belongs in the application or transport layer, not in the
+adapter itself.

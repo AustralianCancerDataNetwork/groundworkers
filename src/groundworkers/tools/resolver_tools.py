@@ -4,9 +4,9 @@ import logging
 import time
 from typing import Any
 
-from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
+from groundworkers.services.grounding import ConceptGroundingService
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ def _short_text(value: str, *, limit: int = 120) -> str:
     return f"{compact[:limit - 3]}..."
 
 
-def register_resolver_tools(server: GroundcrewServer, graph_adapter: OmopGraphAdapter) -> None:
+def register_resolver_tools(server: GroundcrewServer, grounding_service: ConceptGroundingService) -> None:
     """Register free-text concept resolution tools against the MCP server.
 
     These tools map unstructured text (clinical terms, natural language, partial
@@ -63,8 +63,7 @@ def register_resolver_tools(server: GroundcrewServer, graph_adapter: OmopGraphAd
           pass the concept_id for "Neoplastic disease" to ensure only oncology results
           are returned, or the concept_id for a specific drug class to scope a drug
           lookup to that class.
-          When omitted the search is anchored to the domain root (or all known domain
-          roots when domain is also omitted).
+          When omitted the search runs without an ancestry constraint.
 
         For finer control over resolver selection and quality thresholds, use the
         agent-composable primitives: concept_search_exact, concept_search_fulltext,
@@ -95,8 +94,11 @@ def register_resolver_tools(server: GroundcrewServer, graph_adapter: OmopGraphAd
             list(resolved_parent_ids) if resolved_parent_ids is not None else None,
         )
         try:
-            ground_result = graph_adapter.ground(
-                stripped, safe_limit, domain or None, vocabulary_id or None,
+            ground_result = grounding_service.ground(
+                stripped,
+                limit=safe_limit,
+                domain=domain or None,
+                vocabulary_id=vocabulary_id or None,
                 parent_ids=resolved_parent_ids,
             )
             duration_ms = (time.perf_counter() - started) * 1000.0

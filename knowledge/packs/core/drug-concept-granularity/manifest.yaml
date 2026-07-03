@@ -1,0 +1,22 @@
+name: drug-concept-granularity
+layer: core
+version: "1.0"
+shareability: public
+scope_summary: >
+  RxNorm concept level selection for drug mappings: prefer Ingredient when
+  dose/form/strength are unavailable; prefer Clinical Drug when they are known.
+  Branded Drug and Marketed Product are not valid standard mapping targets.
+  Applies to all drug concept mapping regardless of source system.
+
+mechanisms:
+  - context-inject
+  - post-filter
+
+applicability:
+  always: false
+  domains:
+    - Drug
+
+see_also:
+  - standard-concept-preference
+  - domain-routing

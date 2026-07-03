@@ -84,6 +84,34 @@ def test_plan_source_routes_uds_like_redcap_csv_to_packed_values():
     assert bundle.plan.hint_matches is True
 
 
+def test_plan_source_surfaces_redcap_profile_structural_knowledge():
+    # When the REDCap profile fingerprint matches, its platform-structural
+    # knowledge (skip field types, packed-value column) must be surfaced on the
+    # bundle rather than discarded, so downstream ingestion can apply it.
+    content = (
+        '"Variable / Field Name","Field Type","Field Label",'
+        '"Choices, Calculations, OR Slider Labels","Branching Logic (Show field only if...)"\n'
+        "ptid,text,PTID,,\n"
+        'packet,radio,Packet Code,"I, Initial | F, Follow-up",\n'
+    )
+
+    bundle = plan_source(content, filename="redcap-dd.csv", caller_hint="data_dict")
+
+    assert bundle.detected_source_system == "redcap"
+    assert bundle.structural_skip_field_types == ["calc", "descriptive"]
+    assert bundle.packed_value_column_hint == "Choices, Calculations, OR Slider Labels"
+
+
+def test_plan_source_leaves_profile_structural_fields_empty_without_a_match():
+    content = "Code,Label\nE11.9,Type 2 diabetes mellitus\n"
+
+    bundle = plan_source(content, filename="generic.csv")
+
+    assert bundle.detected_source_system is None
+    assert bundle.structural_skip_field_types == []
+    assert bundle.packed_value_column_hint is None
+
+
 def test_plan_source_routes_untitled12_like_csv_to_packed_values():
     content = (
         "PROJECT_ID,FIELD_NAME,FORM_NAME,ELEMENT_TYPE,ELEMENT_LABEL,ELEMENT_ENUM,ELEMENT_NOTE,_RAW_ELT_SOURCE\n"

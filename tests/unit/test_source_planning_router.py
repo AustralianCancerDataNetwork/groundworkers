@@ -103,6 +103,29 @@ def test_router_assigns_data_dict_ideal_and_domain_hint():
     assert routed.domain_hint_confidence == 0.9
 
 
+def test_router_derives_domain_hint_from_source_vocab_column():
+    # A source-vocabulary column that resolves to LOINC must contribute a
+    # Measurement domain hint, just like a code column would.
+    table = _annotated_table(
+        headers=["Coding System", "Field Label"],
+        rows=[{"Coding System": "LOINC", "Field Label": "Serum sodium"}],
+        annotations={
+            "Coding System": ColumnAnnotation(
+                role=ColumnRole.source_vocab,
+                detection_tier="C",
+                confidence=0.82,
+                inferred_vocab="LOINC",
+            ),
+            "Field Label": ColumnAnnotation(role=ColumnRole.label, detection_tier="A", confidence=1.0),
+        },
+    )
+
+    _strategy, routed = route_table(table)
+
+    assert routed.domain_hint == "Measurement"
+    assert routed.domain_hint_confidence == 0.82
+
+
 def test_router_assigns_packed_values_strategy():
     table = _annotated_table(
         headers=["Field Label", "Choices"],

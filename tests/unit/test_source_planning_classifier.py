@@ -47,6 +47,25 @@ def test_classifier_marks_generic_code_label_and_infers_vocab_from_values():
     assert annotated.is_grounding_target is True
 
 
+def test_classifier_records_inferred_vocab_for_source_vocab_column():
+    # A dedicated coding-system column naming an OMOP vocabulary must populate the
+    # structured inferred_vocab field (not only free-text notes) so the router can
+    # derive a domain hint from it.
+    table = _normalised_table(
+        headers=["Coding System", "Label"],
+        rows=[
+            {"Coding System": "LOINC", "Label": "Serum sodium"},
+            {"Coding System": "LOINC", "Label": "Serum potassium"},
+        ],
+    )
+
+    annotated = classify_columns(table)
+
+    system = annotated.column_annotations["Coding System"]
+    assert system.role == ColumnRole.source_vocab
+    assert system.inferred_vocab == "LOINC"
+
+
 def test_classifier_handles_uds_like_redcap_headers():
     table = _normalised_table(
         name="uds-v4-redcap-dd-04142026",

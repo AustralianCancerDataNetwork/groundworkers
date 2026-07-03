@@ -1,0 +1,18 @@
+name: history-of-event
+layer: core
+version: "1.0"
+shareability: public
+scope_summary: >
+  OMOP model for source items describing a patient's history of a clinical event.
+  Source labels with "history of" phrasing always map to OBSERVATION 4214956 (History
+  of event) with the actual condition or finding in value_as_concept_id — never to
+  CONDITION_OCCURRENCE. Includes family history variant.
+
+mechanisms:
+  - context-inject
+
+applicability:
+  always: true
+
+see_also:
+  - value-representation

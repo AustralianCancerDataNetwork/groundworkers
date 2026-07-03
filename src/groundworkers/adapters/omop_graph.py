@@ -1,31 +1,18 @@
 from __future__ import annotations
 
 import logging
-import time
-from collections import deque
-from collections.abc import Callable
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
 from omop_graph.extensions.omop_alchemy import PredicateKind
-from omop_graph.graph.constraints import SearchConstraintConcept
 from omop_graph.graph.kg import KnowledgeGraph, KnowledgeGraphEmbeddingConfiguration
 from omop_graph.graph.paths import find_shortest_paths_batch
 from omop_graph.graph.traverse import traverse
 from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
 from omop_graph.reasoning.resolvers import ResolverPipeline
-from omop_graph.reasoning.resolvers.resolvers import (
-    EmbeddingResolver,
-    ExactLabelResolver,
-    ExactSynonymResolver,
-    FullTextResolver,
-    FullTextSynonymResolver,
-    PartialLabelResolver,
-    PartialSynonymResolver,
-)
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
-    Concept_Ancestor,
     Concept_Class,
     Domain,
     Vocabulary,
@@ -41,14 +28,20 @@ from groundworkers.base.errors import GroundworkersError
 logger = logging.getLogger(__name__)
 
 
-def _short_text(value: str, *, limit: int = 120) -> str:
-    compact = " ".join(value.split())
-    if len(compact) <= limit:
-        return compact
-    return f"{compact[:limit - 3]}..."
-
-
 class OmopGraphAdapter:
+    """Dependency-shaped wrapper around the omop-graph backend runtime.
+
+    This adapter owns everything omop-graph specific: the ``KnowledgeGraph``
+    lifecycle and embedding configuration, translation of omop-graph/SQLAlchemy
+    exceptions into ``GroundworkersError``, and a set of normalized *primitives*
+    that each map to roughly one omop-graph operation and return plain dicts /
+    tuples (never raw omop-graph objects).
+
+    Multi-step orchestration (hierarchy walks, path assembly, grounding tier
+    selection, neighbourhood shaping) lives in ``GraphService``, which composes
+    these primitives. Keep this class dependency-shaped: no caller-facing policy.
+    """
+
     def __init__(
         self,
         engine: Engine,
@@ -56,28 +49,27 @@ class OmopGraphAdapter:
         vocab_schema: str = "omop_vocab",
         emb_model_name: str | None = None,
         embedding_client: EmbeddingClient | None = None,
-        min_fulltext_overlap: float = 0.0,
     ) -> None:
         self.engine = engine
         self.vocab_schema = vocab_schema
         self.emb_model_name = emb_model_name
         self._embedding_client: EmbeddingClient | None = embedding_client
-        self.min_fulltext_overlap = min_fulltext_overlap
         self._kg: KnowledgeGraph | None = None
-        self._root_ids_cache: dict[str, tuple[int, ...]] = {}
 
     def set_embedding_client(self, client: EmbeddingClient, model_name: str | None = None) -> None:
-        """Configure an EmbeddingClient so concept_ground can encode query strings on-the-fly.
+        """Configure an EmbeddingClient so the embedding grounding tier can encode queries.
 
-        Safe to call after construction — the knowledge graph does not need to be rebuilt.
+        Safe to call after construction. Any cached KnowledgeGraph is invalidated so the
+        embedding-enabled graph configuration is rebuilt on the next request.
         """
         self._embedding_client = client
         if model_name is not None:
             self.emb_model_name = model_name
+        self._kg = None
 
     @property
     def embedding_resolver_active(self) -> bool:
-        """True when an EmbeddingClient is configured and the embedding tier in concept_ground is live.
+        """True when an EmbeddingClient is configured and the embedding grounding tier is live.
 
         Independent from OmopEmbAdapter.is_available() — both must be True to confirm
         the full embedding pipeline is operational.
@@ -102,9 +94,11 @@ class OmopGraphAdapter:
             return False, repr(exc)
 
     def close(self) -> None:
-        self.engine.dispose()
         self._kg = None
-        self._root_ids_cache = {}
+
+    # ------------------------------------------------------------------
+    # Normalized concept primitives
+    # ------------------------------------------------------------------
 
     def get_concept(self, concept_id: int) -> dict[str, Any] | None:
         try:
@@ -125,315 +119,92 @@ class OmopGraphAdapter:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return [self._serialise_concept_view(concept_view)]
 
-    def get_ancestors(self, concept_id: int, max_depth: int) -> list[dict[str, Any]]:
-        kg = self._get_kg()
-        if self.get_concept(concept_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
+    def concept_views(self, concept_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+        """Batch-fetch normalized concept views keyed by concept_id.
 
-        queue: deque[tuple[int, int]] = deque((parent_id, 1) for parent_id in kg.parents(concept_id))
-        return self._walk_hierarchy(queue=queue, neighbour_getter=kg.parents, max_depth=max_depth)
-
-    def ground(
-        self,
-        query: str,
-        limit: int,
-        domain: str | None,
-        vocabulary_id: str | None,
-        parent_ids: tuple[int, ...] | None = None,
-    ) -> dict[str, Any]:
-        """Ground free text to ranked standard OMOP concepts.
-
-        Returns a dict with keys:
-          results              — ranked list of grounded concepts with scoring fields
-          grounding_explanation — summary of which tier matched and what constraints ran
+        Returns an empty dict when no ids are supplied or the lookup fails, so
+        callers can treat a missing key as "unknown concept" without special-casing
+        backend errors during enrichment.
         """
-        overall_started = time.perf_counter()
+        if not concept_ids:
+            return {}
         kg = self._get_kg()
-
-        # Normalise domain to its canonical OMOP casing (e.g. "condition" → "Condition").
-        # OMOP domain_id values are title-cased; a case-insensitive match against the
-        # known root codes table handles the common mistake of passing lowercase names.
-        if domain is not None:
-            _domain_lower = domain.lower()
-            domain = next(
-                (k for k in self._DOMAIN_ROOT_CODES if k.lower() == _domain_lower),
-                domain,  # unknown domain: pass through unchanged
-            )
-
-        search_constraint = None
-        if domain or vocabulary_id:
-            search_constraint = SearchConstraintConcept(
-                domains=(domain,) if domain else None,
-                vocabularies=(vocabulary_id,) if vocabulary_id else None,
-            )
-
-        if parent_ids is not None:
-            resolved_parent_ids: tuple[int, ...] = parent_ids
-            parent_ids_source = "explicit"
-        else:
-            # DEPRECATED fallback: no explicit anchors were supplied, so we anchor to the
-            # hard-coded SNOMED domain roots. This gives low, uneven per-domain coverage and is
-            # misplaced policy (anchor selection belongs to the caller, e.g. groundcrew grounding
-            # profiles). Retained only until all callers pass parent_ids; do not extend it.
-            logger.warning(
-                "concept_ground called without explicit parent_ids (domain=%r); falling back to "
-                "hard-coded domain-root anchoring with low, uneven coverage. Supply anchors via the "
-                "caller's grounding profiles.",
-                domain,
-            )
-            if domain is not None:
-                resolved_parent_ids = self._get_domain_root_ids(domain)
-                parent_ids_source = "domain_root"
-            else:
-                # No domain filter: collect roots across all known domains so hierarchy
-                # anchoring doesn't silently drop every candidate.
-                all_roots: list[int] = []
-                for d in self._DOMAIN_ROOT_CODES:
-                    all_roots.extend(self._get_domain_root_ids(d))
-                resolved_parent_ids = tuple(all_roots)
-                parent_ids_source = "all_domain_roots"
-
-        if not resolved_parent_ids:
-            raise GroundworkersError(
-                "QUERY_ERROR",
-                "No hierarchy anchors found — ensure the OMOP vocabulary is bootstrapped "
-                "(concept and concept_ancestor tables must be populated).",
-            )
-
-        constraints = GroundingConstraints(parent_ids=resolved_parent_ids, search_constraint=search_constraint)
-
-        tiers: list[tuple[Any, ...]] = [
-            (ExactLabelResolver(), ExactSynonymResolver()),
-            (FullTextResolver(), FullTextSynonymResolver()),
-        ]
-        if self.emb_model_name or self._embedding_client is not None:
-            tiers.append((EmbeddingResolver(),))
-        # Partial matching without a domain/vocabulary constraint runs ILIKE against
-        # the full concept table — extremely slow on large vocabularies.  Only add
-        # this tier when search_constraint narrows the search space AND the query
-        # is short enough for ILIKE to be practical (long survey descriptions
-        # saturate the connection pool for 30-90s with no useful match).
-        _MAX_PARTIAL_QUERY_LEN = 60
-        if search_constraint is not None and len(query) <= _MAX_PARTIAL_QUERY_LEN:
-            tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
-
-        logger.info(
-            "concept_ground plan query=%r domain=%r vocabulary_id=%r parent_ids_source=%s parent_ids=%s search_constraint=%s tiers=%s",
-            _short_text(query),
-            domain,
-            vocabulary_id,
-            parent_ids_source,
-            list(resolved_parent_ids),
-            bool(search_constraint),
-            ["+".join(type(resolver).__name__ for resolver in tier) for tier in tiers],
-        )
-
-        results: list[Any] = []
-        for tier in tiers:
-            tier_started = time.perf_counter()
-            tier_name = "+".join(type(resolver).__name__ for resolver in tier)
-            is_fts_tier = any(
-                isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier
-            )
-            pipeline = ResolverPipeline(resolvers=tier)
-            try:
-                logger.info(
-                    "concept_ground tier start query=%r tier=%s limit=%d",
-                    _short_text(query),
-                    tier_name,
-                    limit,
-                )
-                raw = ground_term(
-                    pipeline, kg, query,
-                    query_embedding=None,  # embedding is handled by the KG via its emb_config
-                    constraints=constraints,
-                    max_candidates=limit,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "concept_ground tier failed query=%r tier=%s duration_ms=%.1f exc=%r",
-                    _short_text(query),
-                    tier_name,
-                    (time.perf_counter() - tier_started) * 1000.0,
-                    exc,
-                )
-                raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-            # Drop FTS hits where fewer than min_fulltext_overlap of the query tokens appear
-            # in the matched concept name, then fall through to a higher-quality tier.
-            raw_count = len(raw)
-            if raw and is_fts_tier and self.min_fulltext_overlap > 0.0:
-                query_tokens = set(query.lower().split())
-                filtered = [
-                    r for r in raw
-                    if self._fts_overlap(query_tokens, r.matched_concept_label or "")
-                    >= self.min_fulltext_overlap
-                ]
-                results = filtered
-            else:
-                results = list(raw)
-            logger.info(
-                "concept_ground tier done query=%r tier=%s duration_ms=%.1f raw_results=%d kept_results=%d",
-                _short_text(query),
-                tier_name,
-                (time.perf_counter() - tier_started) * 1000.0,
-                raw_count,
-                len(results),
-            )
-            if results:
-                break
-
-        concept_ids = tuple(dict.fromkeys(r.concept_id for r in results))
         try:
-            views = {v.concept_id: v for v in kg.concept_views(concept_ids, sort=False)} if concept_ids else {}
+            views = kg.concept_views(tuple(concept_ids), sort=False)
         except Exception:
-            views = {}
+            return {}
+        return {int(v.concept_id): self._serialise_concept_view(v) for v in views}
 
-        matched_tier = self._label_match_kind_name(results[0].match_kind) if results else None
-        used_embedding = any(getattr(r, "embedding_score", None) is not None for r in results)
+    # ------------------------------------------------------------------
+    # Hierarchy primitives
+    # ------------------------------------------------------------------
 
-        summary = {
-            "results": [self._serialise_ground_result(r, views) for r in results],
-            "grounding_explanation": {
-                "matched_tier": matched_tier,
-                "used_embedding": used_embedding,
-                "effective_parent_ids": list(resolved_parent_ids),
-                "parent_ids_source": parent_ids_source,
-            },
-        }
-        logger.info(
-            "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r used_embedding=%s result_count=%d",
-            _short_text(query),
-            (time.perf_counter() - overall_started) * 1000.0,
-            matched_tier,
-            used_embedding,
-            len(summary["results"]),
-        )
-        return summary
+    def parents(self, concept_id: int) -> tuple[int, ...]:
+        try:
+            return tuple(int(p) for p in self._get_kg().parents(concept_id))
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
 
-    # Valid predicate kind names accepted by get_neighbors (case-insensitive).
-    _PREDICATE_KIND_NAMES: dict[str, PredicateKind] = {pk.name.upper(): pk for pk in PredicateKind}
+    def children(self, concept_id: int) -> tuple[int, ...]:
+        try:
+            return tuple(int(c) for c in self._get_kg().children(concept_id))
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
 
-    def get_neighbors(
+    # ------------------------------------------------------------------
+    # Edge primitive
+    # ------------------------------------------------------------------
+
+    def edges(
         self,
         concept_id: int,
-        max_depth: int,
-        predicate_kinds: list[str] | None,
-        max_nodes: int,
-        include_edges: bool,
-    ) -> dict[str, Any]:
-        """Bounded multi-hop neighborhood exploration via BFS.
+        *,
+        direction: str,
+        predicate_kinds: frozenset[PredicateKind] | None = None,
+        active_only: bool,
+    ) -> list[dict[str, Any]]:
+        """Return normalized edges for one concept (no concept-name enrichment).
 
-        Follows outgoing relationship edges from the seed concept up to
-        max_depth hops, collecting all reachable concepts and (optionally)
-        the edges that connect them.
+        Each edge: ``{subject_id, object_id, predicate_id, predicate_kind, valid}``.
         """
-        kg = self._get_kg()
-        if self.get_concept(concept_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
-
-        pk_set: set[PredicateKind] | None = None
-        if predicate_kinds is not None:
-            pk_set = set()
-            for pk_name in predicate_kinds:
-                key = pk_name.upper()
-                if key not in self._PREDICATE_KIND_NAMES:
-                    valid = sorted(self._PREDICATE_KIND_NAMES)
-                    raise GroundworkersError(
-                        "INVALID_INPUT",
-                        f"Unknown predicate_kind {pk_name!r}. Valid values: {valid}",
-                    )
-                pk_set.add(self._PREDICATE_KIND_NAMES[key])
-
         try:
-            subgraph, graph_trace = traverse(
-                kg=kg,
-                seeds=(concept_id,),
-                predicate_kinds=pk_set,
-                max_depth=max_depth,
-                on=None,
-                max_nodes=max_nodes,
-                trace=True,  # always trace so we can report terminated_reason
+            raw = self._get_kg().edges(
+                concept_id,
+                direction=direction,
+                predicate_kinds=predicate_kinds,
+                active_only=active_only,
             )
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
+        return [
+            {
+                "subject_id": int(edge.subject_id),
+                "object_id": int(edge.object_id),
+                "predicate_id": edge.predicate_id,
+                "predicate_kind": edge.predicate_kind.name,
+                "valid": edge.invalid_reason is None,
+            }
+            for edge in raw
+        ]
 
-        neighbor_ids = tuple(n for n in sorted(subgraph.nodes) if n != concept_id)
-        try:
-            views = {v.concept_id: v for v in kg.concept_views(neighbor_ids, sort=False)} if neighbor_ids else {}
-        except Exception:
-            views = {}
+    # ------------------------------------------------------------------
+    # Path primitive
+    # ------------------------------------------------------------------
 
-        neighbors: list[dict[str, Any]] = []
-        for nid in neighbor_ids:
-            view = views.get(nid)
-            if view:
-                neighbors.append({
-                    "concept_id": int(view.concept_id),
-                    "concept_name": view.concept_name,
-                    "vocabulary_id": view.vocabulary_id,
-                    "domain_id": view.domain_id,
-                    "concept_class_id": view.concept_class_id,
-                    "standard_concept": bool(view.standard_concept),
-                })
-
-        edges: list[dict[str, Any]] = []
-        if include_edges:
-            for edge in subgraph.edges:
-                edges.append({
-                    "subject_id": int(edge.subject_id),
-                    "predicate_id": edge.predicate_id,
-                    "predicate_kind": edge.predicate_kind.name,
-                    "object_id": int(edge.object_id),
-                })
-
-        terminated_reason = graph_trace.terminated_reason if graph_trace else None
-        return {
-            "concept_id": concept_id,
-            "neighbor_count": len(neighbors),
-            "edge_count": len(subgraph.edges),
-            "neighbors": neighbors,
-            "edges": edges,
-            "terminated_early": terminated_reason is not None,
-            "terminated_reason": terminated_reason,
-        }
-
-    def get_edges(self, concept_id: int) -> dict[str, Any]:
-        kg = self._get_kg()
-        if self.get_concept(concept_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
-        try:
-            outbound = kg.edges(concept_id, direction="out", active_only=False)
-            inbound = kg.edges(concept_id, direction="in", active_only=False)
-        except Exception as exc:
-            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-
-        other_ids = tuple(dict.fromkeys([e.object_id for e in outbound] + [e.subject_id for e in inbound]))
-        try:
-            views = {v.concept_id: v for v in kg.concept_views(other_ids, sort=False)} if other_ids else {}
-        except Exception:
-            views = {}
-
-        return {
-            "outbound": [self._serialise_edge_out(e, views) for e in outbound],
-            "inbound": [self._serialise_edge_in(e, views) for e in inbound],
-        }
-
-    def find_path(
+    def shortest_paths(
         self,
         source_id: int,
         target_id: int,
+        *,
         max_depth: int,
-        predicate_kinds: frozenset | None = None,
-        within_domain: bool = True,
-    ) -> dict[str, Any]:
-        kg = self._get_kg()
-        if self.get_concept(source_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {source_id} was not found")
-        if source_id == target_id:
-            return {"found": True, "paths": [{"length": 0, "steps": []}]}
-        if self.get_concept(target_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {target_id} was not found")
+        predicate_kinds: frozenset[PredicateKind] | None = None,
+        within_domain: bool,
+    ) -> list[list[dict[str, Any]]]:
+        """Return shortest paths as lists of normalized steps (no name enrichment).
 
+        Each step: ``{subject_id, object_id, predicate, predicate_kind}``.
+        """
+        kg = self._get_kg()
         try:
             paths = find_shortest_paths_batch(
                 kg,
@@ -446,103 +217,124 @@ class OmopGraphAdapter:
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
 
-        if not paths:
-            return {"found": False, "paths": []}
-
-        all_concept_ids: set[int] = set()
+        serialised: list[list[dict[str, Any]]] = []
         for path in paths:
-            for step in path.steps:
-                all_concept_ids.add(step.subject.concept_id)
-                all_concept_ids.add(step.object.concept_id)
-        try:
-            views = {v.concept_id: v for v in kg.concept_views(tuple(all_concept_ids), sort=False)} if all_concept_ids else {}
-        except Exception:
-            views = {}
-
-        serialised: list[dict[str, Any]] = []
-        for path in sorted(paths, key=lambda p: len(p.steps)):
-            steps = []
+            steps: list[dict[str, Any]] = []
             for step in path.steps:
                 try:
                     pred_kind = kg.predicate_kind(step.predicate).name
                 except Exception:
                     pred_kind = "UNKNOWN"
-                subj_view = views.get(step.subject.concept_id)
-                obj_view = views.get(step.object.concept_id)
-                steps.append({
-                    "subject_id": int(step.subject.concept_id),
-                    "subject_name": subj_view.concept_name if subj_view else None,
-                    "predicate": step.predicate,
-                    "predicate_kind": pred_kind,
-                    "object_id": int(step.object.concept_id),
-                    "object_name": obj_view.concept_name if obj_view else None,
-                })
-            serialised.append({"length": len(steps), "steps": steps})
+                steps.append(
+                    {
+                        "subject_id": int(step.subject.concept_id),
+                        "object_id": int(step.object.concept_id),
+                        "predicate": step.predicate,
+                        "predicate_kind": pred_kind,
+                    }
+                )
+            serialised.append(steps)
+        return serialised
 
-        return {"found": True, "paths": serialised}
+    # ------------------------------------------------------------------
+    # Neighbourhood primitive
+    # ------------------------------------------------------------------
 
-    # Predicate-kind presets for equivalency path tools.
-    _IDENTITY_KINDS: frozenset = frozenset({PredicateKind.IDENTITY})
-    _IDENTITY_AND_HIERARCHY_KINDS: frozenset = frozenset({PredicateKind.IDENTITY, PredicateKind.HIERARCHY})
+    # Valid predicate kind names accepted by traverse_neighborhood (case-insensitive).
+    _PREDICATE_KIND_NAMES: dict[str, PredicateKind] = {pk.name.upper(): pk for pk in PredicateKind}
 
-    def find_equivalency_path(
+    def traverse_neighborhood(
         self,
-        source_id: int,
-        target_id: int,
+        concept_id: int,
+        *,
+        predicate_kind_names: list[str] | None,
         max_depth: int,
-        allow_hierarchical_traversal: bool = False,
+        max_nodes: int,
     ) -> dict[str, Any]:
-        """Find paths restricted to identity (and optionally hierarchy) edges.
+        """Bounded BFS from a seed concept.
 
-        When allow_hierarchical_traversal=False only IDENTITY predicates are
-        traversed (Maps to, Concept same_as, Concept poss_eq, etc.) — the
-        result represents a direct cross-vocabulary equivalence with no loss
-        of specificity.
-
-        When allow_hierarchical_traversal=True HIERARCHY predicates (Is a /
-        Subsumes) are also allowed.  A path may then step up or down the
-        ancestry chain to find a connection, meaning the target may be an
-        ancestor of the source — equivalence at a broader level.
-
-        within_domain is always False for equivalency paths: identity
-        relationships are designed to cross vocabulary/domain boundaries.
+        Returns ``{neighbor_ids, edges, edge_count, terminated_reason}`` where
+        ``edges`` are normalized (``{subject_id, predicate_id, predicate_kind, object_id}``)
+        and ``neighbor_ids`` excludes the seed. Raises INVALID_INPUT for an unknown
+        predicate-kind name.
         """
-        kinds = self._IDENTITY_AND_HIERARCHY_KINDS if allow_hierarchical_traversal else self._IDENTITY_KINDS
-        return self.find_path(
-            source_id=source_id,
-            target_id=target_id,
-            max_depth=max_depth,
-            predicate_kinds=kinds,
-            within_domain=False,
-        )
+        pk_set: set[PredicateKind] | None = None
+        if predicate_kind_names is not None:
+            pk_set = set()
+            for pk_name in predicate_kind_names:
+                key = pk_name.upper()
+                if key not in self._PREDICATE_KIND_NAMES:
+                    valid = sorted(self._PREDICATE_KIND_NAMES)
+                    raise GroundworkersError(
+                        "INVALID_INPUT",
+                        f"Unknown predicate_kind {pk_name!r}. Valid values: {valid}",
+                    )
+                pk_set.add(self._PREDICATE_KIND_NAMES[key])
 
-    def map_to_standard(self, vocabulary_id: str, code: str) -> dict[str, Any]:
-        source_list = self.get_concept_by_code(vocabulary_id, code)
-        if not source_list:
-            raise GroundworkersError("NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found")
-        source = source_list[0]
-
-        if source["standard_concept"]:
-            return {"source": source, "standard_concepts": [source]}
-
-        kg = self._get_kg()
         try:
-            edges = kg.edges(
-                source["concept_id"],
-                direction="out",
-                predicate_kinds=frozenset({PredicateKind.IDENTITY}),
-                active_only=True,
+            subgraph, graph_trace = traverse(
+                kg=self._get_kg(),
+                seeds=(concept_id,),
+                predicate_kinds=pk_set,
+                max_depth=max_depth,
+                on=None,
+                max_nodes=max_nodes,
+                trace=True,  # always trace so we can report terminated_reason
             )
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
 
-        standard_concepts = []
-        for edge in edges:
-            target = self.get_concept(int(edge.object_id))
-            if target and target["standard_concept"]:
-                standard_concepts.append(target)
+        neighbor_ids = tuple(n for n in sorted(subgraph.nodes) if n != concept_id)
+        edges = [
+            {
+                "subject_id": int(edge.subject_id),
+                "predicate_id": edge.predicate_id,
+                "predicate_kind": edge.predicate_kind.name,
+                "object_id": int(edge.object_id),
+            }
+            for edge in subgraph.edges
+        ]
+        return {
+            "neighbor_ids": neighbor_ids,
+            "edges": edges,
+            "edge_count": len(subgraph.edges),
+            "terminated_reason": graph_trace.terminated_reason if graph_trace else None,
+        }
 
-        return {"source": source, "standard_concepts": standard_concepts}
+    # ------------------------------------------------------------------
+    # Grounding primitive
+    # ------------------------------------------------------------------
+
+    def run_ground_tier(
+        self,
+        resolvers: tuple[Any, ...],
+        query: str,
+        *,
+        constraints: GroundingConstraints,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Run one resolver tier through omop-graph and normalize the hits.
+
+        Returns ground hits without concept-view enrichment; ``GraphService`` adds
+        vocabulary/domain/class fields and applies tier-selection policy.
+        """
+        pipeline = ResolverPipeline(resolvers=resolvers)
+        try:
+            raw = ground_term(
+                pipeline,
+                self._get_kg(),
+                query,
+                query_embedding=None,  # embedding is handled by the KG via its emb_config
+                constraints=constraints,
+                max_candidates=limit,
+            )
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
+        return [self._serialise_ground_hit(r) for r in raw]
+
+    # ------------------------------------------------------------------
+    # Vocabulary catalogue (raw backend query)
+    # ------------------------------------------------------------------
 
     def get_vocabulary_catalogue(self) -> dict[str, Any]:
         vocab_stmt = (
@@ -593,109 +385,28 @@ class OmopGraphAdapter:
             ],
         }
 
-    def get_descendants(self, concept_id: int, max_depth: int) -> list[dict[str, Any]]:
-        kg = self._get_kg()
-        if self.get_concept(concept_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
+    # ------------------------------------------------------------------
+    # Domain normalization
+    # ------------------------------------------------------------------
 
-        queue: deque[tuple[int, int]] = deque((child_id, 1) for child_id in kg.children(concept_id))
-        return self._walk_hierarchy(queue=queue, neighbour_getter=kg.children, max_depth=max_depth)
+    _KNOWN_DOMAIN_NAMES: tuple[str, ...] = (
+        "Condition",
+        "Procedure",
+        "Drug",
+        "Measurement",
+        "Device",
+        "Observation",
+    )
 
-    def _serialise_ground_result(self, result: object, views: dict) -> dict[str, Any]:
-        view = views.get(getattr(result, "concept_id", None))
-        concept_id = int(result.concept_id)  # type: ignore[attr-defined]
-        original_id = getattr(result, "original_id", None)
-        standardized_from = None
-        if original_id is not None and int(original_id) != concept_id:
-            standardized_from = {
-                "concept_id": int(original_id),
-                "concept_name": getattr(result, "original_name", None),
-            }
-        emb_score = getattr(result, "embedding_score", None)
-        return {
-            "concept_id": concept_id,
-            "concept_name": result.concept_name,  # type: ignore[attr-defined]
-            "vocabulary_id": view.vocabulary_id if view else None,
-            "domain_id": view.domain_id if view else None,
-            "concept_class_id": view.concept_class_id if view else None,
-            "standard_concept": True,
-            "match_kind": self._label_match_kind_name(result.match_kind),  # type: ignore[attr-defined]
-            "matched_label": getattr(result, "matched_concept_label", None),
-            "total_score": round(float(result.total_score), 4),  # type: ignore[attr-defined]
-            "relevance": round(float(getattr(result, "relevance", 0.0)), 4),
-            "parsimony_penalty": round(float(getattr(result, "parsimony_penalty", 0.0)), 4),
-            "broadness_bonus": round(float(getattr(result, "broadness_bonus", 0.0)), 4),
-            "embedding_score": round(float(emb_score), 4) if emb_score is not None else None,
-            "separation": int(getattr(result, "separation", 0)),
-            "standardized_from": standardized_from,
-        }
+    def canonicalize_domain(self, domain: str | None) -> str | None:
+        if domain is None:
+            return None
+        domain_lower = domain.lower()
+        return next((k for k in self._KNOWN_DOMAIN_NAMES if k.lower() == domain_lower), domain)
 
-    def _serialise_edge_out(self, edge: object, views: dict) -> dict[str, Any]:
-        view = views.get(int(edge.object_id))  # type: ignore[attr-defined]
-        return {
-            "relationship_id": edge.predicate_id,  # type: ignore[attr-defined]
-            "predicate_kind": edge.predicate_kind.name,  # type: ignore[attr-defined]
-            "target_concept_id": int(edge.object_id),  # type: ignore[attr-defined]
-            "target_concept_name": view.concept_name if view else None,
-            "valid": edge.invalid_reason is None,  # type: ignore[attr-defined]
-        }
-
-    def _serialise_edge_in(self, edge: object, views: dict) -> dict[str, Any]:
-        view = views.get(int(edge.subject_id))  # type: ignore[attr-defined]
-        return {
-            "relationship_id": edge.predicate_id,  # type: ignore[attr-defined]
-            "predicate_kind": edge.predicate_kind.name,  # type: ignore[attr-defined]
-            "source_concept_id": int(edge.subject_id),  # type: ignore[attr-defined]
-            "source_concept_name": view.concept_name if view else None,
-            "valid": edge.invalid_reason is None,  # type: ignore[attr-defined]
-        }
-
-    @staticmethod
-    def _fts_overlap(query_tokens: set[str], concept_label: str) -> float:
-        if not query_tokens:
-            return 1.0
-        label_tokens = set(concept_label.lower().split())
-        return len(query_tokens & label_tokens) / len(query_tokens)
-
-    @staticmethod
-    def _label_match_kind_name(match_kind: object) -> str:
-        _MAP = {0: "EXACT", 1: "FULLTEXT", 2: "PARTIAL", 3: "EMBEDDING_NEAREST"}
-        val = getattr(match_kind, "value", None)
-        if isinstance(val, int):
-            return _MAP.get(val, str(match_kind))
-        return str(match_kind)
-
-    def _walk_hierarchy(self, *, queue: deque[tuple[int, int]], neighbour_getter: Callable[[int], Any], max_depth: int) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        visited: set[int] = set()
-        kg = self._get_kg()
-
-        while queue:
-            current_id, depth = queue.popleft()
-            if current_id in visited or depth > max_depth:
-                continue
-            visited.add(current_id)
-
-            try:
-                concept_view = kg.concept_view(current_id)
-            except Exception as exc:
-                if self._is_not_found(exc):
-                    continue
-                raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-
-            results.append(self._serialise_hierarchy_view(concept_view, depth))
-
-            if depth < max_depth:
-                try:
-                    next_ids = neighbour_getter(current_id)
-                except Exception as exc:
-                    raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-                for next_id in next_ids:
-                    if next_id not in visited:
-                        queue.append((int(next_id), depth + 1))
-
-        results.sort(key=lambda item: (item["depth"], item["concept_id"]))
-        return results
+    # ------------------------------------------------------------------
+    # Internals — KG lifecycle, normalization, exception translation
+    # ------------------------------------------------------------------
 
     def _get_kg(self) -> KnowledgeGraph:
         if self._kg is not None:
@@ -726,85 +437,6 @@ class OmopGraphAdapter:
             raise self._wrap_graph_error(exc, default_code="BACKEND_UNAVAIL")
         return self._kg
 
-    # Stable SNOMED concept codes for the top-level concept in each standard OMOP domain.
-    _DOMAIN_ROOT_CODES: dict[str, tuple[str, str] | int | None] = {
-        "Condition":   ("SNOMED", "404684003"),  # Clinical finding
-        "Procedure":   ("SNOMED", "71388002"),   # Procedure
-        "Drug":        ("SNOMED", "373873005"),  # Pharmaceutical / biologic product
-        "Measurement": ("SNOMED", "363787002"),  # Observable entity
-        "Device":      ("SNOMED", "260787004"),  # Physical object
-        "Observation": 27,                        # Observation concept_id (OMOP CDM standard)
-    }
-
-    def _get_domain_root_ids(self, domain: str | None) -> tuple[int, ...]:
-        """Return top-level concept IDs to use as hierarchy anchors for the given domain.
-
-        Known domains use a stable SNOMED code lookup (single row) or a direct concept_id.
-        Unknown domains fall back to a GROUP BY query over concept_ancestor to find the
-        most-connected root.  Results are cached per domain.
-        """
-        cache_key = domain or ""
-        if cache_key in self._root_ids_cache:
-            return self._root_ids_cache[cache_key]
-
-        result: tuple[int, ...] = ()
-        kg = self._get_kg()
-
-        if domain and domain in self._DOMAIN_ROOT_CODES:
-            # Fast path: direct concept_id or single-row code lookup.
-            anchor = self._DOMAIN_ROOT_CODES[domain]
-            if isinstance(anchor, int):
-                result = (anchor,)
-            elif anchor is not None:
-                vocab_id, code = anchor
-                stmt = (
-                    select(Concept.concept_id)
-                    .where(
-                        Concept.concept_code == code,
-                        Concept.vocabulary_id == vocab_id,
-                        Concept.standard_concept == "S",
-                    )
-                    .limit(1)
-                )
-                try:
-                    with kg.session_factory() as session:
-                        rows = session.execute(stmt).all()
-                    result = tuple(int(r[0]) for r in rows)
-                except Exception as exc:
-                    raise GroundworkersError(
-                        "QUERY_ERROR",
-                        f"Failed to resolve hierarchy anchors for domain {domain!r}: {exc}",
-                    ) from exc
-
-        if not result and domain:
-            # Fallback for unknown domains, or when the known-code lookup missed.
-            # Find the ancestor with the most descendants in this domain — the true
-            # root of the hierarchy has the highest descendant count.
-            stmt = (
-                select(Concept_Ancestor.ancestor_concept_id)
-                .join(Concept, Concept.concept_id == Concept_Ancestor.ancestor_concept_id)
-                .where(
-                    Concept.domain_id == domain,
-                    Concept.standard_concept == "S",
-                    Concept_Ancestor.min_levels_of_separation > 0,
-                )
-                .group_by(Concept_Ancestor.ancestor_concept_id)
-                .order_by(func.count().desc())
-                .limit(3)
-            )
-            try:
-                with kg.session_factory() as session:
-                    rows = session.execute(stmt).all()
-                result = tuple(int(r[0]) for r in rows)
-            except Exception as exc:
-                raise GroundworkersError(
-                    "QUERY_ERROR",
-                    f"Failed to resolve hierarchy anchors for domain {domain!r}: {exc}",
-                ) from exc
-
-        self._root_ids_cache[cache_key] = result
-        return result
-
     def _serialise_concept_view(self, concept_view: object) -> dict[str, Any]:
         return {
             "concept_id": int(concept_view.concept_id),  # type: ignore[attr-defined]
@@ -819,15 +451,37 @@ class OmopGraphAdapter:
             "invalid_reason": concept_view.invalid_reason,  # type: ignore[attr-defined]
         }
 
-    def _serialise_hierarchy_view(self, concept_view: object, depth: int) -> dict[str, Any]:
+    def _serialise_ground_hit(self, result: object) -> dict[str, Any]:
+        concept_id = int(result.concept_id)  # type: ignore[attr-defined]
+        original_id = getattr(result, "original_id", None)
+        standardized_from = None
+        if original_id is not None and int(original_id) != concept_id:
+            standardized_from = {
+                "concept_id": int(original_id),
+                "concept_name": getattr(result, "original_name", None),
+            }
+        emb_score = getattr(result, "embedding_score", None)
         return {
-            "concept_id": int(concept_view.concept_id),  # type: ignore[attr-defined]
-            "concept_name": concept_view.concept_name,  # type: ignore[attr-defined]
-            "vocabulary_id": concept_view.vocabulary_id,  # type: ignore[attr-defined]
-            "domain_id": concept_view.domain_id,  # type: ignore[attr-defined]
-            "standard_concept": bool(concept_view.standard_concept),  # type: ignore[attr-defined]
-            "depth": depth,
+            "concept_id": concept_id,
+            "concept_name": result.concept_name,  # type: ignore[attr-defined]
+            "match_kind": self._label_match_kind_name(result.match_kind),  # type: ignore[attr-defined]
+            "matched_label": getattr(result, "matched_concept_label", None),
+            "total_score": round(float(result.total_score), 4),  # type: ignore[attr-defined]
+            "relevance": round(float(getattr(result, "relevance", 0.0)), 4),
+            "parsimony_penalty": round(float(getattr(result, "parsimony_penalty", 0.0)), 4),
+            "broadness_bonus": round(float(getattr(result, "broadness_bonus", 0.0)), 4),
+            "embedding_score": round(float(emb_score), 4) if emb_score is not None else None,
+            "separation": int(getattr(result, "separation", 0)),
+            "standardized_from": standardized_from,
         }
+
+    @staticmethod
+    def _label_match_kind_name(match_kind: object) -> str:
+        _MAP = {0: "EXACT", 1: "FULLTEXT", 2: "PARTIAL", 3: "EMBEDDING_NEAREST"}
+        val = getattr(match_kind, "value", None)
+        if isinstance(val, int):
+            return _MAP.get(val, str(match_kind))
+        return str(match_kind)
 
     @staticmethod
     def _date_to_iso(value: date | str) -> str:

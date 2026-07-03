@@ -1,0 +1,16 @@
+name: standard-concept-preference
+layer: core
+version: "1.0"
+shareability: public
+scope_summary: >
+  Rules for selecting standard concepts as mapping targets: standard_concept='S'
+  required for entity fields, classification concepts ('C') are not valid targets,
+  and vocabulary precedence by domain (SNOMED for conditions, RxNorm over RxNorm
+  Extension for drugs, LOINC for measurements).
+
+mechanisms:
+  - context-inject
+  - post-filter
+
+applicability:
+  always: true

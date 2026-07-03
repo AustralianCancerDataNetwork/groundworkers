@@ -298,3 +298,11 @@ class PreIngestBundle:
     errors: list[PlanningError] = field(default_factory=list)
     elapsed_ms: int = 0
     llm_tier_used: bool = False
+    detected_source_system: str | None = None
+    # Platform-structural knowledge carried by the matched source profile, surfaced
+    # so downstream ingestion can apply it. Empty / None when no profile matched.
+    # ``structural_skip_field_types``: field_type values the platform defines as never
+    # independently groundable (e.g. REDCap 'calc' / 'descriptive').
+    # ``packed_value_column_hint``: the column that holds packed choice encodings, if any.
+    structural_skip_field_types: list[str] = field(default_factory=list)
+    packed_value_column_hint: str | None = None

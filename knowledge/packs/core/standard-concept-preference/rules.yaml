@@ -1,0 +1,50 @@
+# Standard concept preference rules
+# Consumed by the post-filter mechanism to rank or reject candidates.
+
+active_concept_required:
+  # Concepts must be active — not deprecated or replaced.
+  reject_if_any:
+    - invalid_reason IS NOT NULL
+    - valid_end_date != '2099-12-31'
+  note: >
+    For replaced concepts (invalid_reason = 'U'), follow the 'Maps to' relationship
+    from the deprecated concept to its active successor.
+
+standard_concept_required:
+  # Entity concept fields must have standard_concept = 'S'.
+  # standard_concept = 'C' (classification) and NULL are not valid targets.
+  entity_fields:
+    - condition_concept_id
+    - measurement_concept_id
+    - observation_concept_id
+    - drug_concept_id
+    - procedure_concept_id
+    - device_concept_id
+    - specimen_concept_id
+  reject_if: standard_concept != 'S'
+
+vocab_preference:
+  - domain: Condition
+    prefer: [SNOMED]
+    over: [ICD10CM, ICD9CM, ICD10, MedDRA]
+
+  - domain: Drug
+    prefer: [RxNorm]
+    over: [RxNorm Extension]
+    note: >
+      Prefer RxNorm clinical drug concepts. Use RxNorm Extension only when no
+      RxNorm concept exists for the same clinical drug at the same precision level.
+
+  - domain: Measurement
+    prefer: [LOINC]
+    secondary: [SNOMED]
+
+  - domain: Procedure
+    prefer: [SNOMED]
+    secondary: [CPT4]
+    note: >
+      CPT4 is preferred for US procedural billing/claims context.
+      SNOMED preferred for clinical EHR data and non-US sources.
+
+  - domain: Observation
+    prefer: [SNOMED, LOINC]

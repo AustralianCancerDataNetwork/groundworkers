@@ -241,6 +241,30 @@ class StubGraphAdapter:
             return {"source": self.get_concept(102), "standard_concepts": [self.get_concept(201)]}
         return {"source": self.get_concept(555), "standard_concepts": []}
 
+    def concept_views(self, concept_ids):
+        # Concept 104 is surfaced only by the embedding channel (StubEmbAdapter),
+        # so it is not in get_concept(); expose it here so backfill can enrich it.
+        embedding_only = {
+            104: {
+                "concept_id": 104,
+                "concept_name": "Diabetes",
+                "concept_code": "73211009",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            },
+        }
+        out: dict[int, dict] = {}
+        for cid in concept_ids:
+            view = self.get_concept(cid) or embedding_only.get(cid)
+            if view is not None:
+                out[int(cid)] = view
+        return out
+
 
 class StubEmbAdapter:
     def search(self, query: str, limit: int, domain: str | None, vocabulary: str | None, standard_only: bool, active_only: bool, model_name: str | None):
@@ -260,11 +284,35 @@ class StubEmbAdapter:
         }
 
 
+class StubGroundingService:
+    def ground(
+        self,
+        query: str,
+        *,
+        limit: int,
+        domain: str | None,
+        vocabulary_id: str | None,
+        parent_ids=None,
+    ):
+        return {
+            "results": [
+                {
+                    "concept_id": 102,
+                    "concept_name": "Type 2 diabetes mellitus",
+                    "match_kind": "PARTIAL",
+                    "standard_concept": True,
+                }
+            ],
+            "grounding_explanation": {"matched_tier": "PARTIAL"},
+        }
+
+
 def build_service() -> MappingService:
     return MappingService(
         StubVocabAdapter(),
-        graph_adapter=StubGraphAdapter(),
+        graph_service=StubGraphAdapter(),
         emb_adapter=StubEmbAdapter(),
+        grounding_service=StubGroundingService(),
     )
 
 
@@ -292,6 +340,34 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
     non_standard = next(row for row in result["candidate_union"] if row["concept_id"] == 102)
     assert non_standard["mapped_standard_concepts"][0]["concept_id"] == 201
     assert "ancestor_preview" in non_standard
+
+
+def test_embedding_only_candidate_backfilled_with_identity_metadata():
+    """A candidate surfaced only by the embedding channel must not enter the
+    union with null concept_code/vocabulary_id/domain_id/concept_class_id —
+    omop-emb never supplies those, so the bundle backfills them via concept_views."""
+    service = build_service()
+
+    result = service.concept_candidate_bundle("type 2 diabetes")
+
+    emb_only = next(row for row in result["candidate_union"] if row["concept_id"] == 104)
+    assert "embedding" in emb_only["retrieved_by"]
+    assert emb_only["vocabulary_id"] == "SNOMED"
+    assert emb_only["concept_code"] == "73211009"
+    assert emb_only["domain_id"] == "Condition"
+    assert emb_only["concept_class_id"] == "Clinical Finding"
+
+
+def test_embedding_only_candidate_warns_when_graph_absent_for_backfill():
+    """Without a graph service the bundle cannot backfill identity metadata; it
+    must surface a warning rather than silently returning null-metadata rows."""
+    service = MappingService(StubVocabAdapter(), emb_adapter=StubEmbAdapter())
+
+    result = service.concept_candidate_bundle("type 2 diabetes")
+
+    emb_only = next(row for row in result["candidate_union"] if row["concept_id"] == 104)
+    assert emb_only["vocabulary_id"] is None
+    assert any("identity metadata" in w for w in result["warnings"])
 
 
 def test_concept_nearest_standard_ancestor_selects_nearest_standard_ancestor():
@@ -412,7 +488,7 @@ class _RecordingVocabAdapter(StubVocabAdapter):
 
 def _service_with_recording_vocab(emb=None):
     vocab = _RecordingVocabAdapter()
-    service = MappingService(vocab, graph_adapter=StubGraphAdapter(), emb_adapter=emb)
+    service = MappingService(vocab, graph_service=StubGraphAdapter(), emb_adapter=emb)
     return service, vocab
 
 
@@ -477,8 +553,8 @@ def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_sta
     """An EXACT label match on a non-standard concept must NOT take the early-return path
     (exact_standard_match); it must navigate to a standard ancestor instead."""
 
-    class ExactNonStandardGraph(StubGraphAdapter):
-        def ground(self, query, limit, domain, vocabulary_id, parent_ids=None):
+    class ExactNonStandardGroundingService:
+        def ground(self, query, *, limit, domain, vocabulary_id, parent_ids=None):
             return {
                 "results": [{
                     "concept_id": 102,
@@ -489,7 +565,11 @@ def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_sta
                 "grounding_explanation": {"matched_tier": "EXACT"},
             }
 
-    service = MappingService(StubVocabAdapter(), graph_adapter=ExactNonStandardGraph())
+    service = MappingService(
+        StubVocabAdapter(),
+        graph_service=StubGraphAdapter(),
+        grounding_service=ExactNonStandardGroundingService(),
+    )
     result = service.concept_nearest_standard_ancestor(query="Type 2 diabetes mellitus")
 
     assert result["found"] is True

@@ -1,66 +1,69 @@
 # Tools Overview
 
-groundworkers registers eight tool groups. Tools appear only when the relevant
-adapters or services are available in the config.
+The MCP surface in `groundworkers` is grouped by workflow rather than by
+underlying package. Tool availability is resolved from the active runtime at
+startup.
+
+## Tool groups
 
 | Group | Tools | Requires |
 |---|---|---|
-| **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | `omop_graph` |
-| **Resolver** | `concept_ground` | `omop_graph` |
-| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | `omop_graph` |
-| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | `omop_graph` |
-| **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` |
-| **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | `llm` |
-| **Domain** | `domain_classify` | `llm` |
+| **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | `GraphService` / omop-graph backend |
+| **Resolver** | `concept_ground` | `ConceptGroundingService` / omop-graph backend |
+| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | Shared CDM vocabulary access / `VocabService` |
+| **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | Shared CDM resource / `MappingService` |
+| **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` configured |
+| **Source planning** | `source_plan`, `source_plan_assisted` | `SourcePlanningService` |
+| **Knowledge** | `knowledge_catalogue` | Knowledge-pack catalogue available |
+| **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | LLM enabled |
+| **Domain** | `domain_classify` | LLM enabled |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
 
-!!! info "System tools are always registered"
-    `system_status` and `system_vocabulary_catalogue` are always present so clients can
-    check what is available in the current deployment.
+## What each group is for
 
-!!! info "Text tools require LLM configuration"
-    `text_normalize`, `text_decompose`, and `text_disambiguate` are registered only
-    when `llm` is configured in `AppConfig`. They are absent from `--describe` output
-    when no LLM is configured.
+- **Concept** tools return deterministic OMOP facts from known identifiers.
+- **Resolver** tools take free text and try to ground it to ranked concepts.
+- **Search** tools expose lexical retrieval with raw retrieval signals.
+- **Mapping** tools assemble multi-channel evidence for review and adjudication workflows.
+- **Embedding** tools expose the embedding index directly.
+- **Source planning** tools prepare source artifacts into neutral pre-ingest structures.
+- **Knowledge** tools tell callers which knowledge packs are relevant to a job context.
+- **Text** tools normalize or decompose free text before retrieval.
+- **Domain** tools classify structured labels into OMOP domains.
+- **System** tools expose runtime availability and vocabulary catalogue metadata.
 
-!!! info "Domain tools require LLM configuration"
-    `domain_classify` is registered only when `llm` is configured in `AppConfig`.
-    It is intended for structured field sets such as data-dictionary attributes,
-    not for free-text concept grounding.
+## Registration rules
 
-## Tool groups at a glance
+`system_status` and `system_vocabulary_catalogue` are always present so clients
+can inspect the deployment before assuming a capability exists.
 
-**Concept tools** return deterministic OMOP facts from known identifiers.
+All other tool groups appear only when their backing services or backend
+wrappers are available in the resolved runtime.
 
-**Resolver tools** take free text and try to return the best grounded answer.
+## MCP versus REST
 
-**Search tools** expose lexical retrieval with raw quality signals. Backed by
-`VocabService`.
+The MCP surface is broader than the REST surface.
 
-**Mapping tools** are aimed at review and adjudication workflows where the caller
-often wants multiple evidence channels side by side. Backed by `MappingService`.
+- MCP is the discovery-oriented interface
+- REST is a curated workflow interface over selected services
 
-**Embedding tools** expose the embedding index directly.
+If you need the full capability surface, MCP is the more complete transport. If
+you are building a fixed HTTP workflow, prefer the REST routes documented in
+[Integrations](../usage/integrations.md).
 
-**Text tools** preprocess free text using an LLM before grounding. Use these when
-the input contains abbreviations, lay language, or ambiguous clinical phrases.
-Backed by `TextService`.
+## Direct Python use
 
-**Domain tools** classify structured field labels into OMOP domains in one batch.
-Use them when a caller already has field labels and example values and wants a
-best-effort domain hint before downstream mapping. Backed by `DomainService`.
-
-## Services and direct Python use
-
-The mapping, search, text, and domain groups are also available directly through
-`app.services.*`.
+The graph, grounding, mapping, search, text, domain, and source-planning
+behavior also exists as direct Python services:
 
 ```mermaid
 flowchart LR
-    MCP[MCP caller] --> MT[tool]
+    MCP[MCP caller] --> TOOL[tool]
+    REST[REST caller] --> API[route]
     PY[Python caller] --> SVC[service]
-    MT --> SVC
-    SVC[VocabService\nMappingService\nTextService\nDomainService] --> ADP[CDMAdapter\nOmopGraphAdapter\nOmopEmbAdapter\nLLMAdapter]
+    TOOL --> SVC
+    API --> SVC
+    SVC --> ADP[adapters]
 ```
 
 If you are building a Python application, call `app.services.*` directly rather
@@ -68,40 +71,26 @@ than importing tool modules.
 
 ## Error response shape
 
-Every tool returns a plain dict. On failure the dict has:
+On failure, tools return a plain dict:
 
 ```json
 {"error": true, "code": "ERROR_CODE", "message": "Human-readable description"}
 ```
 
+Common codes:
+
 | Code | Meaning |
 |---|---|
-| `NOT_FOUND` | Requested concept ID or code does not exist |
-| `INVALID_INPUT` | Bad argument such as a non-positive `concept_id` or empty string |
-| `BACKEND_UNAVAIL` | Required adapter is not configured or a backend is unavailable |
-| `QUERY_ERROR` | Database or adapter error during the query |
+| `NOT_FOUND` | Requested concept or code does not exist |
+| `INVALID_INPUT` | Bad argument such as an empty string or invalid identifier |
+| `BACKEND_UNAVAIL` | Required backend or service dependency is unavailable |
+| `QUERY_ERROR` | Database or adapter failure during execution |
 
-## Input validation
-
-All tools validate their inputs before hitting the adapter:
-
-- `concept_id` must be a positive integer (`> 0`)
-- string arguments such as `vocabulary_id`, `concept_code`, and `query` must be non-empty after stripping
-- `limit` arguments for search and embedding results are clamped to `[1, 50]`
-- `max_depth` for `concept_ancestors` is clamped to `[1, 20]`
-- `max_depth` for `concept_descendants` is clamped to `[1, 10]`
-- `max_depth` for `concept_neighbors` is clamped to `[1, 4]`
-- `max_nodes` for `concept_neighbors` is clamped to `[10, 500]`
-- mapping bundle `per_channel_limit` is clamped to `[1, 20]`
-- mapping bundle `overall_limit` is clamped to `[1, 100]`
-
-Validation failures return `INVALID_INPUT` without touching the database.
-
-## Inspecting registered tools
+## Inspecting the active tool surface
 
 ```bash
-groundworkers --config /path/to/config.yaml --describe
+groundworkers --describe
 ```
 
-This prints a JSON object with each registered tool's signature and docstring, which
-is useful when you want to confirm what is active in a particular deployment.
+This prints the active runtime config plus the registered tool, prompt, and
+resource surfaces for the currently selected stack file and profile.

@@ -11,15 +11,15 @@ factory to open per-call database sessions.
 
 ```python
 from groundworkers.app import build_application
-from groundworkers.config import AppConfig
+from groundworkers.bootstrap import build_app_config
 
-config = AppConfig.load("config/groundworkers.local.yaml")
+config = build_app_config()
 app = build_application(config)
 
 vocab = app.services.vocab
 ```
 
-`vocab` is `None` when `omop_graph` is not configured.
+`vocab` is `None` only when the shared CDM vocabulary runtime could not be built.
 
 ## Methods
 
