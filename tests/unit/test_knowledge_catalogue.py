@@ -167,6 +167,20 @@ def test_knowledge_pack_tool_returns_content(tmp_path):
     assert "guidance.md" in result["files_present"]
 
 
+def test_knowledge_catalogue_tool_rejects_unknown_layer(tmp_path):
+    _build_packs(tmp_path)
+    server = GroundcrewServer("test")
+    register_knowledge_tools(server, packs_root=tmp_path)
+
+    result = server.call("knowledge_catalogue", layer="unknown")
+
+    assert result == {
+        "error": True,
+        "code": "INVALID_INPUT",
+        "message": "layer must be one of: core, specialisation, source, localisation",
+    }
+
+
 def test_knowledge_pack_tool_not_found(tmp_path):
     _build_packs(tmp_path)
     server = GroundcrewServer("test")

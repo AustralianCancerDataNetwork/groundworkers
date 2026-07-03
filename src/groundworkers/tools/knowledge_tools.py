@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
-from groundworkers.services.knowledge.models import PackManifest
+from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 _PACKS_ROOT: Path = Path(__file__).parent.parent.parent.parent / "knowledge" / "packs"
 
 _KNOWN_PACK_FILES = ("manifest.yaml", "rules.yaml", "guidance.md", "examples.yaml")
+_KNOWN_LAYERS: tuple[KnowledgeLayer, ...] = (
+    "core",
+    "specialisation",
+    "source",
+    "localisation",
+)
 
 
 def _manifest_payload(m: PackManifest) -> dict[str, Any]:
@@ -117,12 +123,24 @@ def register_knowledge_tools(
         scope_summary, mechanisms, applicability, see_also.
         see_also lists related packs worth loading alongside this one.
         """
+        resolved_layer: KnowledgeLayer | None = None
+        if layer is not None:
+            if layer not in _KNOWN_LAYERS:
+                return {
+                    "error": True,
+                    "code": "INVALID_INPUT",
+                    "message": (
+                        "layer must be one of: core, specialisation, "
+                        "source, localisation"
+                    ),
+                }
+            resolved_layer = cast(KnowledgeLayer, layer)
         try:
             results = catalogue.query(
                 source_system=source_system,
                 domains=domains,
                 section_names=section_names,
-                layer=layer,
+                layer=resolved_layer,
                 include_local=include_local,
             )
             return {
