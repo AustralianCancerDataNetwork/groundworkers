@@ -289,10 +289,17 @@ class ColumnRoleClassifier:
                 confidence = max(confidence, 0.82)
                 notes = _merge_notes(notes, "vocabulary inferred from sample code format")
 
-        if annotation.role == ColumnRole.source_vocab:
+        if annotation.role == ColumnRole.source_vocab and inferred_vocab is None:
             vocab_from_values = _infer_vocab_name(sample_values)
-            if vocab_from_values is not None and not notes:
-                notes = f"sample values suggest OMOP vocabulary {vocab_from_values}"
+            if vocab_from_values is not None:
+                # Record the resolved vocabulary in the structured field, not only in
+                # notes — the router derives table-level domain hints from
+                # inferred_vocab, so a source-vocab column naming e.g. LOINC must
+                # contribute that signal rather than being lost to free text.
+                inferred_vocab = vocab_from_values
+                detection_tier = _max_tier(detection_tier, "C")
+                confidence = max(confidence, 0.82)
+                notes = _merge_notes(notes, f"source vocabulary column resolves to OMOP vocabulary {vocab_from_values}")
 
         if annotation.role == ColumnRole.values and not packed_value and _looks_packed(sample_values):
             packed_value = True

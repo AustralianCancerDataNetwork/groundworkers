@@ -65,6 +65,22 @@ def build_adapters(config: AppConfig) -> Adapters:
     if omop_emb is not None:
         cdm_engine = adapters.cdm.engine if adapters.cdm is not None else None
 
+        # Reject an unsupported backend eagerly at build time with an actionable
+        # message, rather than lazily as an opaque BACKEND_UNAVAIL on first query.
+        # FAISS is a common point of confusion: it is a query-time cache
+        # accelerator (omop_emb.faiss_cache_dir + the 'embedding-faiss' extra),
+        # not a standalone backend, so 'faiss' is not a valid backend value.
+        try:
+            BackendType(omop_emb.backend)
+        except ValueError:
+            supported = ", ".join(b.value for b in BackendType)
+            raise RuntimeError(
+                f"omop_emb.backend={omop_emb.backend!r} is not a supported embedding "
+                f"backend. Supported backends: {supported}. FAISS is a query-time cache "
+                "accelerator (set omop_emb.faiss_cache_dir over a sqlitevec or pgvector "
+                "backend and install the 'embedding-faiss' extra), not a standalone backend."
+            ) from None
+
         def build_backend() -> EmbeddingBackend:
             backend_type = BackendType(omop_emb.backend)
             if backend_type is BackendType.SQLITEVEC:

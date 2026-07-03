@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,6 +61,15 @@ class GraphService:
 
     def get_concept_by_code(self, vocabulary_id: str, code: str) -> list[dict[str, Any]]:
         return self._adapter.get_concept_by_code(vocabulary_id, code)
+
+    def concept_views(self, concept_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+        """Batch-fetch normalized concept views keyed by concept_id.
+
+        Thin passthrough to the adapter's batch lookup. Returns an empty dict
+        for unknown ids or on backend failure (the adapter swallows enrichment
+        errors), so callers can treat a missing key as "unknown concept".
+        """
+        return self._adapter.concept_views(concept_ids)
 
     def canonicalize_domain(self, domain: str | None) -> str | None:
         return self._adapter.canonicalize_domain(domain)

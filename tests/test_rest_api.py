@@ -14,7 +14,7 @@ from oa_configurator import StackConfig
 from groundworkers.app import Adapters, GroundworkersApp, Services
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config_from_stack
-from groundworkers.rest_api import create_rest_app
+from groundworkers.transports.rest import create_rest_app
 from groundworkers.services.source_planning.models import IngestionPlan, PreIngestBundle, SourceFormat
 from groundworkers.services.source_planning.warnings import PlanningWarning
 
@@ -148,6 +148,8 @@ def test_assisted_plan_endpoint_decodes_and_serializes_bundle() -> None:
     payload = response.json()
     assert payload["plan"]["format_detected"] == "CSV"
     assert payload["detected_source_system"] == "redcap"
+    assert payload["structural_skip_field_types"] == []
+    assert payload["packed_value_column_hint"] is None
     assert payload["llm_tier_used"] is True
     assert source_planning.calls == [
         {

@@ -1,10 +1,15 @@
 """Knowledge layer — pack catalogue and manifest models."""
 
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
-from groundworkers.services.knowledge.models import PackApplicability, PackManifest
+from groundworkers.services.knowledge.models import (
+    PackApplicability,
+    PackContent,
+    PackManifest,
+)
 
 __all__ = [
     "KnowledgeCatalogue",
     "PackApplicability",
+    "PackContent",
     "PackManifest",
 ]

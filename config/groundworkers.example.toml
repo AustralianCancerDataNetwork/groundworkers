@@ -83,7 +83,10 @@ min_fulltext_overlap  = 0.0    # 0.0–1.0; raise to tighten FTS result acceptan
 # omop_emb — embedding store (remove section entirely to disable)
 # ---------------------------------------------------------------------------
 
-# SQLite / FAISS backend (no extra database resource needed)
+# sqlitevec backend (no extra database resource needed). Supported backends
+# are "sqlitevec" and "pgvector". faiss_cache_dir below is an optional
+# query-time cache accelerator layered over the chosen backend (install the
+# "embedding-faiss" extra to use it) — FAISS is not itself a backend value.
 [tools.omop_emb.extra]
 backend         = "sqlitevec"
 sqlite_path     = "/absolute/path/to/omop_emb.db"

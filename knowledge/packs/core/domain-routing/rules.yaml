@@ -1,0 +1,17 @@
+domain_to_table:
+  Condition: CONDITION_OCCURRENCE
+  Drug: DRUG_EXPOSURE
+  Measurement: MEASUREMENT
+  Observation: OBSERVATION
+  Procedure: PROCEDURE_OCCURRENCE
+  Device: DEVICE_EXPOSURE
+  Specimen: SPECIMEN
+  Visit: VISIT_OCCURRENCE
+  Provider: PROVIDER
+
+unmapped_concept_id: 0
+
+routing_signal_priority:
+  - target_concept_domain_id   # authoritative
+  - source_vocabulary_hint     # fallback when target not yet resolved
+  - caller_context_hint        # last resort

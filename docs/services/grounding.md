@@ -40,9 +40,17 @@ Runs the tiered grounding pipeline and returns:
 - `results`: ranked serialized concepts with grounding scores
 - `grounding_explanation`: matched tier, embedding usage, and the applied ancestry constraint
 
+Resolver tiers are tried in this order:
+
+1. exact label and synonym matches
+2. full-text label and synonym matches
+3. embedding retrieval, when an embedding client is wired into `OmopGraphAdapter`
+4. partial label and synonym matches, when the search space is already constrained enough to keep them practical
+
 When `parent_ids` is omitted, the search runs without an ancestry constraint.
-When `parent_ids` is provided, results must be descendants of at least one
-listed concept.
+Domain and vocabulary constraints still apply, so parentless grounding can still
+be bounded to a clinical domain or vocabulary. When `parent_ids` is provided,
+results must be descendants of at least one listed concept.
 
 ## Relationship to transports
 

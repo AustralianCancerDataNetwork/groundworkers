@@ -13,7 +13,7 @@ below it.**
 | A wrapper around one external dependency | `src/groundworkers/adapters/` |
 | Reusable domain logic coordinating adapters | `src/groundworkers/services/` |
 | An MCP tool surface | `src/groundworkers/tools/` |
-| A curated HTTP route | `src/groundworkers/rest_api.py` and `rest_models.py` |
+| A curated HTTP route | `src/groundworkers/transports/rest/` |
 | Runtime config resolution | `src/groundworkers/bootstrap.py` |
 | Package-owned config fields | `src/groundworkers/config.py` |
 
@@ -86,9 +86,9 @@ Add a REST route when:
 
 Route expectations:
 
-- request and response models live in `rest_models.py`
+- request and response models live in `transports/rest/models.py`
 - routes call services directly, not MCP wrappers
-- transport-specific error mapping stays in `rest_api.py`
+- transport-specific error mapping stays in `transports/rest/api.py`
 
 ## Updating configuration
 

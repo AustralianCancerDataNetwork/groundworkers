@@ -1,8 +1,8 @@
 # GraphService
 
 `GraphService` is the direct Python surface for deterministic graph-backed
-concept operations. It sits above `OmopGraphAdapter` and gives Python callers
-the same stable graph workflow layer used by the MCP concept tools.
+concept operations. It sits above `OmopGraphAdapter` and packages the adapter's
+dependency-shaped primitives into caller-facing graph workflows.
 
 ## Construction
 
@@ -27,7 +27,7 @@ Use `GraphService` when you want:
 
 - deterministic concept lookup from identifiers
 - hierarchy traversal with explicit depth limits
-- relationship summaries and neighbor exploration
+- relationship summaries and neighborhood exploration
 - shortest-path and equivalency-path queries
 - standard mapping from source vocabulary codes
 
@@ -48,6 +48,8 @@ Walk the OMOP hierarchy with bounded depth and serialized results.
 ### `get_edges(...)` and `get_neighbors(...)`
 
 Expose direct relationships or a bounded multi-hop neighborhood for one concept.
+`get_edges(...)` returns relationship summaries; `get_neighbors(...)` returns a
+bounded neighborhood packet with optional edges and termination metadata.
 
 ### `find_path(...)` and `find_equivalency_path(...)`
 

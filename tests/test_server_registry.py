@@ -44,6 +44,7 @@ def test_server_starts_without_domain_tools_when_no_adapters_configured():
     server = create_server(config)
     assert server.list_tools() == [
         "knowledge_catalogue",
+        "knowledge_pack",
         "source_plan",
         "source_plan_assisted",
         "system_status",

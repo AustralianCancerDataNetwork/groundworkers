@@ -78,6 +78,8 @@ class AssistedPlanResponse(BaseModel):
 
     plan: dict[str, Any]
     detected_source_system: str | None = None
+    structural_skip_field_types: list[str] = Field(default_factory=list)
+    packed_value_column_hint: str | None = None
     raw_tables: list[dict[str, Any]] | None = None
     normalised_tables: list[dict[str, Any]] | None = None
     annotated_tables: list[dict[str, Any]] | None = None

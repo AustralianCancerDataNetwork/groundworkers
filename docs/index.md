@@ -26,7 +26,7 @@ flowchart TD
     APP --> A[adapters/]
     MCP[MCP client] --> T[tools/]
     T --> S
-    REST[REST client] --> R[rest_api.py]
+    REST[REST client] --> R[transports/rest/api.py]
     R --> S
     PY[Python caller] --> S
     A --> OG[omop-graph]

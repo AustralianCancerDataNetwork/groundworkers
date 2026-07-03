@@ -25,6 +25,7 @@ import yaml
 from groundworkers.services.knowledge.models import (
     KnowledgeLayer,
     PackApplicability,
+    PackContent,
     PackManifest,
 )
 
@@ -68,6 +69,20 @@ class KnowledgeCatalogue:
     def all(self) -> list[PackManifest]:
         """Return all discovered manifests without filtering."""
         return list(self._load())
+
+    def get_pack(self, name: str) -> PackContent | None:
+        """Return one pack's manifest plus the content of its bundled files.
+
+        Looks the pack up by ``name`` and loads ``guidance.md`` (raw markdown)
+        and ``rules.yaml`` / ``examples.yaml`` (parsed YAML). Returns ``None``
+        when no pack with that name is discovered. A file that is absent or
+        unreadable leaves the corresponding field ``None`` rather than failing
+        the whole lookup.
+        """
+        for manifest in self._load():
+            if manifest.name == name:
+                return _load_pack_content(manifest)
+        return None
 
     def invalidate(self) -> None:
         """Clear the manifest cache, forcing a re-read on next query."""
@@ -120,4 +135,38 @@ def _parse_manifest(manifest_file: Path, pack_dir: Path) -> PackManifest:
         applicability=applicability,
         see_also=raw.get("see_also", []),
         pack_path=pack_dir,
+    )
+
+
+def _read_text(pack_path: Path, filename: str) -> str | None:
+    path = pack_path / filename
+    if not path.exists():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Could not read %s: %s", path, exc)
+        return None
+
+
+def _read_yaml(pack_path: Path, filename: str) -> Any:
+    text = _read_text(pack_path, filename)
+    if text is None:
+        return None
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        logger.warning("Could not parse %s: %s", pack_path / filename, exc)
+        return None
+
+
+def _load_pack_content(manifest: PackManifest) -> PackContent:
+    pack_path = manifest.pack_path
+    if pack_path is None:
+        return PackContent(manifest=manifest)
+    return PackContent(
+        manifest=manifest,
+        guidance=_read_text(pack_path, "guidance.md"),
+        rules=_read_yaml(pack_path, "rules.yaml"),
+        examples=_read_yaml(pack_path, "examples.yaml"),
     )

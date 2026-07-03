@@ -1,8 +1,8 @@
 # Tools Overview
 
 The MCP surface in `groundworkers` is grouped by workflow rather than by
-underlying package. Tool availability is resolved from the active stack config
-at startup.
+underlying package. Tool availability is resolved from the active runtime at
+startup.
 
 ## Tool groups
 
@@ -38,8 +38,7 @@ at startup.
 can inspect the deployment before assuming a capability exists.
 
 All other tool groups appear only when their backing services or backend
-wrappers are
-available in the resolved runtime.
+wrappers are available in the resolved runtime.
 
 ## MCP versus REST
 
@@ -48,8 +47,8 @@ The MCP surface is broader than the REST surface.
 - MCP is the discovery-oriented interface
 - REST is a curated workflow interface over selected services
 
-If you need every capability, MCP is the more complete transport. If you are
-building a fixed HTTP workflow, prefer the REST routes documented in
+If you need the full capability surface, MCP is the more complete transport. If
+you are building a fixed HTTP workflow, prefer the REST routes documented in
 [Integrations](../usage/integrations.md).
 
 ## Direct Python use

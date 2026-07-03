@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 
 KnowledgeLayer = Literal["core", "specialisation", "source", "localisation"]
@@ -47,43 +47,22 @@ class PackApplicability:
     ) -> bool:
         if self.always:
             return True
-        # Only exclude on a dimension when the caller provided context AND it doesn't match.
-        # None context means "don't filter on this dimension" (discovery / unfiltered query).
+        # Exclude only on a dimension the pack constrains when the caller supplied
+        # context for it AND that context fails to match. A None context means
+        # "don't filter on this dimension" (discovery / unfiltered query). Any pack
+        # that survives every guard is a match — either it matched a supplied
+        # dimension or the caller filtered on nothing this pack constrains.
         if self.source_system and source_system is not None and source_system != self.source_system:
             return False
-        if self.domains and domains is not None:
-            if not any(d in domains for d in self.domains):
-                return False
-        if self.section_name_patterns and section_names is not None:
-            if not any(
-                re.search(pattern, name, re.IGNORECASE)
-                for pattern in self.section_name_patterns
-                for name in section_names
-            ):
-                return False
-        # Determine whether any condition could actually be evaluated with the provided context.
-        # If none can (all context is None), we are in discovery mode — include the pack.
-        has_evaluable = (
-            (self.source_system and source_system is not None)
-            or (self.domains and domains is not None)
-            or (self.section_name_patterns and section_names is not None)
-        )
-        if not has_evaluable:
-            return True
-        # At least one evaluable condition must be a positive match.
-        return bool(
-            (self.source_system and source_system == self.source_system)
-            or (self.domains and domains and any(d in domains for d in self.domains))
-            or (
-                self.section_name_patterns
-                and section_names
-                and any(
-                    re.search(p, n, re.IGNORECASE)
-                    for p in self.section_name_patterns
-                    for n in section_names
-                )
-            )
-        )
+        if self.domains and domains is not None and not any(d in domains for d in self.domains):
+            return False
+        if self.section_name_patterns and section_names is not None and not any(
+            re.search(pattern, name, re.IGNORECASE)
+            for pattern in self.section_name_patterns
+            for name in section_names
+        ):
+            return False
+        return True
 
 
 @dataclass(frozen=True)
@@ -102,3 +81,20 @@ class PackManifest:
 
     def has_file(self, filename: str) -> bool:
         return self.pack_path is not None and (self.pack_path / filename).exists()
+
+
+@dataclass(frozen=True)
+class PackContent:
+    """A pack's manifest plus the content of its bundled files.
+
+    ``guidance`` is the raw markdown text of ``guidance.md`` (intended for
+    context injection). ``rules`` and ``examples`` are the parsed YAML content
+    of ``rules.yaml`` / ``examples.yaml`` (intended for programmatic use by the
+    post-filter / convention-check mechanisms). Any field is ``None`` when the
+    corresponding file is absent or could not be read.
+    """
+
+    manifest: PackManifest
+    guidance: str | None = None
+    rules: Any = None
+    examples: Any = None

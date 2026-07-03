@@ -121,7 +121,10 @@ class IngesterRouter:
     def _assign_domain_hint(self, table: AnnotatedTable) -> AnnotatedTable:
         candidates: list[tuple[str, float]] = []
         for annotation in table.column_annotations.values():
-            if annotation.role != ColumnRole.codes:
+            # Both a code column (vocabulary inferred from code format) and an
+            # explicit source-vocabulary column (vocabulary named in the cells)
+            # carry the table's OMOP vocabulary, so both feed the domain hint.
+            if annotation.role not in (ColumnRole.codes, ColumnRole.source_vocab):
                 continue
             if not annotation.inferred_vocab or annotation.confidence < _DOMAIN_HINT_MIN_CONFIDENCE:
                 continue

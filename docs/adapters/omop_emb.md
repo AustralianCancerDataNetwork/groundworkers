@@ -17,8 +17,8 @@ required engines.
 
 ## Backends
 
-`groundworkers` currently supports the same primary storage backends it wires
-from `omop-emb`:
+`groundworkers` supports the same primary storage backends it wires from
+`omop-emb`:
 
 | Backend | omop-emb config |
 |---|---|
@@ -47,8 +47,8 @@ Requires an embedding client configured through `omop-emb` package settings.
 ## Availability model
 
 The underlying backend is built lazily on first use. If the backend cannot be
-opened, the adapter reports unavailability rather than crashing the service at
-startup.
+opened, the adapter reports unavailability rather than failing application
+construction for callers that do not need embedding-backed operations.
 
 Representative `index_status()` shape:
 

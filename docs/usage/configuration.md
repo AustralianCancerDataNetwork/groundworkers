@@ -1,9 +1,9 @@
 # Configuration
 
 `groundworkers` uses the shared OMOP stack configuration managed by
-`oa-configurator`. The runtime is resolved into an `AppConfig` object by
-`build_app_config(...)`; callers do not pass a separate YAML file to the
-service or library layer.
+`oa-configurator`. `build_app_config(...)` resolves that shared stack into a
+runtime `AppConfig`; callers do not provide a separate `groundworkers`-specific
+runtime file.
 
 ## Runtime entrypoints
 
@@ -39,7 +39,8 @@ package ownership explicit:
 | Embedding backend, model, cache, and embedding store | `omop-emb` |
 | MCP defaults, REST defaults, LLM worker settings, source-planning settings, knowledge-pack settings | `groundworkers` |
 
-This means the `groundworkers` package config stays intentionally small.
+This keeps the `groundworkers` package config intentionally focused on worker-
+owned behavior and transport defaults.
 
 ## Typical TOML shape
 
@@ -174,7 +175,7 @@ is absent until `packs_root` is configured.
 
 ## What becomes available at runtime
 
-### With only a shared CDM resource
+### With shared CDM and `omop_graph` configured
 
 You get:
 

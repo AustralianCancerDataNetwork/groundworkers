@@ -927,9 +927,9 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "oa-configurator", specifier = ">=0.1.2" },
-    { name = "omop-emb", specifier = ">=1.1.0" },
-    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=1.1.0" },
-    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=1.1.0" },
+    { name = "omop-emb", specifier = ">=1.1.1" },
+    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=1.1.1" },
+    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=1.1.1" },
     { name = "omop-graph", editable = "../omop-graph" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.0" },
     { name = "openpyxl", marker = "extra == 'all-source'", specifier = ">=3.1,<4" },
@@ -2196,7 +2196,7 @@ wheels = [
 
 [[package]]
 name = "omop-emb"
-version = "1.1.0"
+version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -2211,9 +2211,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a5/b3/ea70788c73834e30774ef9c0986727a9b22f3e4c4cd8c966a217e2e64bb2/omop_emb-1.1.0.tar.gz", hash = "sha256:97a69d8854b204408c8b6dd46d45ea975347cb5b9b30bd22f0001b9542bca4d5", size = 212263, upload-time = "2026-06-30T01:24:24.231Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/44/f2081ffd9e301c8dcd488b9af9fd278764ce0e51a29e7e8581f778cbf65c/omop_emb-1.1.1.tar.gz", hash = "sha256:d12dfe82ae64c359cc98aee0d09ccdfd29b559755bedc4ceb08c8666c6058cf6", size = 212010, upload-time = "2026-07-02T02:16:26.073Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0a/51/70ea39e3b0ec41ff7ca71d54cc09ef239ee6a04d33feb3cff2806ab084bb/omop_emb-1.1.0-py3-none-any.whl", hash = "sha256:ace850b8a05ae7ea2c319c80ae6bfe3061ae401521df38aef3c270274da220d0", size = 90468, upload-time = "2026-06-30T01:24:23.246Z" },
+    { url = "https://files.pythonhosted.org/packages/35/29/86d15d940ef56ca948fb02c049c681e3f5c6bd9d43281bf44455cb57b244/omop_emb-1.1.1-py3-none-any.whl", hash = "sha256:34d1e28d9e90c9872b7e2def6b539c4787e5204c119cc0fade5d1dacba17427a", size = 90496, upload-time = "2026-07-02T02:16:25.027Z" },
 ]
 
 [package.optional-dependencies]

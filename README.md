@@ -29,9 +29,9 @@ flowchart LR
     APP --> ADAPTERS[adapters/]
     MCP[MCP client] --> TOOLS[tools/]
     TOOLS --> SERVICES
-    REST[REST client] --> API[rest_api.py]
-    API --> SERVICES
-    PY[Python caller] --> SERVICES
+REST[REST client] --> API[transports/rest/api.py]
+API --> SERVICES
+PY[Python caller] --> SERVICES
 ```
 
 ## Quick start

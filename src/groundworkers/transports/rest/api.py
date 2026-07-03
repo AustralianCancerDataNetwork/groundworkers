@@ -5,17 +5,17 @@ from fastapi.responses import JSONResponse
 
 from groundworkers.app import GroundworkersApp
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.rest_models import (
+from groundworkers.services.source_planning.serialisation import (
+    decode_content,
+    serialize_pre_ingest_bundle,
+)
+from groundworkers.transports.rest.models import (
     AssistedPlanRequest,
     AssistedPlanResponse,
     CandidateBundleRequest,
     CandidateBundleResponse,
     ErrorResponse,
     HealthResponse,
-)
-from groundworkers.services.source_planning.serialisation import (
-    decode_content,
-    serialize_pre_ingest_bundle,
 )
 
 

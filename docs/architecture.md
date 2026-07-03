@@ -1,8 +1,8 @@
 # Architecture
 
 `groundworkers` is organised so that configuration, domain logic, and transport
-concerns stay separate. That separation matters both for users choosing an
-integration style and for contributors adding new capabilities.
+concerns stay separate. The same service layer is reused across MCP, REST, and
+direct Python integrations.
 
 ## Runtime layers
 
@@ -15,7 +15,7 @@ flowchart TD
     APP --> SVC[services/]
     MCP[MCP transport] --> TOOLS[tools/]
     TOOLS --> SVC
-    REST[REST transport] --> API[rest_api.py]
+    REST[REST transport] --> API[transports/rest/api.py]
     API --> SVC
     PY[Python caller] --> SVC
 ```
@@ -90,11 +90,10 @@ through MCP, it probably belongs in a service.
 
 ### Transport layers
 
-`groundworkers` currently exposes two transport styles over the same service
-layer:
+`groundworkers` exposes two transport styles over the same service layer:
 
 - **MCP** via the tool modules in `tools/`
-- **REST** via `rest_api.py`
+- **REST** via `transports/rest/`
 
 The transport layers should stay thin:
 

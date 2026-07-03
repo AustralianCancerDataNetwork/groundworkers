@@ -7,7 +7,6 @@ from groundworkers.app import GroundworkersApp, build_adapters, build_applicatio
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig
-from groundworkers.rest_api import create_rest_app
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.domain_tools import register_domain_tools
 from groundworkers.tools.embedding_tools import register_embedding_resources, register_embedding_tools
@@ -21,6 +20,7 @@ from groundworkers.tools.source_planning_tools import (
 )
 from groundworkers.tools.system_tools import register_system_resources, register_system_tools
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
+from groundworkers.transports.rest import create_rest_app
 
 
 def create_server(

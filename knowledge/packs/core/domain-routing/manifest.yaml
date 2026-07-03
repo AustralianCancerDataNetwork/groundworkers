@@ -1,0 +1,20 @@
+name: domain-routing
+layer: core
+version: "1.0"
+shareability: public
+scope_summary: >
+  The domain_id of the target standard concept — not the source — is the
+  authoritative signal for which CDM table a record belongs in. Includes
+  the canonical domain-to-table mapping and the concept_id=0 fallback rule
+  for unmapped source items.
+
+mechanisms:
+  - context-inject
+  - pre-compute
+
+applicability:
+  always: true
+
+see_also:
+  - standard-concept-preference
+  - one-to-many-mapping

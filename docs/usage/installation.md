@@ -92,7 +92,7 @@ groundworkers \
   --port 8080
 ```
 
-The initial REST routes are:
+The REST routes are:
 
 - `POST /v1/mapping/candidate-bundle`
 - `POST /v1/source-planning/assisted-plan`

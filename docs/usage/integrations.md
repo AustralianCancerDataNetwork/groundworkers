@@ -162,9 +162,9 @@ curl -X POST http://localhost:8080/v1/source-planning/assisted-plan \
   }'
 ```
 
-REST is curated rather than exhaustive. Not every MCP tool becomes a REST route.
-The REST surface is intended for workflow-oriented operations that benefit from
-typed HTTP contracts.
+REST is curated rather than exhaustive. The REST transport exposes workflow
+operations with stable request and response models; it does not attempt to
+mirror the full MCP tool surface.
 
 ## Direct Python integration
 
@@ -231,4 +231,4 @@ It is reasonable to combine interfaces in one deployment:
 - use **direct Python** for batch evaluation, tests, or internal orchestration
 
 Because all three sit on the same service layer, the important choice is
-consumer ergonomics, not capability coverage.
+consumer ergonomics and transport fit, not a different implementation path.

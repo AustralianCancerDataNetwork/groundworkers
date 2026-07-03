@@ -197,6 +197,7 @@ class MappingService:
                     warnings.append(f"embedding channel unavailable: {exc.message}")
 
         candidate_union = self._build_candidate_union(channels, overall_limit)
+        self._backfill_candidate_metadata(candidate_union, warnings)
 
         standardized_candidates: list[dict[str, Any]] = []
         if include_standard_mappings and candidate_union:
@@ -546,6 +547,38 @@ class MappingService:
             "missing_reference_cases": missing_reference_cases,
             "extra_prediction_cases": extra_prediction_cases,
         }
+
+    def _backfill_candidate_metadata(
+        self, candidate_union: list[dict[str, Any]], warnings: list[str]
+    ) -> None:
+        """Fill identity metadata for candidates surfaced only via embedding.
+        """
+        incomplete_ids = [
+            row["concept_id"] for row in candidate_union if row.get("vocabulary_id") is None
+        ]
+        if not incomplete_ids:
+            return
+        if self._graph is None:
+            warnings.append(
+                "embedding-only candidates could not be enriched with identity "
+                "metadata (graph service unavailable)"
+            )
+            return
+        views = self._graph.concept_views(incomplete_ids)
+        for row in candidate_union:
+            if row.get("vocabulary_id") is not None:
+                continue
+            view = views.get(row["concept_id"])
+            if view is None:
+                continue
+            row["concept_code"] = view.get("concept_code")
+            row["vocabulary_id"] = view.get("vocabulary_id")
+            row["domain_id"] = view.get("domain_id")
+            row["concept_class_id"] = view.get("concept_class_id")
+            if row.get("concept_name") is None:
+                row["concept_name"] = view.get("concept_name")
+            if row.get("standard_concept") is None:
+                row["standard_concept"] = view.get("standard_concept")
 
     @staticmethod
     def _build_candidate_union(channels: dict[str, dict[str, Any]], overall_limit: int) -> list[dict[str, Any]]:

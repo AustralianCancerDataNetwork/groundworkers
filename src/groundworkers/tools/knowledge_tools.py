@@ -14,13 +14,38 @@ from typing import Any
 
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
+from groundworkers.services.knowledge.models import PackManifest
 
 logger = logging.getLogger(__name__)
 
 # Packs live at groundworkers/knowledge/packs/ relative to the repo root.
 # This path is dev-environment specific; production deployment will use
 # package data (pyproject.toml include) or a configurable path.
+# this is temporary pending oa-configurator upgrade to support a configurable knowledge packs root.
 _PACKS_ROOT: Path = Path(__file__).parent.parent.parent.parent / "knowledge" / "packs"
+
+_KNOWN_PACK_FILES = ("manifest.yaml", "rules.yaml", "guidance.md", "examples.yaml")
+
+
+def _manifest_payload(m: PackManifest) -> dict[str, Any]:
+    """Project a manifest to the JSON-safe dict shared by the catalogue index,
+    the catalogue query tool, and the pack-content tool."""
+    return {
+        "name": m.name,
+        "layer": m.layer,
+        "version": m.version,
+        "shareability": m.shareability,
+        "scope_summary": m.scope_summary,
+        "mechanisms": m.mechanisms,
+        "applicability": {
+            "always": m.applicability.always,
+            "source_system": m.applicability.source_system,
+            "section_name_patterns": m.applicability.section_name_patterns,
+            "domains": m.applicability.domains,
+        },
+        "see_also": m.see_also,
+        "files_present": [f for f in _KNOWN_PACK_FILES if m.has_file(f)],
+    }
 
 
 def register_knowledge_tools(
@@ -59,28 +84,7 @@ def register_knowledge_tools(
         import json
         manifests = catalogue.all()
         return json.dumps({
-            "packs": [
-                {
-                    "name": m.name,
-                    "layer": m.layer,
-                    "version": m.version,
-                    "shareability": m.shareability,
-                    "scope_summary": m.scope_summary,
-                    "mechanisms": m.mechanisms,
-                    "applicability": {
-                        "always": m.applicability.always,
-                        "source_system": m.applicability.source_system,
-                        "section_name_patterns": m.applicability.section_name_patterns,
-                        "domains": m.applicability.domains,
-                    },
-                    "see_also": m.see_also,
-                    "files_present": [
-                        f for f in ["manifest.yaml", "rules.yaml", "guidance.md", "examples.yaml"]
-                        if m.has_file(f)
-                    ],
-                }
-                for m in manifests
-            ],
+            "packs": [_manifest_payload(m) for m in manifests],
             "total": len(manifests),
         })
 
@@ -122,30 +126,43 @@ def register_knowledge_tools(
                 include_local=include_local,
             )
             return {
-                "packs": [
-                    {
-                        "name": m.name,
-                        "layer": m.layer,
-                        "version": m.version,
-                        "shareability": m.shareability,
-                        "scope_summary": m.scope_summary,
-                        "mechanisms": m.mechanisms,
-                        "applicability": {
-                            "always": m.applicability.always,
-                            "source_system": m.applicability.source_system,
-                            "section_name_patterns": m.applicability.section_name_patterns,
-                            "domains": m.applicability.domains,
-                        },
-                        "see_also": m.see_also,
-                        "files_present": [
-                            f for f in ["manifest.yaml", "rules.yaml", "guidance.md", "examples.yaml"]
-                            if m.has_file(f)
-                        ],
-                    }
-                    for m in results
-                ],
+                "packs": [_manifest_payload(m) for m in results],
                 "total": len(results),
             }
+        except Exception as exc:
+            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+
+    @server.tool("knowledge_pack")
+    def knowledge_pack(name: str) -> dict[str, Any]:
+        """Fetch the full content of one knowledge pack by name.
+
+        Discover applicable packs with ``knowledge_catalogue`` first, then call
+        this to retrieve a pack's actual content for context injection
+        (guidance) or programmatic rule application (rules).
+
+        name    The pack name from a catalogue entry (e.g.
+                "standard-concept-preference").
+
+        Returns the manifest fields plus:
+          guidance   Markdown guidance text (guidance.md), or null if absent.
+          rules      Parsed rules.yaml content, or null if absent.
+          examples   Parsed examples.yaml content, or null if absent.
+
+        Returns NOT_FOUND when no pack with that name exists.
+        """
+        try:
+            content = catalogue.get_pack(name)
+            if content is None:
+                return {
+                    "error": True,
+                    "code": "NOT_FOUND",
+                    "message": f"Knowledge pack {name!r} was not found",
+                }
+            payload = _manifest_payload(content.manifest)
+            payload["guidance"] = content.guidance
+            payload["rules"] = content.rules
+            payload["examples"] = content.examples
+            return payload
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 

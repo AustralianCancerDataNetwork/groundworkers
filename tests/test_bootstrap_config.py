@@ -17,6 +17,9 @@ from oa_configurator import (
 )
 from oa_configurator.io import save_stack_config
 
+from types import SimpleNamespace
+
+from groundworkers.app import build_adapters
 from groundworkers.bootstrap import build_app_config_from_stack, load_stack_config_from_path
 from groundworkers.config import GroundworkersConfig
 
@@ -132,3 +135,17 @@ def test_build_app_config_from_stack_leaves_knowledge_root_unset_without_configu
     config = build_app_config_from_stack(StackConfig.for_session())
 
     assert config.knowledge_root is None
+
+
+def test_build_adapters_rejects_unsupported_embedding_backend_eagerly() -> None:
+    # FAISS is a query-time cache accelerator, not a backend. Selecting it (or any
+    # unknown value) must fail fast at build time with an actionable message rather
+    # than lazily as an opaque BACKEND_UNAVAIL on the first embedding query.
+    config = SimpleNamespace(
+        cdm_engine=None,
+        omop_graph=None,
+        omop_emb=SimpleNamespace(backend="faiss"),
+    )
+
+    with pytest.raises(RuntimeError, match="not a supported embedding backend"):
+        build_adapters(config)  # type: ignore[arg-type]

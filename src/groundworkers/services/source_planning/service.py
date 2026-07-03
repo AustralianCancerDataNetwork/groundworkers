@@ -179,6 +179,15 @@ class SourcePlanningService:
         )
         source_profile = self._source_profile_registry.match(all_headers)
         detected_source_system = source_profile.name if source_profile is not None else None
+        # Surface the matched profile's platform-structural knowledge so downstream
+        # ingestion can apply it (row-level field-type skipping and packed-value
+        # expansion happen in the stateful ingester, not in stateless planning).
+        structural_skip_field_types = (
+            sorted(source_profile.structural_skip_field_types()) if source_profile is not None else []
+        )
+        packed_value_column_hint = (
+            source_profile.packed_value_column_hint() if source_profile is not None else None
+        )
 
         annotated_tables = [self._classifier.classify(table) for table in normalised_tables]
         if use_assisted_classification:
@@ -238,6 +247,8 @@ class SourcePlanningService:
             elapsed_ms=elapsed_ms,
             llm_tier_used=llm_tier_used,
             detected_source_system=detected_source_system,
+            structural_skip_field_types=structural_skip_field_types,
+            packed_value_column_hint=packed_value_column_hint,
         )
 
 
