@@ -1,29 +1,29 @@
 # OmopGraph Adapter
 
 `OmopGraphAdapter` wraps [omop-graph](https://australiancancerdatanetwork.github.io/omop-graph/)
-to provide concept lookup, full-text search, hierarchy traversal, path finding, and
-vocabulary catalogue queries.  It is the backing adapter for all concept, resolver,
-and search tools, plus both system tools.
+as the backend runtime for graph-backed concept operations. Direct Python callers
+normally use `GraphService`, `ConceptGroundingService`, or `MappingService`; the
+adapter exists so those services can share one backend wrapper.
 
 ## Key methods
 
-| Method | Used by tool(s) |
+| Method | Used by service(s) |
 |---|---|
-| `get_concept(concept_id)` | `concept_get` |
-| `get_concept_by_code(vocab, code)` | `concept_by_code` |
-| `ground(query, ...)` | `concept_ground` |
-| `get_ancestors(concept_id, max_depth)` | `concept_ancestors` |
-| `get_descendants(concept_id, max_depth)` | `concept_descendants` |
-| `get_edges(concept_id)` | `concept_relationships` |
-| `find_equivalency_path(source_id, target_id, ...)` | `concept_equivalency_path` |
-| `find_path(source_id, target_id, max_depth, ...)` | `concept_path` |
-| `map_to_standard(vocab, code)` | `concept_map_to_standard` |
+| `get_concept(concept_id)` | `GraphService` |
+| `get_concept_by_code(vocab, code)` | `GraphService` |
+| `ground_with_plan(request)` | `ConceptGroundingService` via `GraphService` |
+| `get_ancestors(concept_id, max_depth)` | `GraphService` |
+| `get_descendants(concept_id, max_depth)` | `GraphService` |
+| `get_edges(concept_id)` | `GraphService` |
+| `get_neighbors(concept_id, ...)` | `GraphService` |
+| `find_equivalency_path(source_id, target_id, ...)` | `GraphService` |
+| `find_path(source_id, target_id, max_depth, ...)` | `GraphService` |
+| `map_to_standard(vocab, code)` | `GraphService` |
 | `get_vocabulary_catalogue()` | `system_vocabulary_catalogue` |
 | `is_available()` | `system_status` |
 
-`VocabService` shares the same CDM database connection via `CDMAdapter` and backs
-the search tools (`concept_search_exact`, `concept_search_fulltext`,
-`concept_navigate_to_standard`).
+`VocabService` uses `CDMAdapter` for lexical search operations and is separate from
+the omop-graph-backed graph service surface.
 
 ## Concept response shape
 
@@ -49,14 +49,15 @@ stored in the OMOP CDM.
 
 ## Full-text search
 
-`concept_ground` runs a tiered resolver pipeline.  The FullText tier uses PostgreSQL
-tsvector sidecar columns (`concept_name_tsvector`, `concept_synonym_name_tsvector`)
-when they are present on the vocabulary tables.  Detection is automatic — no
-configuration is required.  When the sidecar columns are absent, the FullText tier
-returns no results and the pipeline falls through to Partial matching.
+`ConceptGroundingService` runs a tiered resolver pipeline through this adapter's
+backend runtime. The FullText tier uses PostgreSQL tsvector sidecar columns
+(`concept_name_tsvector`, `concept_synonym_name_tsvector`) when they are present
+on the vocabulary tables. Detection is automatic. When the sidecar columns are
+absent, the FullText tier returns no results and the pipeline falls through to
+later tiers.
 
 `concept_search_fulltext` (via `VocabService`) uses the same sidecar columns and
-exposes `tsvector_available` in its response so callers can detect degraded mode.
+exposes `tsvector_available` so callers can detect degraded mode.
 
 ## Error handling
 

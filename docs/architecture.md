@@ -65,7 +65,7 @@ Adapters are dependency-facing wrappers. Each adapter should wrap one external
 system cleanly:
 
 - `CDMAdapter` wraps the SQLAlchemy engine/session factory
-- `OmopGraphAdapter` wraps omop-graph lookup, grounding, traversal, and paths
+- `OmopGraphAdapter` wraps the omop-graph backend runtime
 - `OmopEmbAdapter` wraps omop-emb index and query behavior
 - `LLMAdapter` wraps the configured model backend
 
@@ -78,6 +78,8 @@ Services contain reusable domain logic that should work the same regardless of
 transport:
 
 - `VocabService` for lexical retrieval and OMOP navigation
+- `GraphService` for deterministic graph-backed lookup, traversal, paths, and neighborhood exploration
+- `ConceptGroundingService` for caller-facing grounding policy over the graph service
 - `MappingService` for multi-channel candidate and context workflows
 - `TextService` for LLM-backed text preprocessing
 - `DomainService` for LLM-backed structured-field domain hints
@@ -97,8 +99,9 @@ layer:
 The transport layers should stay thin:
 
 1. validate or clamp request inputs
-2. call a service or adapter
-3. translate exceptions into transport-appropriate error responses
+2. call a service
+3. call an adapter directly only for intentionally adapter-shaped primitives that do not have a service abstraction
+4. translate exceptions into transport-appropriate error responses
 
 Business logic should not exist only in MCP wrappers or only in REST routes.
 
@@ -109,7 +112,7 @@ Business logic should not exist only in MCP wrappers or only in REST routes.
 | Tool discovery, agent interoperability, remote service | MCP tools |
 | Fixed HTTP workflow endpoints | REST API |
 | Domain workflows from Python | `app.services.*` |
-| Low-level dependency-shaped operations | `app.adapters.*` |
+| Backend-shaped primitives for a specific dependency | `app.adapters.*` |
 
 ## Request flow
 

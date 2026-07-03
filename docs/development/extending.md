@@ -68,8 +68,9 @@ available to agentic callers.
 Tool expectations:
 
 1. validate and clamp inputs
-2. call a service or adapter
-3. translate exceptions into MCP-safe error dicts
+2. call a service
+3. call an adapter directly only when the capability is intentionally adapter-shaped and there is no service abstraction
+4. translate exceptions into MCP-safe error dicts
 
 Do not put the main business logic in the tool wrapper itself.
 

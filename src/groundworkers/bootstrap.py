@@ -79,10 +79,7 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
             emb_engine = resolver.resolve_resource(emb_resource_name).create_engine(future=True)
 
     knowledge_root = None
-    default_knowledge_resource = _default_knowledge_resource_name(stack)
-    if default_knowledge_resource is not None:
-        knowledge_root = resolver.resolve_knowledge_resource(default_knowledge_resource).root
-    elif groundworkers.knowledge.packs_root is not None:
+    if groundworkers.knowledge.packs_root is not None:
         knowledge_root = _resolve_path(groundworkers.knowledge.packs_root, stack.loaded_path)
 
     return AppConfig(
@@ -112,15 +109,6 @@ def _load_omop_graph_config(stack: StackConfig):
         return __import__("omop_graph.config", fromlist=["OmopGraphConfig"]).OmopGraphConfig.from_stack(stack)
     except ValidationError as exc:
         raise ValueError(f"Invalid omop_graph config: {exc}") from exc
-
-
-def _default_knowledge_resource_name(stack: StackConfig) -> str | None:
-    tool = stack.tools.get(GroundworkersConfig.tool_name)
-    if tool is None and stack.active_profile and stack.active_profile in stack.profiles:
-        tool = stack.profiles[stack.active_profile].tools.get(GroundworkersConfig.tool_name)
-    if tool is None:
-        return None
-    return getattr(tool, "default_knowledge_resource", None)
 
 
 def _resolve_path(path: str, loaded_path: Path | None) -> Path:

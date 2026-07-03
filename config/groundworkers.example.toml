@@ -29,9 +29,9 @@ database_name = "cava"
 # ---------------------------------------------------------------------------
 
 [resources.cdm]
-database     = "cava"
-cdm_schema   = "omop"
-vocab_schema = "omop_vocab"
+database     = "airflow_vector"
+cdm_schema   = "public"
+vocab_schema = "public"
 
 # pgvector embedding resource — only needed when omop_emb.backend = "pgvector"
 # [resources.emb]

@@ -3,16 +3,17 @@ import os
 import sys
 
 import pytest
+from sqlalchemy import text
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config
 from groundworkers.server import build_adapters
-from groundworkers.services.grounding import GroundingService
+from groundworkers.services.graph import GraphService
+from groundworkers.services.grounding import ConceptGroundingService
 
 
 def _load_graph_adapter():
@@ -35,6 +36,42 @@ def _load_graph_adapter():
     if not adapter.is_available():
         pytest.skip("omop_graph backend is not available in this environment")
     return adapter
+
+
+def _find_nonstandard_condition_term(adapter) -> str:
+    stmt = text(
+        f"""
+        SELECT c.concept_name
+        FROM {adapter.vocab_schema}.concept AS c
+        JOIN {adapter.vocab_schema}.concept_relationship AS cr
+          ON cr.concept_id_1 = c.concept_id
+         AND lower(cr.relationship_id) = 'maps to'
+         AND cr.invalid_reason IS NULL
+        JOIN {adapter.vocab_schema}.concept AS s
+          ON s.concept_id = cr.concept_id_2
+         AND s.standard_concept = 'S'
+         AND s.domain_id = 'Condition'
+         AND s.invalid_reason IS NULL
+        WHERE c.domain_id = 'Condition'
+          AND c.standard_concept IS NULL
+          AND c.invalid_reason IS NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM {adapter.vocab_schema}.concept AS c2
+              WHERE lower(c2.concept_name) = lower(c.concept_name)
+                AND c2.domain_id = 'Condition'
+                AND c2.standard_concept IN ('S', 'C')
+                AND c2.invalid_reason IS NULL
+          )
+        ORDER BY c.concept_id
+        LIMIT 1
+        """
+    )
+    with adapter.engine.connect() as conn:
+        row = conn.execute(stmt).first()
+    if row is None:
+        pytest.skip("no uniquely named non-standard Condition concept with a standard mapping was found")
+    return str(row[0])
 
 
 @pytest.mark.integration
@@ -104,7 +141,7 @@ def test_concept_by_code_snomed():
 @pytest.mark.integration
 def test_ground_exact_match():
     adapter = _load_graph_adapter()
-    service = GroundingService(adapter)
+    service = ConceptGroundingService(GraphService(adapter))
 
     result = service.ground("Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None)
 
@@ -120,7 +157,7 @@ def test_ground_exact_match():
 @pytest.mark.integration
 def test_ground_partial_match():
     adapter = _load_graph_adapter()
-    service = GroundingService(adapter)
+    service = ConceptGroundingService(GraphService(adapter))
 
     result = service.ground("type 2 diabet", limit=5, domain=None, vocabulary_id=None)
 
@@ -132,7 +169,7 @@ def test_ground_partial_match():
 @pytest.mark.integration
 def test_ground_returns_standard_concepts_only():
     adapter = _load_graph_adapter()
-    service = GroundingService(adapter)
+    service = ConceptGroundingService(GraphService(adapter))
 
     result = service.ground("diabetes", limit=10, domain=None, vocabulary_id=None)
 
@@ -141,6 +178,28 @@ def test_ground_returns_standard_concepts_only():
     assert all(r["standard_concept"] is True for r in results)
     scores = [r["total_score"] for r in results]
     assert scores == sorted(scores, reverse=True)
+
+
+@pytest.mark.integration
+def test_ground_parentless_condition_term_standardizes_nonstandard_source():
+    adapter = _load_graph_adapter()
+    service = ConceptGroundingService(GraphService(adapter))
+    query = _find_nonstandard_condition_term(adapter)
+
+    result = service.ground(
+        query,
+        limit=5,
+        domain="Condition",
+        vocabulary_id=None,
+        parent_ids=None,
+    )
+
+    results = result["results"]
+    assert results
+    assert results[0]["standard_concept"] is True
+    assert results[0]["standardized_from"] is not None
+    assert result["grounding_explanation"]["parent_ids_source"] == "none"
+    assert result["grounding_explanation"]["effective_parent_ids"] == []
 
 
 @pytest.mark.integration

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from omop_graph.graph.constraints import SearchConstraintConcept
@@ -15,23 +14,21 @@ from omop_graph.reasoning.resolvers.resolvers import (
     PartialSynonymResolver,
 )
 
-from groundworkers.adapters.omop_graph import GroundingPlan, OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
+from groundworkers.services.graph import GraphService, GroundingPlan
 
-logger = logging.getLogger(__name__)
 
-
-class GroundingService:
+class ConceptGroundingService:
     """Use-case policy for free-text grounding over the OMOP graph.
 
-    The adapter owns graph construction and omop-graph execution details.
+    The graph service owns omop-graph execution details.
     This service owns the caller-facing grounding strategy: domain normalization,
-    fallback anchor selection, tier ordering, and response explanation.
+    optional ancestry constraints, tier ordering, and response explanation.
     """
 
     def __init__(
         self,
-        graph: OmopGraphAdapter,
+        graph: GraphService,
         *,
         min_fulltext_overlap: float = 0.0,
     ) -> None:
@@ -53,15 +50,10 @@ class GroundingService:
 
         canonical_domain = self._graph.canonicalize_domain(domain)
         search_constraint = self._build_search_constraint(canonical_domain, vocabulary_id)
-        resolved_parent_ids, parent_ids_source = self._resolve_parent_ids(
-            domain=canonical_domain,
-            parent_ids=parent_ids,
-        )
-        if not resolved_parent_ids:
+        if parent_ids is not None and not parent_ids:
             raise GroundworkersError(
                 "QUERY_ERROR",
-                "No hierarchy anchors found — ensure the OMOP vocabulary is bootstrapped "
-                "(concept and concept_ancestor tables must be populated).",
+                "parent_ids was provided but empty; omit it to run unconstrained grounding",
             )
 
         result = self._graph.ground_with_plan(
@@ -69,7 +61,7 @@ class GroundingService:
                 query=stripped,
                 limit=limit,
                 constraints=GroundingConstraints(
-                    parent_ids=resolved_parent_ids,
+                    parent_ids=parent_ids,
                     search_constraint=search_constraint,
                 ),
                 tiers=self._build_tier_plan(
@@ -84,8 +76,8 @@ class GroundingService:
             "grounding_explanation": {
                 "matched_tier": result["matched_tier"],
                 "used_embedding": result["used_embedding"],
-                "effective_parent_ids": list(resolved_parent_ids),
-                "parent_ids_source": parent_ids_source,
+                "effective_parent_ids": list(parent_ids) if parent_ids is not None else [],
+                "parent_ids_source": "explicit" if parent_ids is not None else "none",
             },
         }
 
@@ -121,32 +113,3 @@ class GroundingService:
         if search_constraint is not None and len(query) <= max_partial_query_len:
             tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
         return tuple(tiers)
-
-    def _resolve_parent_ids(
-        self,
-        *,
-        domain: str | None,
-        parent_ids: tuple[int, ...] | None,
-    ) -> tuple[tuple[int, ...], str]:
-        if parent_ids is not None:
-            return parent_ids, "explicit"
-
-        # Placeholder pending omop-graph issue 22 ("Grounding without Parent ID"):
-        # https://github.com/AustralianCancerDataNetwork/omop-graph/issues/22
-        #
-        # Today groundworkers still has to decide what to do when callers do not
-        # provide parent_ids. Once omop-graph supports a first-class grounding mode
-        # without ancestry anchors, this fallback policy should be removed.
-        logger.warning(
-            "concept_ground called without explicit parent_ids (domain=%r); falling back to "
-            "hard-coded domain-root anchoring with low, uneven coverage. Supply anchors via the "
-            "caller's grounding profiles.",
-            domain,
-        )
-        if domain is not None:
-            return self._graph.get_domain_root_ids(domain), "domain_root"
-
-        all_roots: list[int] = []
-        for known_domain in self._graph.known_grounding_domains():
-            all_roots.extend(self._graph.get_domain_root_ids(known_domain))
-        return tuple(all_roots), "all_domain_roots"

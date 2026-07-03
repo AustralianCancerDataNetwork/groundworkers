@@ -213,8 +213,8 @@ class StubGroundingService:
             "grounding_explanation": {
                 "matched_tier": all_results[0]["match_kind"],
                 "used_embedding": False,
-                "effective_parent_ids": list(parent_ids) if parent_ids else [4002649],
-                "parent_ids_source": "explicit" if parent_ids else "domain_root",
+                "effective_parent_ids": list(parent_ids) if parent_ids else [],
+                "parent_ids_source": "explicit" if parent_ids else "none",
             },
         }
 

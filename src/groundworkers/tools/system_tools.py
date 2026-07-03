@@ -4,14 +4,14 @@ Tools are always registered regardless of adapter availability, so
 callers always get a structured response (never "unknown tool").
 
 Tools:
-  system_status — reports availability of every configured adapter.
+  system_status — reports availability of every configured backend.
   system_vocabulary_catalogue — returns the full OMOP vocabulary/domain/class
-    catalogue from OmopGraphAdapter.  Requires omop_graph to be configured.
+    catalogue from the omop-graph backend. Requires omop_graph to be configured.
 
 Resources:
   config://active — sanitised view of the active server configuration.
   vocabularies://catalogue — full OMOP vocabulary/domain/concept-class
-    catalogue with concept counts.  Requires omop_graph to be configured.
+    catalogue with concept counts. Requires omop_graph to be configured.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def register_system_resources(
             return json.dumps({
                 "error": True,
                 "code": "BACKEND_UNAVAIL",
-                "message": "omop_graph adapter is not configured",
+                "message": "omop_graph backend is not configured",
             })
         try:
             return json.dumps(graph_adapter.get_vocabulary_catalogue())
@@ -81,9 +81,9 @@ def register_system_tools(
           "degraded"    — at least one configured component unavailable
           "unavailable" — no components available (or none configured)
 
-        components only contains entries for adapters that are configured.
+        components only contains entries for configured backends.
         omop_graph.embedding_resolver_active is true only when an EmbeddingClient
-        was successfully wired into the graph adapter at startup — it is independent
+        was successfully wired into the omop-graph backend at startup — it is independent
         from omop_emb.available and must be checked separately to confirm the
         embedding tier of concept_ground is operational.
         """
@@ -154,7 +154,7 @@ def register_system_tools(
             return {
                 "error": True,
                 "code": "BACKEND_UNAVAIL",
-                "message": "omop_graph adapter is not configured",
+                "message": "omop_graph backend is not configured",
             }
         try:
             return graph_adapter.get_vocabulary_catalogue()

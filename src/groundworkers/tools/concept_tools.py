@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
+from groundworkers.services.graph import GraphService
 
 
-def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAdapter) -> None:
+def register_concept_tools(server: GroundcrewServer, graph_service: GraphService) -> None:
     """Register deterministic concept lookup tools against the MCP server.
 
     These tools take a known identifier (concept_id, vocabulary+code) and return
@@ -23,7 +23,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
         try:
-            concept = graph_adapter.get_concept(concept_id)
+            concept = graph_service.get_concept(concept_id)
             if concept is None:
                 return {"error": True, "code": "NOT_FOUND", "message": f"Concept {concept_id} was not found"}
             return concept
@@ -40,7 +40,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
         if not concept_code.strip():
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_code must be a non-empty string"}
         try:
-            concepts = graph_adapter.get_concept_by_code(vocabulary_id, concept_code)
+            concepts = graph_service.get_concept_by_code(vocabulary_id, concept_code)
             if not concepts:
                 return {
                     "error": True,
@@ -60,7 +60,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
         safe_depth = max(1, min(max_depth, 20))
         try:
-            ancestors = graph_adapter.get_ancestors(concept_id, safe_depth)
+            ancestors = graph_service.get_ancestors(concept_id, safe_depth)
             return {"concept_id": concept_id, "ancestors": ancestors}
         except GroundworkersError as exc:
             return exc.to_dict()
@@ -74,7 +74,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
         safe_depth = max(1, min(max_depth, 10))
         try:
-            descendants = graph_adapter.get_descendants(concept_id, safe_depth)
+            descendants = graph_service.get_descendants(concept_id, safe_depth)
             return {"concept_id": concept_id, "descendants": descendants}
         except GroundworkersError as exc:
             return exc.to_dict()
@@ -87,7 +87,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
         try:
-            edges = graph_adapter.get_edges(concept_id)
+            edges = graph_service.get_edges(concept_id)
             return {"concept_id": concept_id, **edges}
         except GroundworkersError as exc:
             return exc.to_dict()
@@ -123,7 +123,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
             return {"error": True, "code": "INVALID_INPUT", "message": "source_id and target_id must be positive integers"}
         safe_depth = max(2, min(max_depth, 15))
         try:
-            result = graph_adapter.find_equivalency_path(
+            result = graph_service.find_equivalency_path(
                 source_id, target_id, safe_depth, allow_hierarchical_traversal
             )
             return {"source_id": source_id, "target_id": target_id, **result}
@@ -160,7 +160,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
             return {"error": True, "code": "INVALID_INPUT", "message": "source_id and target_id must be positive integers"}
         safe_depth = max(2, min(max_depth, 15))
         try:
-            result = graph_adapter.find_path(source_id, target_id, safe_depth, within_domain=within_domain)
+            result = graph_service.find_path(source_id, target_id, safe_depth, within_domain=within_domain)
             return {"source_id": source_id, "target_id": target_id, **result}
         except GroundworkersError as exc:
             return exc.to_dict()
@@ -210,7 +210,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
         safe_depth = max(1, min(max_depth, 4))
         safe_nodes = max(10, min(max_nodes, 500))
         try:
-            return graph_adapter.get_neighbors(
+            return graph_service.get_neighbors(
                 concept_id=concept_id,
                 max_depth=safe_depth,
                 predicate_kinds=predicate_kinds,
@@ -230,7 +230,7 @@ def register_concept_tools(server: GroundcrewServer, graph_adapter: OmopGraphAda
         if not concept_code.strip():
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_code must be a non-empty string"}
         try:
-            return graph_adapter.map_to_standard(vocabulary_id, concept_code)
+            return graph_service.map_to_standard(vocabulary_id, concept_code)
         except GroundworkersError as exc:
             return exc.to_dict()
         except Exception as exc:

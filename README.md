@@ -97,7 +97,7 @@ bundle = mapping.concept_candidate_bundle(
 | MCP tools | Tool discovery, agent interoperability, shared capability services |
 | REST routes | Typed HTTP workflows such as candidate bundles and assisted source planning |
 | `app.services.*` | In-process Python applications and batch workflows |
-| `app.adapters.*` | Lower-level dependency-shaped operations |
+| `app.adapters.*` | Backend wrappers used when you intentionally need dependency-shaped primitives |
 
 ## Learn more
 

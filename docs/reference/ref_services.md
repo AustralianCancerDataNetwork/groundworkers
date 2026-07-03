@@ -16,6 +16,22 @@ dependency of `MappingService`.
 
 ::: groundworkers.services.vocab
 
+## GraphService
+
+`GraphService` is the direct-Python surface for deterministic graph-backed
+concept lookup, hierarchy traversal, path finding, standard mapping, and
+neighbor exploration.
+
+::: groundworkers.services.graph
+
+## ConceptGroundingService
+
+`ConceptGroundingService` owns the caller-facing grounding policy over
+`GraphService`: resolver tier ordering, ancestry constraints, and grounding
+explanations.
+
+::: groundworkers.services.grounding
+
 ## MappingService
 
 `MappingService` is the direct-Python API for mapping workflows. The mapping MCP
@@ -38,3 +54,10 @@ field labels and example values. The `domain_classify` MCP tool delegates to thi
 service.
 
 ::: groundworkers.services.domain
+
+## SourcePlanningService
+
+`SourcePlanningService` provides stateless source-analysis and assisted planning
+workflows for pre-ingest artifacts.
+
+::: groundworkers.services.source_planning

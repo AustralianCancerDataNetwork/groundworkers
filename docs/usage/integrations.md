@@ -218,6 +218,10 @@ class MappingReviewService:
 Direct Python is the best fit when your caller is already Python and you want
 the service layer without a transport hop.
 
+For graph-backed direct Python calls, prefer `app.services.graph` and
+`app.services.grounding`. For lexical retrieval, use `app.services.vocab`. For
+review-oriented orchestration, use `app.services.mapping`.
+
 ## Mixing interfaces
 
 It is reasonable to combine interfaces in one deployment:

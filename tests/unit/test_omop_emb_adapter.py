@@ -81,7 +81,7 @@ def test_search_raises_backend_unavail_without_client():
 
 def test_search_returns_serialized_matches(monkeypatch):
     adapter = build_adapter()
-    record = SimpleNamespace(model_name="demo-model")
+    record = SimpleNamespace(model_name="demo-model", index_config=None)
     reader = StubReader()
     client = StubClient()
 

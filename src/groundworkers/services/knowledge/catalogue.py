@@ -16,6 +16,7 @@ It can be called at any phase — not only at source planning time.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,8 @@ from groundworkers.services.knowledge.models import (
     PackApplicability,
     PackManifest,
 )
+
+logger = logging.getLogger(__name__)
 
 _KNOWN_LAYERS: frozenset[str] = frozenset({"core", "specialisation", "source", "localisation"})
 
@@ -87,8 +90,11 @@ class KnowledgeCatalogue:
                 try:
                     manifest = _parse_manifest(manifest_file, pack_dir)
                     manifests.append(manifest)
-                except Exception:
-                    pass  # malformed manifests are skipped silently in sketches
+                except Exception as exc:
+                    # A malformed manifest (bad YAML, missing required key, invalid
+                    # section_name_pattern regex, ...) skips only that pack — other
+                    # packs and queries are unaffected.
+                    logger.warning("Skipping malformed knowledge pack %s: %s", manifest_file, exc)
         self._cache = manifests
         return manifests
 

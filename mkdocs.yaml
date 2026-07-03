@@ -40,6 +40,7 @@ nav:
   - Tools:
       - Overview: tools/overview.md
       - Concept Tools: tools/concept.md
+      - Resolver Tools: tools/resolver.md
       - Search Tools: tools/search.md
       - Mapping Tools: tools/mapping.md
       - Embedding Tools: tools/embedding.md
@@ -47,8 +48,11 @@ nav:
       - Domain Tools: tools/domain.md
       - System Tools: tools/system.md
   - Services:
+      - Graph Service: services/graph.md
+      - Grounding Service: services/grounding.md
       - Vocab Service: services/vocab.md
       - Mapping Service: services/mapping.md
+      - Source Planning Service: services/source_planning.md
       - Text Service: services/text.md
       - Domain Service: services/domain.md
   - Adapters:

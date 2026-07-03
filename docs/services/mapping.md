@@ -22,6 +22,10 @@ mapping = app.services.mapping
 `mapping` is `None` only when the runtime could not build the shared vocabulary
 layer.
 
+Graph-backed enrichment is optional. When `GraphService` is unavailable,
+graph-dependent methods either degrade gracefully with warnings or raise
+`BACKEND_UNAVAIL` for operations that require the omop-graph backend.
+
 ## What it is for
 
 Use `MappingService` when you want:

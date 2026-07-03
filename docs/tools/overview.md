@@ -8,9 +8,9 @@ at startup.
 
 | Group | Tools | Requires |
 |---|---|---|
-| **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | Shared CDM resource / graph runtime |
-| **Resolver** | `concept_ground` | Shared CDM resource / graph runtime |
-| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | Shared CDM resource / `VocabService` |
+| **Concept** | `concept_get`, `concept_by_code`, `concept_ancestors`, `concept_descendants`, `concept_relationships`, `concept_equivalency_path`, `concept_path`, `concept_neighbors`, `concept_map_to_standard` | `GraphService` / omop-graph backend |
+| **Resolver** | `concept_ground` | `ConceptGroundingService` / omop-graph backend |
+| **Search** | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | Shared CDM vocabulary access / `VocabService` |
 | **Mapping** | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | Shared CDM resource / `MappingService` |
 | **Embedding** | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` configured |
 | **Source planning** | `source_plan`, `source_plan_assisted` | `SourcePlanningService` |
@@ -37,7 +37,8 @@ at startup.
 `system_status` and `system_vocabulary_catalogue` are always present so clients
 can inspect the deployment before assuming a capability exists.
 
-All other tool groups appear only when their backing adapters or services are
+All other tool groups appear only when their backing services or backend
+wrappers are
 available in the resolved runtime.
 
 ## MCP versus REST
@@ -53,8 +54,8 @@ building a fixed HTTP workflow, prefer the REST routes documented in
 
 ## Direct Python use
 
-The mapping, search, text, domain, and source-planning behavior also exists as
-direct Python services:
+The graph, grounding, mapping, search, text, domain, and source-planning
+behavior also exists as direct Python services:
 
 ```mermaid
 flowchart LR
@@ -83,7 +84,7 @@ Common codes:
 |---|---|
 | `NOT_FOUND` | Requested concept or code does not exist |
 | `INVALID_INPUT` | Bad argument such as an empty string or invalid identifier |
-| `BACKEND_UNAVAIL` | Required backend or adapter is unavailable |
+| `BACKEND_UNAVAIL` | Required backend or service dependency is unavailable |
 | `QUERY_ERROR` | Database or adapter failure during execution |
 
 ## Inspecting the active tool surface

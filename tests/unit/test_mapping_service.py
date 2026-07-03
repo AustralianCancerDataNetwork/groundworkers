@@ -286,7 +286,7 @@ class StubGroundingService:
 def build_service() -> MappingService:
     return MappingService(
         StubVocabAdapter(),
-        graph_adapter=StubGraphAdapter(),
+        graph_service=StubGraphAdapter(),
         emb_adapter=StubEmbAdapter(),
         grounding_service=StubGroundingService(),
     )
@@ -436,7 +436,7 @@ class _RecordingVocabAdapter(StubVocabAdapter):
 
 def _service_with_recording_vocab(emb=None):
     vocab = _RecordingVocabAdapter()
-    service = MappingService(vocab, graph_adapter=StubGraphAdapter(), emb_adapter=emb)
+    service = MappingService(vocab, graph_service=StubGraphAdapter(), emb_adapter=emb)
     return service, vocab
 
 
@@ -515,7 +515,7 @@ def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_sta
 
     service = MappingService(
         StubVocabAdapter(),
-        graph_adapter=StubGraphAdapter(),
+        graph_service=StubGraphAdapter(),
         grounding_service=ExactNonStandardGroundingService(),
     )
     result = service.concept_nearest_standard_ancestor(query="Type 2 diabetes mellitus")

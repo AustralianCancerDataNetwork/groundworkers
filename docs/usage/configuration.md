@@ -167,8 +167,10 @@ into `SourcePlanningService` when an LLM adapter is present.
 |---|---|---|
 | `packs_root` | `str \| null` | `null` |
 
-If you configure a shared knowledge resource for `groundworkers`, that resolved
-resource wins. `packs_root` is a direct path fallback.
+Set `packs_root` to the directory containing the knowledge `packs/` tree. When
+it is unset, the knowledge catalogue tools are only registered if the bundled
+dev packs directory is present, so in a packaged deployment the knowledge group
+is absent until `packs_root` is configured.
 
 ## What becomes available at runtime
 

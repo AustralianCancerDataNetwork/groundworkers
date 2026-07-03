@@ -125,7 +125,14 @@ class OmopEmbAdapter:
         """
         record = self._resolve_model_record(model_name)
         reader = self._build_reader(record)
-        vectors = reader.get_embeddings_by_concept_ids((concept_id,))
+        # omop-emb raises ValueError when a requested concept has no stored embedding;
+        # older versions returned a mapping missing that key. Handle both as NOT_FOUND.
+        try:
+            vectors = reader.get_embeddings_by_concept_ids((concept_id,))
+        except ValueError as exc:
+            raise GroundworkersError(
+                "NOT_FOUND", f"Concept {concept_id} is not present in the embedding index"
+            ) from exc
         if concept_id not in vectors:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} is not present in the embedding index")
 
@@ -135,6 +142,7 @@ class OmopEmbAdapter:
             query_embedding=vector,
             concept_filter=concept_filter,
             k=limit + 1,
+            faiss_index_config=record.index_config,
         )
         matches = raw[0] if raw else ()
         results = [
@@ -183,6 +191,7 @@ class OmopEmbAdapter:
             embedding_client=client,
             concept_filter=concept_filter,
             k=limit,
+            faiss_index_config=record.index_config,
         )
         matches = raw[0] if raw else ()
         return {

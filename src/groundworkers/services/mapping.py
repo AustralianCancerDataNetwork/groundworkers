@@ -4,9 +4,9 @@ from collections import Counter
 from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
-from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.services.grounding import GroundingService
+from groundworkers.services.graph import GraphService
+from groundworkers.services.grounding import ConceptGroundingService
 from groundworkers.services.vocab import (
     VocabService,
     normalize_text_for_matching,
@@ -23,12 +23,12 @@ class MappingService:
         self,
         vocab: VocabService,
         *,
-        graph_adapter: OmopGraphAdapter | None = None,
+        graph_service: GraphService | None = None,
         emb_adapter: OmopEmbAdapter | None = None,
-        grounding_service: GroundingService | None = None,
+        grounding_service: ConceptGroundingService | None = None,
     ) -> None:
         self._vocab = vocab
-        self._graph = graph_adapter
+        self._graph = graph_service
         self._emb = emb_adapter
         self._grounding = grounding_service
 
@@ -215,7 +215,7 @@ class MappingService:
                 except Exception:
                     row["ancestor_preview"] = []
         elif include_hierarchy_context:
-            warnings.append("graph adapter not configured; hierarchy context omitted")
+            warnings.append("graph service unavailable; hierarchy context omitted")
 
         if include_relationship_summary and self._graph is not None:
             for row in candidate_union[: min(5, len(candidate_union))]:
@@ -225,7 +225,7 @@ class MappingService:
                 except Exception:
                     row["relationship_summary"] = {}
         elif include_relationship_summary:
-            warnings.append("graph adapter not configured; relationship summary omitted")
+            warnings.append("graph service unavailable; relationship summary omitted")
 
         return {
             "query": stripped,
@@ -254,7 +254,7 @@ class MappingService:
         candidate_limit: int = 10,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if (query is None) == (concept_id is None):
             raise ValueError("exactly one of query or concept_id must be provided")
 
@@ -345,7 +345,7 @@ class MappingService:
         model_name: str | None = None,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if concept_id <= 0:
             raise ValueError("concept_id must be a positive integer")
         concept = self._graph.get_concept(concept_id)
@@ -391,7 +391,7 @@ class MappingService:
         concept_code: str,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if not vocabulary_id.strip():
             raise ValueError("vocabulary_id must be a non-empty string")
         if not concept_code.strip():
@@ -416,7 +416,7 @@ class MappingService:
         resolve_to_standard: bool = True,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph adapter is not configured")
+            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
         if not items:
             return {"expression_items": [], "resolved_concept_ids": [], "resolved_concepts": [], "excluded_concepts": [], "counts": {"resolved": 0, "excluded": 0}}
         resolved: dict[int, dict[str, Any]] = {}

@@ -13,7 +13,7 @@ from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
-from groundworkers.services import DomainService, GroundingService, MappingService, TextService, VocabService
+from groundworkers.services import ConceptGroundingService, DomainService, GraphService, MappingService, TextService, VocabService
 from groundworkers.services.source_planning import AssistedColumnRoleClassifier
 from groundworkers.services.source_planning import SourcePlanningService
 
@@ -31,7 +31,8 @@ class Adapters:
 @dataclass
 class Services:
     vocab: VocabService | None = None
-    grounding: GroundingService | None = None
+    graph: GraphService | None = None
+    grounding: ConceptGroundingService | None = None
     mapping: MappingService | None = None
     text: TextService | None = None
     source_planning: SourcePlanningService | None = None
@@ -165,15 +166,16 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
         assisted_classifier = AssistedColumnRoleClassifier(adapters.llm)
     services.source_planning = SourcePlanningService(assisted_classifier=assisted_classifier)
     if adapters.omop_graph is not None:
-        services.grounding = GroundingService(
-            adapters.omop_graph,
+        services.graph = GraphService(adapters.omop_graph)
+        services.grounding = ConceptGroundingService(
+            services.graph,
             min_fulltext_overlap=config.grounding.min_fulltext_overlap,
         )
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)
         services.mapping = MappingService(
             services.vocab,
-            graph_adapter=adapters.omop_graph,
+            graph_service=services.graph,
             emb_adapter=adapters.omop_emb,
             grounding_service=services.grounding,
         )

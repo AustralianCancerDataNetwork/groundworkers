@@ -8,11 +8,14 @@ source_plan and intentionally lives as a standalone lookup.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
+
+logger = logging.getLogger(__name__)
 
 # Packs live at groundworkers/knowledge/packs/ relative to the repo root.
 # This path is dev-environment specific; production deployment will use
@@ -23,8 +26,23 @@ _PACKS_ROOT: Path = Path(__file__).parent.parent.parent.parent / "knowledge" / "
 def register_knowledge_tools(
     server: GroundcrewServer,
     packs_root: Path | None = None,
-) -> None:
-    catalogue = KnowledgeCatalogue(packs_root or _PACKS_ROOT)
+) -> bool:
+    """Register the knowledge catalogue tools if a packs root is available.
+
+    Returns True when the tools were registered. When no configured packs root
+    is given and the dev-only bundled path is absent (the common production
+    case), the knowledge group is not registered at all — matching the
+    documented rule that tool groups appear only when their backing store is
+    available, rather than advertising a tool that returns an empty catalogue.
+    """
+    root = packs_root or _PACKS_ROOT
+    if not root.exists():
+        logger.info(
+            "Knowledge packs root %s not found; knowledge_catalogue tools not registered.",
+            root,
+        )
+        return False
+    catalogue = KnowledgeCatalogue(root)
 
     @server.resource(
         "knowledge://catalogue",
@@ -130,3 +148,5 @@ def register_knowledge_tools(
             }
         except Exception as exc:
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+
+    return True

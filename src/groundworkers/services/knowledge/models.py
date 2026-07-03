@@ -28,6 +28,16 @@ class PackApplicability:
     section_name_patterns: list[str] = field(default_factory=list)
     domains: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # Validate manifest-supplied regexes at construction so a malformed pattern
+        # fails the single offending pack (skipped by the catalogue's per-pack guard)
+        # rather than raising re.error at query time and breaking every query.
+        for pattern in self.section_name_patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"invalid section_name_pattern {pattern!r}: {exc}") from exc
+
     def matches(
         self,
         *,
