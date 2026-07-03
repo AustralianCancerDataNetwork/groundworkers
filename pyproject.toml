@@ -72,9 +72,6 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.uv.sources]
-omop-graph = { path = "../omop-graph", editable = true }
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
