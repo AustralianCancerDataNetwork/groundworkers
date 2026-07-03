@@ -1,3 +1,7 @@
+## 0.3.1
+
+version bump
+
 ## 0.3.0
 
 feat: knowledge-base integration, layer cleanup, oa-configurator integration, graph and embedding services

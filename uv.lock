@@ -861,7 +861,7 @@ wheels = [
 
 [[package]]
 name = "groundworkers"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -930,7 +930,7 @@ requires-dist = [
     { name = "omop-emb", specifier = ">=1.1.1" },
     { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=1.1.1" },
     { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=1.1.1" },
-    { name = "omop-graph", editable = "../omop-graph" },
+    { name = "omop-graph", specifier = ">=1.3.0" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.0" },
     { name = "openpyxl", marker = "extra == 'all-source'", specifier = ">=3.1,<4" },
     { name = "openpyxl", marker = "extra == 'xlsx'", specifier = ">=3.1,<4" },
@@ -2228,7 +2228,7 @@ pgvector = [
 [[package]]
 name = "omop-graph"
 version = "1.3.0"
-source = { editable = "../omop-graph" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
     { name = "oaklib" },
@@ -2237,38 +2237,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "oa-configurator", specifier = "==0.1.2" },
-    { name = "oaklib" },
-    { name = "omop-alchemy", specifier = "==0.8.0" },
-    { name = "omop-alchemy", extras = ["postgres"], marker = "extra == 'postgres'" },
-    { name = "omop-emb", marker = "extra == 'emb'", specifier = "==1.1.1" },
-    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'faiss-cpu'", specifier = "==1.1.1" },
-    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'pgvector'", specifier = "==1.1.1" },
-    { name = "rich", specifier = ">=13.0" },
-    { name = "typer", specifier = ">=0.12" },
-    { name = "typing-extensions", specifier = ">=4.15.0" },
-]
-provides-extras = ["emb", "faiss-cpu", "pgvector", "postgres"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ipython", specifier = ">=9.8.0" },
-    { name = "mkdocs", specifier = "<2.0" },
-    { name = "mkdocs-macros-plugin" },
-    { name = "mkdocs-material" },
-    { name = "mkdocs-mermaid2-plugin" },
-    { name = "mkdocs-table-reader-plugin" },
-    { name = "mkdocstrings", extras = ["python"] },
-    { name = "mypy", specifier = ">=1.19.1" },
-    { name = "oa-configurator", extras = ["postgres"], specifier = ">=0.1.1" },
-    { name = "omop-graph", extras = ["emb", "faiss-cpu", "pgvector", "postgres"] },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "ruff", specifier = ">=0.14.10" },
+sdist = { url = "https://files.pythonhosted.org/packages/4d/8f/e2cede69e837cf637ad2220d54d66b0e8062f15d4792d766bc5482a0c729/omop_graph-1.3.0.tar.gz", hash = "sha256:4396d4df83f49512754435cd331f04ab4874ab23e452b5f9766565b6738ed562", size = 432162, upload-time = "2026-07-03T02:09:21.139Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/7c/c8a82d69000c7a946906ad085a1f5ccbcd1f18c3df7aa75f55fe36925244/omop_graph-1.3.0-py3-none-any.whl", hash = "sha256:e58f51eb056d0df69509aa91d2139d6ccf7fed4aef482096f3762d3b8a096455", size = 79859, upload-time = "2026-07-03T02:09:19.9Z" },
 ]
 
 [[package]]
