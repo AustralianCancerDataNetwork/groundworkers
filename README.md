@@ -19,20 +19,29 @@ No patient-level writes. No session state. No transport-specific business logic.
 - stateless source-planning workflows
 - LLM-backed text normalization and domain classification
 
-## Runtime shape
+## Runtime model
 
 ```mermaid
-flowchart LR
+flowchart TD
     STACK[shared stack config] --> BOOT[build_app_config]
-    BOOT --> APP[build_application]
-    APP --> SERVICES[services/]
-    APP --> ADAPTERS[adapters/]
-    MCP[MCP client] --> TOOLS[tools/]
-    TOOLS --> SERVICES
-REST[REST client] --> API[transports/rest/api.py]
-API --> SERVICES
-PY[Python caller] --> SERVICES
+    BOOT --> CFG[AppConfig]
+    CFG --> APP[build_application]
+    APP --> GW[GroundworkersApp]
+    GW --> SVC[services]
+    GW --> ADP[adapters]
+    MCP[MCP client] --> TOOLS[MCP tools]
+    REST[REST client] --> API[REST transport]
+    PY[Python caller] --> SVC
+    TOOLS --> SVC
+    TOOLS -. adapter-backed primitives .-> ADP
+    API --> SVC
 ```
+
+`build_application(...)` is the composition root. It builds one reusable
+runtime container with transport-agnostic services plus dependency-facing
+adapters. Most caller-facing workflows go through services; some MCP tools are
+intentionally adapter-backed when the capability is closer to a backend
+primitive than a domain service.
 
 ## Quick start
 
