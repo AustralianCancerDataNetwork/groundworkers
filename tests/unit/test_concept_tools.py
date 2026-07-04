@@ -120,6 +120,44 @@ class StubGraphAdapter:
             ],
         }
 
+    def get_associations(self, concept_id, *, direction="out", predicate_subkinds=None, active_only=True, limit=50):
+        self.calls.append(("get_associations", {
+            "concept_id": concept_id, "direction": direction,
+            "predicate_subkinds": predicate_subkinds, "active_only": active_only, "limit": limit,
+        }))
+        if concept_id == 999:
+            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
+        result = {"concept_id": concept_id, "predicate_kind": "Association"}
+        if direction in ("out", "both"):
+            result["outbound"] = [{
+                "relationship_id": "Has cytotox chemo Rx", "predicate_subkind": "Therapeutic",
+                "target_concept_id": 955632, "target_concept_name": "fluorouracil",
+                "vocabulary_id": "RxNorm", "domain_id": "Drug", "concept_class_id": "Ingredient",
+                "standard_concept": "S", "valid": True,
+            }]
+        if direction in ("in", "both"):
+            result["inbound"] = []
+        return result
+
+    def get_extended_inheritance(self, concept_id, *, direction="out", predicate_subkinds=None, active_only=True, limit=50):
+        self.calls.append(("get_extended_inheritance", {
+            "concept_id": concept_id, "direction": direction,
+            "predicate_subkinds": predicate_subkinds, "active_only": active_only, "limit": limit,
+        }))
+        if concept_id == 999:
+            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
+        result = {"concept_id": concept_id, "predicate_kind": "Hierarchy"}
+        if direction in ("out", "both"):
+            result["outbound"] = [{
+                "relationship_id": "Is a", "predicate_subkind": "Taxonomic – up",
+                "target_concept_id": 200, "target_concept_name": "Diabetes mellitus",
+                "vocabulary_id": "SNOMED", "domain_id": "Condition", "concept_class_id": "Clinical Finding",
+                "standard_concept": True, "valid": True,
+            }]
+        if direction in ("in", "both"):
+            result["inbound"] = []
+        return result
+
     def get_neighbors(
         self,
         concept_id: int,
@@ -599,3 +637,107 @@ def test_concept_map_to_standard_returns_source_and_standard_concepts():
     assert "source" in result
     assert "standard_concepts" in result
     assert isinstance(result["standard_concepts"], list)
+
+
+# --- concept_associations ---
+
+def test_concept_associations_returns_expected_shape():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_associations", concept_id=35806596)
+
+    assert result["concept_id"] == 35806596
+    assert result["predicate_kind"] == "Association"
+    assert result["outbound"][0]["relationship_id"] == "Has cytotox chemo Rx"
+    assert result["outbound"][0]["standard_concept"] == "S"
+    assert adapter.calls[0][0] == "get_associations"
+
+
+def test_concept_associations_passes_filters_and_clamps_limit():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    server.call(
+        "concept_associations",
+        concept_id=1,
+        direction="both",
+        predicate_subkinds=["Therapeutic"],
+        active_only=False,
+        limit=10000,
+    )
+
+    call = adapter.calls[0][1]
+    assert call["direction"] == "both"
+    assert call["predicate_subkinds"] == ["Therapeutic"]
+    assert call["active_only"] is False
+    assert call["limit"] == 200
+
+
+def test_concept_associations_rejects_bad_direction():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_associations", concept_id=1, direction="sideways")
+
+    assert result["error"] is True
+    assert result["code"] == "INVALID_INPUT"
+    assert adapter.calls == []
+
+
+def test_concept_associations_rejects_non_positive_id():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_associations", concept_id=0)
+
+    assert result["error"] is True
+    assert result["code"] == "INVALID_INPUT"
+    assert adapter.calls == []
+
+
+def test_concept_associations_unknown_concept_returns_not_found():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_associations", concept_id=999)
+
+    assert result["error"] is True
+    assert result["code"] == "NOT_FOUND"
+
+
+# --- concept_extended_inheritance (distinct from strict concept_ancestor traversal) ---
+
+def test_concept_extended_inheritance_uses_its_own_method_not_ancestors():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_extended_inheritance", concept_id=1)
+
+    assert result["predicate_kind"] == "Hierarchy"
+    assert result["outbound"][0]["predicate_subkind"] == "Taxonomic – up"
+    called = [c[0] for c in adapter.calls]
+    assert "get_extended_inheritance" in called
+    # It must NOT fall back to the concept_ancestor closure.
+    assert "get_ancestors" not in called
+
+
+def test_concept_extended_inheritance_rejects_bad_direction():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_extended_inheritance", concept_id=1, direction="up")
+
+    assert result["error"] is True
+    assert result["code"] == "INVALID_INPUT"
+    assert adapter.calls == []
+
+
+def test_concept_extended_inheritance_unknown_concept_returns_not_found():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_extended_inheritance", concept_id=999)
+
+    assert result["error"] is True
+    assert result["code"] == "NOT_FOUND"

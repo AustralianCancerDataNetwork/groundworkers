@@ -182,7 +182,9 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
         assisted_classifier = AssistedColumnRoleClassifier(adapters.llm)
     services.source_planning = SourcePlanningService(assisted_classifier=assisted_classifier)
     if adapters.omop_graph is not None:
-        services.graph = GraphService(adapters.omop_graph)
+        # cdm is optional; only the classified-edge traversals
+        # (concept_associations / concept_extended_inheritance) require it.
+        services.graph = GraphService(adapters.omop_graph, adapters.cdm)
         services.grounding = ConceptGroundingService(
             services.graph,
             min_fulltext_overlap=config.grounding.min_fulltext_overlap,
