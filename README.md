@@ -17,7 +17,18 @@ No patient-level writes. No session state. No transport-specific business logic.
 - exact, normalized, full-text, and embedding-backed retrieval
 - mapping-oriented candidate bundles and context assembly
 - stateless source-planning workflows
+- bundled baseline knowledge packs for reusable mapping and planning context
 - LLM-backed text normalization and domain classification
+
+## Knowledge Packs
+
+`groundworkers` ships with bundled baseline knowledge packs inside the package.
+These packs are available by default and provide reusable guidance and rules
+that apply broadly across deployments.
+
+Site-specific or localisation packs are added through the shared stack config
+via `tools.groundworkers.knowledge.packs_root`. When a configured pack has the
+same `layer` and `name` as a bundled baseline pack, the configured copy wins.
 
 ## Runtime model
 

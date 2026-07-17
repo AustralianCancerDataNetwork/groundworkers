@@ -44,7 +44,7 @@ boundaries that matter to most users.
 - **Vocabulary and hierarchy lookup** over OMOP concepts
 - **Multi-channel mapping workflows** combining exact, normalized, full-text, and embedding retrieval
 - **Source planning** for stateless pre-ingest analysis
-- **Knowledge-pack discovery** for reusable mapping and planning context
+- **Knowledge-pack discovery** over bundled baseline packs plus optional configured site/localisation packs
 - **LLM-backed text normalization and domain classification**
 - **Thin transports** over the same service layer
 

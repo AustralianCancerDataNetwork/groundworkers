@@ -18,12 +18,9 @@ from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
 
 logger = logging.getLogger(__name__)
 
-# Prefer bundled package data so released wheels expose the knowledge surface
-# without extra runtime configuration. Fall back to the repo-root path to keep
-# local source-tree execution working even if the package-data copy is missing.
-_BUNDLED_PACKS_ROOT: Path = Path(__file__).resolve().parent.parent / "_knowledge" / "packs"
-_REPO_PACKS_ROOT: Path = Path(__file__).resolve().parents[4] / "knowledge" / "packs"
-_PACKS_ROOT: Path = _BUNDLED_PACKS_ROOT if _BUNDLED_PACKS_ROOT.exists() else _REPO_PACKS_ROOT
+# The bundled baseline packs are part of the package tree. Site-specific or
+# localisation packs are added via configured roots on top of this baseline.
+_PACKS_ROOT: Path = Path(__file__).resolve().parent.parent / "knowledge" / "packs"
 
 _KNOWN_PACK_FILES = ("manifest.yaml", "rules.yaml", "guidance.md", "examples.yaml")
 _KNOWN_LAYERS: tuple[KnowledgeLayer, ...] = (

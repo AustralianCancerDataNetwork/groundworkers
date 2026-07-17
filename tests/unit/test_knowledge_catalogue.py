@@ -198,7 +198,7 @@ def test_register_knowledge_tools_missing_configured_root_keeps_bundled_baseline
     assert "knowledge_pack" in server.list_tools()
 
 
-def test_register_knowledge_tools_uses_default_bundled_root():
+def test_register_knowledge_tools_uses_default_baseline_root():
     server = GroundcrewServer("test")
 
     assert register_knowledge_tools(server) is True

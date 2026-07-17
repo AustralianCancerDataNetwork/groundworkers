@@ -168,11 +168,24 @@ into `SourcePlanningService` when an LLM adapter is present.
 |---|---|---|
 | `packs_root` | `str \| null` | `null` |
 
-Set `packs_root` to the directory containing the knowledge `packs/` tree. When
-it is unset, `groundworkers` uses the bundled package packs by default. Set it
-explicitly when you want to add site-local knowledge on top of that baseline.
-If a configured pack has the same `layer` and `name` as a bundled one, the
-configured copy wins.
+`groundworkers` includes bundled baseline knowledge packs as part of the
+package. Set `packs_root` when you want to add site-specific or localisation
+packs on top of that baseline.
+
+The configured directory should contain a `packs/` tree grouped by knowledge
+layer, for example:
+
+```text
+my-knowledge/
+  packs/
+    localisation/
+      nacc-uds-v4/
+        manifest.yaml
+        guidance.md
+```
+
+If a configured pack has the same `layer` and `name` as a bundled baseline
+pack, the configured copy wins.
 
 ## What becomes available at runtime
 
