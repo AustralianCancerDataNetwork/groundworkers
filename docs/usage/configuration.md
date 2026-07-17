@@ -169,9 +169,10 @@ into `SourcePlanningService` when an LLM adapter is present.
 | `packs_root` | `str \| null` | `null` |
 
 Set `packs_root` to the directory containing the knowledge `packs/` tree. When
-it is unset, the knowledge catalogue tools are only registered if the bundled
-dev packs directory is present, so in a packaged deployment the knowledge group
-is absent until `packs_root` is configured.
+it is unset, `groundworkers` uses the bundled package packs by default. Set it
+explicitly when you want to add site-local knowledge on top of that baseline.
+If a configured pack has the same `layer` and `name` as a bundled one, the
+configured copy wins.
 
 ## What becomes available at runtime
 

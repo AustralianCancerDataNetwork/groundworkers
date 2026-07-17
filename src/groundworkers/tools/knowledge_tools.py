@@ -18,11 +18,12 @@ from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
 
 logger = logging.getLogger(__name__)
 
-# Packs live at groundworkers/knowledge/packs/ relative to the repo root.
-# This path is dev-environment specific; production deployment will use
-# package data (pyproject.toml include) or a configurable path.
-# this is temporary pending oa-configurator upgrade to support a configurable knowledge packs root.
-_PACKS_ROOT: Path = Path(__file__).parent.parent.parent.parent / "knowledge" / "packs"
+# Prefer bundled package data so released wheels expose the knowledge surface
+# without extra runtime configuration. Fall back to the repo-root path to keep
+# local source-tree execution working even if the package-data copy is missing.
+_BUNDLED_PACKS_ROOT: Path = Path(__file__).resolve().parent.parent / "_knowledge" / "packs"
+_REPO_PACKS_ROOT: Path = Path(__file__).resolve().parents[4] / "knowledge" / "packs"
+_PACKS_ROOT: Path = _BUNDLED_PACKS_ROOT if _BUNDLED_PACKS_ROOT.exists() else _REPO_PACKS_ROOT
 
 _KNOWN_PACK_FILES = ("manifest.yaml", "rules.yaml", "guidance.md", "examples.yaml")
 _KNOWN_LAYERS: tuple[KnowledgeLayer, ...] = (
@@ -54,26 +55,36 @@ def _manifest_payload(m: PackManifest) -> dict[str, Any]:
     }
 
 
+def _default_packs_roots(configured_root: Path | None) -> tuple[Path, ...]:
+    roots: list[Path] = []
+    for root in (_PACKS_ROOT, configured_root):
+        if root is None or root in roots or not root.exists():
+            continue
+        roots.append(root)
+    return tuple(roots)
+
+
 def register_knowledge_tools(
     server: GroundcrewServer,
     packs_root: Path | None = None,
 ) -> bool:
     """Register the knowledge catalogue tools if a packs root is available.
 
-    Returns True when the tools were registered. When no configured packs root
-    is given and the dev-only bundled path is absent (the common production
-    case), the knowledge group is not registered at all — matching the
-    documented rule that tool groups appear only when their backing store is
-    available, rather than advertising a tool that returns an empty catalogue.
+    Returns True when the tools were registered. The server always includes the
+    bundled baseline packs when present. A configured packs root adds site- or
+    deployment-specific packs on top, with later duplicates overriding bundled
+    entries by layer/name. If no packs root exists at all, the knowledge group
+    is not registered — matching the documented rule that tool groups appear
+    only when their backing store is available, rather than advertising a tool
+    that returns an empty catalogue.
     """
-    root = packs_root or _PACKS_ROOT
-    if not root.exists():
+    roots = _default_packs_roots(packs_root)
+    if not roots:
         logger.info(
-            "Knowledge packs root %s not found; knowledge_catalogue tools not registered.",
-            root,
+            "No knowledge packs roots found; knowledge_catalogue tools not registered.",
         )
         return False
-    catalogue = KnowledgeCatalogue(root)
+    catalogue = KnowledgeCatalogue(roots)
 
     @server.resource(
         "knowledge://catalogue",

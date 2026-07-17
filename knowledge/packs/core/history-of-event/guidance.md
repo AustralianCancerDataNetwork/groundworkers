@@ -29,6 +29,18 @@ Family history follows the same structural pattern but uses a different entity c
 | observation_concept_id | 4167217 (Family history of clinical finding) |
 | value_as_concept_id | standard concept for the familial condition |
 
+### Choosing the value concept
+
+Many vocabularies (SNOMED in particular) pre-coordinate a "Family history of X"
+concept for common conditions (e.g. concept 4326002 "Family history of dementia",
+concept_class Context-dependent). Do not use one of these pre-coordinated
+concepts as value_as_concept_id — that doubles up the family-history context
+(the entity concept already says "family history of"; the value should be the
+*plain* condition, e.g. concept 4182210 "Dementia", not 4326002). Search for the
+plain condition/finding concept for the value, the same as you would if mapping
+the condition directly in CONDITION_OCCURRENCE, and pair it with the 4167217
+entity concept.
+
 ## What not to do
 
 - Do not map "history of MI" to the myocardial infarction concept in

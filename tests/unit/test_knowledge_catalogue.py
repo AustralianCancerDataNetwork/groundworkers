@@ -192,7 +192,34 @@ def test_knowledge_pack_tool_not_found(tmp_path):
     assert result["code"] == "NOT_FOUND"
 
 
-def test_register_knowledge_tools_absent_root_returns_false(tmp_path):
+def test_register_knowledge_tools_missing_configured_root_keeps_bundled_baseline(tmp_path):
     server = GroundcrewServer("test")
-    assert register_knowledge_tools(server, packs_root=tmp_path / "missing") is False
-    assert "knowledge_pack" not in server.list_tools()
+    assert register_knowledge_tools(server, packs_root=tmp_path / "missing") is True
+    assert "knowledge_pack" in server.list_tools()
+
+
+def test_register_knowledge_tools_uses_default_bundled_root():
+    server = GroundcrewServer("test")
+
+    assert register_knowledge_tools(server) is True
+    assert "knowledge_pack" in server.list_tools()
+    assert "knowledge://catalogue" in server.list_resources()
+
+
+def test_register_knowledge_tools_keeps_bundled_baseline_when_configured_root_is_added(tmp_path):
+    _write_pack(
+        tmp_path,
+        "localisation",
+        "site-local-pack",
+        'name: site-local-pack\nlayer: localisation\nversion: "1.0"\n'
+        "shareability: local\nscope_summary: Site-local guidance.\n"
+        "mechanisms:\n  - context-inject\napplicability:\n  always: true\n",
+    )
+    server = GroundcrewServer("test")
+
+    assert register_knowledge_tools(server, packs_root=tmp_path) is True
+
+    result = server.call("knowledge_catalogue")
+    names = {pack["name"] for pack in result["packs"]}
+    assert "standard-concept-preference" in names
+    assert "site-local-pack" in names
