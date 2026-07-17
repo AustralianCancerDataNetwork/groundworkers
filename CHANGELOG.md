@@ -1,3 +1,7 @@
+## 0.3.3
+
+feature: changed the way that knowledge packs are registered, updated baseline knowledge packs (status is very draft for this part - ymmv)
+
 ## 0.3.2
 
 fix: repaired integration tests

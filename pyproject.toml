@@ -1,6 +1,6 @@
 [project]
 name = "groundworkers"
-version = "0.3.2"
+version = "0.3.3"
 description = "Groundworkers MCP server — read-only agentive access to OMOP vocabularies, concept graphs, and embeddings."
 readme = "README.md"
 requires-python = ">=3.12"
