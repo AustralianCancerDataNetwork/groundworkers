@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import yaml
 
@@ -37,8 +37,11 @@ _KNOWN_LAYERS: frozenset[str] = frozenset({"core", "specialisation", "source", "
 class KnowledgeCatalogue:
     """Discovers pack manifests under a packs root directory and filters by context."""
 
-    def __init__(self, packs_root: Path) -> None:
-        self._packs_root = packs_root
+    def __init__(self, packs_root: Path | Iterable[Path]) -> None:
+        if isinstance(packs_root, Path):
+            self._packs_roots = (packs_root,)
+        else:
+            self._packs_roots = tuple(packs_root)
         self._cache: list[PackManifest] | None = None
 
     def query(
@@ -91,25 +94,26 @@ class KnowledgeCatalogue:
     def _load(self) -> list[PackManifest]:
         if self._cache is not None:
             return self._cache
-        manifests: list[PackManifest] = []
-        if not self._packs_root.exists():
-            self._cache = manifests
-            return manifests
-        for layer_dir in sorted(self._packs_root.iterdir()):
-            if not layer_dir.is_dir() or layer_dir.name not in _KNOWN_LAYERS:
+        manifests_by_key: dict[tuple[str, str], PackManifest] = {}
+        for packs_root in self._packs_roots:
+            if not packs_root.exists():
                 continue
-            for pack_dir in sorted(layer_dir.iterdir()):
-                manifest_file = pack_dir / "manifest.yaml"
-                if not manifest_file.exists():
+            for layer_dir in sorted(packs_root.iterdir()):
+                if not layer_dir.is_dir() or layer_dir.name not in _KNOWN_LAYERS:
                     continue
-                try:
-                    manifest = _parse_manifest(manifest_file, pack_dir)
-                    manifests.append(manifest)
-                except Exception as exc:
-                    # A malformed manifest (bad YAML, missing required key, invalid
-                    # section_name_pattern regex, ...) skips only that pack — other
-                    # packs and queries are unaffected.
-                    logger.warning("Skipping malformed knowledge pack %s: %s", manifest_file, exc)
+                for pack_dir in sorted(layer_dir.iterdir()):
+                    manifest_file = pack_dir / "manifest.yaml"
+                    if not manifest_file.exists():
+                        continue
+                    try:
+                        manifest = _parse_manifest(manifest_file, pack_dir)
+                        manifests_by_key[(manifest.layer, manifest.name)] = manifest
+                    except Exception as exc:
+                        # A malformed manifest (bad YAML, missing required key, invalid
+                        # section_name_pattern regex, ...) skips only that pack — other
+                        # packs and queries are unaffected.
+                        logger.warning("Skipping malformed knowledge pack %s: %s", manifest_file, exc)
+        manifests = sorted(manifests_by_key.values(), key=lambda manifest: (manifest.layer, manifest.name))
         self._cache = manifests
         return manifests
 

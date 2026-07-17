@@ -1,0 +1,28 @@
+name: diagnosis-role-modifier
+layer: core
+version: "1.0"
+shareability: public
+scope_summary: >
+  When a diagnosis/finding is captured across two source fields — a presence
+  field and a separate role/status field (primary/contributing/non-contributing,
+  primary/secondary, admitting/discharge, etc.) — model it as one
+  CONDITION_OCCURRENCE record with condition_status_concept_id populated from
+  the role field, not as two independent records. A non-contributing/not-
+  applicable role suppresses the record entirely. Includes the
+  secondary_source_field/secondary_target_column/secondary_code_map
+  convention for representing this n:1 merge in a row-per-source-field ETL
+  output.
+
+mechanisms:
+  - context-inject
+  - post-filter
+
+applicability:
+  always: false
+  domains:
+    - Condition
+
+see_also:
+  - pre-coordinated-split
+  - domain-routing
+  - standard-concept-preference

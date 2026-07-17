@@ -1,0 +1,22 @@
+name: criteria-gate-yesno
+layer: core
+version: "1.0"
+shareability: public
+scope_summary: >
+  Yes/No fields phrased as "meets criteria for X" are a gate on asserting a
+  concept, not an ordinary categorical observation: Yes emits one record for
+  the concept (CONDITION_OCCURRENCE or OBSERVATION per its domain), No emits
+  nothing. Check for an explicit negative-finding concept before defaulting
+  to suppression. Does not apply to ordinary Yes/No items where both
+  directions are independently informative.
+
+mechanisms:
+  - context-inject
+
+applicability:
+  always: true
+
+see_also:
+  - diagnosis-role-modifier
+  - domain-routing
+  - value-representation

@@ -20,6 +20,18 @@ A source item coded as a procedure that maps to an RxNorm Ingredient goes to `DR
 | Visit | VISIT_OCCURRENCE |
 | Provider | PROVIDER |
 
+## Scope: the entity concept only
+
+This rule routes on the domain of the **entity** concept — the one going into
+`measurement_concept_id`, `observation_concept_id`, `condition_concept_id`, etc.
+It does not apply to `value_as_concept_id` or other subordinate value fields.
+A value concept may legitimately come from a different domain than the record
+it lives in — e.g. a Condition-domain concept (a plain diagnosis) used as
+`value_as_concept_id` on an OBSERVATION row for a history-of or family-history
+pattern (see `history-of-event`). Do not re-route a record to a different CDM
+table because its value concept's domain differs from the entity concept's
+domain — only the entity concept's domain decides the table.
+
 ## Unmapped source items (concept_id = 0)
 
 When no valid standard concept mapping exists, set `*_concept_id = 0` (not NULL). The record still belongs in a CDM table — route using the best available domain signal (source vocabulary, source table, or caller context). Document the zero-mapping so it surfaces in data quality review.

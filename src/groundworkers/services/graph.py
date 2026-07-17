@@ -7,16 +7,30 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Relationship
 from omop_graph.extensions.omop_alchemy import PredicateKind
 from omop_graph.reasoning.grounding import GroundingConstraints
 from omop_graph.reasoning.resolvers.resolvers import FullTextResolver, FullTextSynonymResolver
+from sqlalchemy import Text, cast, column, select, table
 
+from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 
 __all__ = ["GraphService", "GroundingPlan"]
 
 logger = logging.getLogger(__name__)
+
+# Lightweight reference to omop-graph's relationship-classification sidecar table
+# (populated by `omop-graph relationship-classification`). It has no ORM model, so
+# we reference it as a Core table; like the omop_alchemy CDM models it is left
+# schema-unqualified and resolves through the connection's search_path.
+_RELATIONSHIP_MAPPING = table(
+    "relationship_mapping",
+    column("relationship_id"),
+    column("predicate_kind"),
+    column("predicate_subkind"),
+)
 
 
 def _short_text(value: str, *, limit: int = 120) -> str:
@@ -49,8 +63,15 @@ class GraphService:
     _IDENTITY_KINDS: frozenset = frozenset({PredicateKind.IDENTITY})
     _IDENTITY_AND_HIERARCHY_KINDS: frozenset = frozenset({PredicateKind.IDENTITY, PredicateKind.HIERARCHY})
 
-    def __init__(self, adapter: OmopGraphAdapter) -> None:
+    # DB-classification predicate kinds (as stored in relationship_mapping).
+    _ASSOCIATION_KIND = "Association"
+    _HIERARCHY_KIND = "Hierarchy"
+
+    def __init__(self, adapter: OmopGraphAdapter, cdm: CDMAdapter | None = None) -> None:
         self._adapter = adapter
+        # Optional: only required by the classified-edge traversals below
+        # (concept_associations / concept_extended_inheritance).
+        self._cdm = cdm
 
     # ------------------------------------------------------------------
     # Primitive pass-throughs (single-operation, normalized by the adapter)
@@ -174,6 +195,155 @@ class GraphService:
                 for e in inbound
             ],
         }
+
+    # ------------------------------------------------------------------
+    # Classified-edge traversal (association / extended inheritance)
+    #
+    # NOTE (temporary shim — should move into core omop-graph):
+    # These two traversals query the CDM directly (concept_relationship joined to
+    # the relationship_mapping classification sidecar) rather than going through
+    # OmopGraphAdapter, because the omop-graph KG edge view only *enumerates*
+    # IDENTITY / ATTRIBUTE / COMPOSITION edges. HIERARCHY is reachable only via the
+    # concept_ancestor closure (get_ancestors/get_descendants) and ASSOCIATION only
+    # via path-finding (find_path) — neither kind can be enumerated for a single
+    # concept through the adapter today. Once omop-graph grows a kind-filterable
+    # edge accessor, these should be re-backed by OmopGraphAdapter and this direct
+    # CDM dependency (and the _RELATIONSHIP_MAPPING table above) removed, so the
+    # service returns to composing adapter primitives only.
+    # ------------------------------------------------------------------
+
+    def get_associations(
+        self,
+        concept_id: int,
+        *,
+        direction: str = "out",
+        predicate_subkinds: list[str] | None = None,
+        active_only: bool = True,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Enumerate ASSOCIATION-kind edges (therapeutic/associative links)."""
+        return self._classified_edges(
+            concept_id,
+            predicate_kind=self._ASSOCIATION_KIND,
+            direction=direction,
+            predicate_subkinds=predicate_subkinds,
+            active_only=active_only,
+            limit=limit,
+        )
+
+    def get_extended_inheritance(
+        self,
+        concept_id: int,
+        *,
+        direction: str = "out",
+        predicate_subkinds: list[str] | None = None,
+        active_only: bool = True,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Enumerate HIERARCHY-kind relationship edges (extended inheritance).
+
+        This is the raw edge-level HIERARCHY view — NOT the concept_ancestor
+        closure used by get_ancestors/get_descendants. See the tool docstring.
+        """
+        return self._classified_edges(
+            concept_id,
+            predicate_kind=self._HIERARCHY_KIND,
+            direction=direction,
+            predicate_subkinds=predicate_subkinds,
+            active_only=active_only,
+            limit=limit,
+        )
+
+    def _classified_edges(
+        self,
+        concept_id: int,
+        *,
+        predicate_kind: str,
+        direction: str,
+        predicate_subkinds: list[str] | None,
+        active_only: bool,
+        limit: int,
+    ) -> dict[str, Any]:
+        if self._cdm is None:
+            raise GroundworkersError(
+                "UNAVAILABLE",
+                "This tool needs a direct CDM connection, which is not configured.",
+            )
+        if self._adapter.get_concept(concept_id) is None:
+            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
+
+        result: dict[str, Any] = {"concept_id": concept_id, "predicate_kind": predicate_kind}
+        with self._cdm.session() as session:
+            if direction in ("out", "both"):
+                result["outbound"] = self._query_classified_edges(
+                    session, concept_id, predicate_kind, predicate_subkinds, active_only, limit, outbound=True
+                )
+            if direction in ("in", "both"):
+                result["inbound"] = self._query_classified_edges(
+                    session, concept_id, predicate_kind, predicate_subkinds, active_only, limit, outbound=False
+                )
+        return result
+
+    @staticmethod
+    def _query_classified_edges(
+        session,
+        concept_id: int,
+        predicate_kind: str,
+        predicate_subkinds: list[str] | None,
+        active_only: bool,
+        limit: int,
+        *,
+        outbound: bool,
+    ) -> list[dict[str, Any]]:
+        cr = Concept_Relationship
+        rm = _RELATIONSHIP_MAPPING
+        seed_col = cr.concept_id_1 if outbound else cr.concept_id_2
+        other_col = cr.concept_id_2 if outbound else cr.concept_id_1
+
+        # predicate_kind / predicate_subkind are Postgres enum columns, so cast to
+        # text for comparison and to return plain strings.
+        subkind_text = cast(rm.c.predicate_subkind, Text)
+        stmt = (
+            select(
+                cr.relationship_id,
+                subkind_text.label("predicate_subkind"),
+                Concept.concept_id,
+                Concept.concept_name,
+                Concept.vocabulary_id,
+                Concept.domain_id,
+                Concept.concept_class_id,
+                Concept.standard_concept,
+                cr.invalid_reason,
+            )
+            .select_from(cr)
+            .join(rm, rm.c.relationship_id == cr.relationship_id)
+            .join(Concept, Concept.concept_id == other_col)
+            .where(seed_col == concept_id, cast(rm.c.predicate_kind, Text) == predicate_kind)
+        )
+        if predicate_subkinds:
+            stmt = stmt.where(subkind_text.in_(list(predicate_subkinds)))
+        if active_only:
+            stmt = stmt.where(cr.invalid_reason.is_(None))
+        stmt = stmt.order_by(subkind_text, Concept.concept_name).limit(limit)
+
+        id_key = "target_concept_id" if outbound else "source_concept_id"
+        name_key = "target_concept_name" if outbound else "source_concept_name"
+        edges: list[dict[str, Any]] = []
+        for row in session.execute(stmt).all():
+            edges.append(
+                {
+                    "relationship_id": row.relationship_id,
+                    "predicate_subkind": row.predicate_subkind,
+                    id_key: int(row.concept_id),
+                    name_key: row.concept_name,
+                    "vocabulary_id": row.vocabulary_id,
+                    "domain_id": row.domain_id,
+                    "concept_class_id": row.concept_class_id,
+                    "standard_concept": row.standard_concept,
+                    "valid": row.invalid_reason is None,
+                }
+            )
+        return edges
 
     # ------------------------------------------------------------------
     # Paths
