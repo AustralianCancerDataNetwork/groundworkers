@@ -7,6 +7,7 @@ from groundworkers.app import GroundworkersApp, build_adapters, build_applicatio
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig
+from groundworkers.services.semantic_projection.service import SemanticProjectionService
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.domain_tools import register_domain_tools
 from groundworkers.tools.embedding_tools import register_embedding_resources, register_embedding_tools
@@ -14,6 +15,7 @@ from groundworkers.tools.knowledge_tools import register_knowledge_tools
 from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 from groundworkers.tools.search_tools import register_search_tools
+from groundworkers.tools.semantic_projection_tools import register_semantic_projection_tools
 from groundworkers.tools.source_planning_tools import (
     register_source_planning_resources,
     register_source_planning_tools,
@@ -49,6 +51,8 @@ def create_server(
         register_source_planning_tools(server, app.services.source_planning)
     register_source_planning_resources(server)
     register_knowledge_tools(server, packs_root=config.knowledge_root)
+    if config.semantic_projection.enabled:
+        register_semantic_projection_tools(server, SemanticProjectionService())
     register_text_prompts(server)
     register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
     register_system_resources(server, config, app.adapters.omop_graph)

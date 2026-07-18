@@ -83,6 +83,15 @@ class KnowledgeConfig(BaseModel):
     packs_root: str | None = None
 
 
+class SemanticProjectionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Deterministic, no LLM/DB dependency — off by default per the rollout plan
+    # in agent-stack's SEMANTIC_INTEGRATION design notes: enable in local/test
+    # environments first, before review/export surfaces consume it downstream.
+    enabled: bool = False
+
+
 class GroundworkersConfig(PackageConfigBase):
     """Package-level configuration owned by groundworkers."""
 
@@ -96,6 +105,7 @@ class GroundworkersConfig(PackageConfigBase):
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
     source_planning: SourcePlanningConfig = Field(default_factory=SourcePlanningConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
+    semantic_projection: SemanticProjectionConfig = Field(default_factory=SemanticProjectionConfig)
 
 
 @dataclass(frozen=True)
@@ -139,6 +149,10 @@ class AppConfig:
     def knowledge(self) -> KnowledgeConfig:
         return self.groundworkers.knowledge
 
+    @property
+    def semantic_projection(self) -> SemanticProjectionConfig:
+        return self.groundworkers.semantic_projection
+
     def describe(self) -> dict[str, Any]:
         llm = self.llm.model_dump(exclude_none=True)
         if llm.get("api_key"):
@@ -167,6 +181,7 @@ class AppConfig:
                     **self.knowledge.model_dump(exclude_none=True),
                     "resolved_root": str(self.knowledge_root) if self.knowledge_root is not None else None,
                 },
+                "semantic_projection": self.semantic_projection.model_dump(),
             },
             "omop_graph": {
                 "configured": self.omop_graph is not None,
