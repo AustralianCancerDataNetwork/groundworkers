@@ -25,7 +25,7 @@ def build_service_project_fn(service: SemanticProjectionService) -> ProjectCalla
             source_text=raw.get("source_text"),
             source_item_id=raw.get("source_item_id"),
             definition_hint=definition_hint,
-            context=dict(raw.get("context", {})),
+            context=dict(raw.get("context") or {}),
         )
         return service.project(request)
 

@@ -44,3 +44,19 @@ def test_service_project_fn_reports_missing_required_context_fields() -> None:
                 "context": {"raw_source_fields": {"role_field": "1"}},
             },
         )
+
+
+def test_service_project_fn_treats_null_context_as_empty_mapping() -> None:
+    service = SemanticProjectionService()
+    project = build_service_project_fn(service)
+
+    result = project(
+        "criteria_gate_condition",
+        {
+            "grounded_concept_id": 4152280,
+            "grounded_domain": "Condition",
+            "context": None,
+        },
+    )
+
+    assert result.definition_name == "criteria_gate_condition"
