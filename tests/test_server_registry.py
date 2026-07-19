@@ -393,6 +393,75 @@ def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest
     assert "run" not in captured
 
 
+def test_main_blocks_tui_when_semantic_projection_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = build_app_config_from_stack(_stack_without_backends())
+    captured: dict[str, object] = {}
+
+    def fake_build_app_config(*, config_path=None, profile=None):
+        captured["build_app_config"] = {
+            "config_path": config_path,
+            "profile": profile,
+        }
+        return config
+
+    def fake_launch_tui() -> None:
+        captured["launch"] = True
+
+    monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
+    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
+
+    with pytest.raises(RuntimeError, match="semantic_projection"):
+        main(["--tui"])
+
+    assert captured["build_app_config"] == {
+        "config_path": None,
+        "profile": None,
+    }
+    assert "launch" not in captured
+
+
+def test_main_launches_tui_when_semantic_projection_is_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = build_app_config_from_stack(
+        StackConfig(
+            tools={
+                "groundworkers": ToolConfig(
+                    extra={
+                        "semantic_projection": {
+                            "enabled": True,
+                        }
+                    }
+                )
+            }
+        )
+    )
+    captured: dict[str, object] = {}
+
+    def fake_build_app_config(*, config_path=None, profile=None):
+        captured["build_app_config"] = {
+            "config_path": config_path,
+            "profile": profile,
+        }
+        return config
+
+    def fake_launch_tui() -> None:
+        captured["launch"] = True
+
+    monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
+    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
+
+    main(["--tui", "--profile", "test"])
+
+    assert captured["build_app_config"] == {
+        "config_path": None,
+        "profile": "test",
+    }
+    assert captured["launch"] is True
+
+
 def test_run_rest_api_uses_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
     config = build_app_config_from_stack(_stack_without_backends())
     app = build_application(config)

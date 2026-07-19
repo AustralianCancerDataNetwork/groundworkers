@@ -120,6 +120,8 @@ transport:
 - `TextService` for LLM-backed text preprocessing
 - `DomainService` for LLM-backed structured-field domain hints
 - `SourcePlanningService` for stateless source-planning pipelines
+- `SemanticProjectionService` for deterministic output-definition projection
+  over `omop-semantics` — grounded concept in, one or more CDM rows out
 
 If the logic is something a Python caller would reasonably want without going
 through MCP, it probably belongs in a service.
@@ -132,6 +134,13 @@ assembled runtime:
   and grounding capabilities when available
 - `SourcePlanningService` is always present and can be LLM-assisted when that
   adapter is configured
+
+`SemanticProjectionService` is the one exception to the `Services`/adapter
+composition described above: it needs no adapter (no database, no LLM — the
+same properties that make `omop-semantics` itself portable), so it is not part
+of `app.services`. It's constructed directly and registered behind its own
+config flag, the same way `KnowledgeCatalogue` is. See
+[SemanticProjectionService](services/semantic_projection.md).
 
 ### Transport layers
 

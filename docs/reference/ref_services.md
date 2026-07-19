@@ -61,3 +61,11 @@ service.
 workflows for pre-ingest artifacts.
 
 ::: groundworkers.services.source_planning
+
+## SemanticProjectionService
+
+`SemanticProjectionService` deterministically projects a grounded concept into
+one or more CDM rows via `omop-semantics`. Not part of `app.services` — see
+[SemanticProjectionService](../services/semantic_projection.md) for why.
+
+::: groundworkers.services.semantic_projection

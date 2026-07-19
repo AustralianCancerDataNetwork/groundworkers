@@ -14,7 +14,13 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from omop_semantics.runtime import OmopSemanticEngine, OutputDefinition, ProjectedOutputBundle
+from omop_semantics.runtime import (
+    OmopSemanticEngine,
+    OutputDefinition,
+    OutputDefinitionRuntime,
+    ProjectedOutputBundle,
+    derive_status,
+)
 
 from groundworkers.services.semantic_projection.definitions import BUILTIN_DEFINITIONS, DefinitionTrigger
 from groundworkers.services.semantic_projection.models import (
@@ -35,6 +41,10 @@ class SemanticProjectionService:
         engine = OmopSemanticEngine.from_yaml_paths(registry_paths=[], profile_paths=[])
         self._runtime = engine.build_output_definition_runtime([definition for definition, _ in catalogue])
         self._triggers: dict[str, DefinitionTrigger] = {definition.name: trigger for definition, trigger in catalogue}
+
+    @property
+    def runtime(self) -> OutputDefinitionRuntime:
+        return self._runtime
 
     def project(self, request: SemanticProjectionRequest) -> SemanticProjectionResult:
         definition_name = request.definition_hint
@@ -114,16 +124,11 @@ class SemanticProjectionService:
             for row in bundle.suppressed_rows
         ]
 
-        if bundle.rows:
-            status = "partial" if bundle.unresolved_fields else "ok"
-        elif bundle.unresolved_fields:
-            # Something is still incomplete even if other rows were suppressed —
-            # more actionable than reporting "suppressed" for a mixed outcome.
-            status = "partial"
-        elif suppressed_rows:
-            status = "suppressed"
-        else:
-            status = "no_match"
+        status = derive_status(
+            has_rows=bool(bundle.rows),
+            has_unresolved=bool(bundle.unresolved_fields),
+            has_suppressed=bool(suppressed_rows),
+        )
 
         return SemanticProjectionResult(
             definition_name=bundle.definition_name,
