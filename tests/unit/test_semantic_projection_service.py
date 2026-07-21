@@ -114,6 +114,169 @@ def test_criteria_gate_condition_suppresses_negative_answer() -> None:
     assert result.suppressed_rows[0].source_code == "0"
 
 
+def test_family_history_condition_projects_value_carried_observation() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        _request(
+            definition_hint="family_history_condition",
+            grounded_concept_id=378419,
+            context={"raw_value": "01"},
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.rows[0].table == "observation"
+    assert result.rows[0].fields == {
+        "observation_concept_id": 4167217,
+        "value_as_concept_id": 378419,
+    }
+
+
+def test_family_history_condition_suppresses_non_emitting_code() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        _request(
+            definition_hint="family_history_condition",
+            grounded_concept_id=378419,
+            context={"raw_value": "88"},
+        )
+    )
+
+    assert result.status == "suppressed"
+    assert result.rows == []
+    assert result.suppressed_rows[0].source_code == "88"
+
+
+def test_family_member_history_bundle_projects_multiple_rows_and_links() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        _request(
+            definition_hint="family_member_history_bundle",
+            grounded_concept_id=378419,
+            context={
+                "raw_source_fields": {
+                    "relationship_label": "Mother",
+                    "birth_year": 1940,
+                    "age_at_death": 82,
+                    "age_at_onset": 74,
+                    "method_label": "Records",
+                    "primary_dx_code": "01",
+                    "secondary_dx_code": "03",
+                }
+            },
+        )
+    )
+
+    assert result.status == "ok"
+    assert [row.row_id for row in result.rows] == [
+        "relative_identity",
+        "birth_year",
+        "age_at_death",
+        "age_at_onset",
+        "method",
+        "primary_diagnosis",
+        "secondary_diagnosis",
+    ]
+    assert result.rows[0].fields == {
+        "observation_concept_id": 0,
+        "value_as_string": "Mother",
+    }
+    assert result.rows[-2].fields == {
+        "observation_concept_id": 4167217,
+        "value_as_concept_id": 378419,
+    }
+    assert result.rows[-1].fields == {
+        "observation_concept_id": 4167217,
+        "value_as_concept_id": 443605,
+    }
+    assert len(result.links) == 6
+    assert result.suppressed_rows == []
+
+
+def test_family_member_history_bundle_suppresses_secondary_diagnosis_on_non_emitting_code() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        _request(
+            definition_hint="family_member_history_bundle",
+            grounded_concept_id=378419,
+            context={
+                "raw_source_fields": {
+                    "relationship_label": "Mother",
+                    "birth_year": 1940,
+                    "age_at_death": 82,
+                    "age_at_onset": 74,
+                    "method_label": "Records",
+                    "primary_dx_code": "01",
+                    "secondary_dx_code": "88",
+                }
+            },
+        )
+    )
+
+    assert result.status == "partial"
+    assert result.suppressed_rows[0].row_id == "secondary_diagnosis"
+    assert result.suppressed_rows[0].source_code == "88"
+    assert result.links[-1].target_row == "primary_diagnosis"
+    assert result.unresolved_fields == [
+        {
+            "link": {
+                "source_row": "relative_identity",
+                "target_row": "secondary_diagnosis",
+                "relationship_type": "same_relative",
+            },
+            "missing_rows": ["secondary_diagnosis"],
+        }
+    ]
+
+
+def test_yes_no_observation_keeps_no_answer_as_informative_row() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        _request(
+            definition_hint="yes_no_observation",
+            grounded_concept_id=42710016,
+            grounded_domain="Observation",
+            context={"raw_value": "0"},
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.rows[0].table == "observation"
+    assert result.rows[0].fields == {
+        "observation_concept_id": 42710016,
+        "value_as_concept_id": 45878245,
+    }
+
+
+def test_measurement_numeric_with_unit_projects_numeric_and_derived_unit() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        _request(
+            definition_hint="measurement_numeric_with_unit_from_context",
+            grounded_concept_id=3036277,
+            grounded_domain="Measurement",
+            context={
+                "numeric_value": 172.4,
+                "raw_source_fields": {"unit_code": "cm"},
+            },
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.rows[0].table == "measurement"
+    assert result.rows[0].fields == {
+        "measurement_concept_id": 3036277,
+        "value_as_number": 172.4,
+        "unit_concept_id": 8582,
+    }
+
+
 def test_no_hint_reports_no_match_when_domain_is_ambiguous() -> None:
     service = SemanticProjectionService()
 
@@ -121,7 +284,7 @@ def test_no_hint_reports_no_match_when_domain_is_ambiguous() -> None:
 
     assert result.status == "no_match"
     assert result.definition_name is None
-    assert "definitions match domain 'Condition'" in result.audit_notes[0]
+    assert "4 definitions match domain 'Condition'" in result.audit_notes[0]
 
 
 def test_unknown_definition_hint_reports_no_match() -> None:
@@ -131,6 +294,21 @@ def test_unknown_definition_hint_reports_no_match() -> None:
 
     assert result.status == "no_match"
     assert result.audit_notes == ["Unknown definition_hint 'not_a_real_definition'"]
+
+
+def test_domain_only_matching_resolves_observation_definition_from_builtins() -> None:
+    service = SemanticProjectionService()
+
+    result = service.project(
+        SemanticProjectionRequest(
+            grounded_concept_id=42710016,
+            grounded_domain="Observation",
+            context={"raw_value": "1"},
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.definition_name == "yes_no_observation"
 
 
 def test_domain_only_matching_resolves_a_single_unambiguous_candidate() -> None:

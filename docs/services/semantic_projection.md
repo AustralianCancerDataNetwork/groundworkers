@@ -6,9 +6,10 @@ into one or more CDM rows. It wraps [`omop-semantics`](https://australiancancerd
 always produces the same output.
 
 It exists for cases a single grounded `concept_id` can't express on its own —
-a diagnosis paired with a separately-collected role/status field, or a Yes/No
-field whose negative answer should produce no record at all. Ordinary
-single-concept mappings don't need it.
+a diagnosis paired with a separately-collected role/status field, a family-
+history statement where the grounded condition belongs in the OMOP value slot,
+or a Yes/No field whose negative answer should produce no record at all.
+Ordinary single-concept mappings don't need it.
 
 ## Construction
 
@@ -40,18 +41,23 @@ service = SemanticProjectionService(definitions=my_definitions)
 
 ## The built-in catalogue
 
-Two definitions ship today, both `Condition`-domain, both requiring
-`definition_hint` (see below):
+Six definitions ship today:
 
 | Name | Pattern |
 |---|---|
 | `condition_with_status_from_secondary_field` | A diagnosis paired with a separately-collected role/status field (Primary/Contributing/Non-contributing). Populates `condition_status_concept_id` from the role field's raw code; the Non-contributing code drops the row. |
+| `family_history_condition` | A value-carried family-history observation. The fixed OMOP entity concept `4167217` ("Family history of clinical finding") carries the family-history meaning; the grounded plain condition lands in `value_as_concept_id`. Known non-emitting family-history codes suppress the row. |
+| `family_member_history_bundle` | A multi-row family-member bundle. One relative emits several coordinated observation rows: relationship label, birth year, age-at-death, age-at-onset, method-of-evaluation text, primary diagnosis, and secondary diagnosis, with row-level links showing that they belong to the same relative. |
 | `criteria_gate_condition` | A Yes/No field phrased "meets criteria for X". The positive answer keeps the row; the negative answer drops it — a negative answer carries no positive clinical content of its own. |
+| `yes_no_observation` | An ordinary Yes/No observation where both answers remain informative. Raw `1`/`0` map to OMOP answer concepts in `value_as_concept_id`; unlike a gate, `0` still writes a row. |
+| `measurement_numeric_with_unit_from_context` | A quantitative measurement with a literal numeric value plus a derived OMOP unit concept. Shows how projection can bind both direct source values and code-mapped slots. |
 
-These correspond to the `diagnosis-role-modifier` and `criteria-gate-yesno`
-core knowledge packs — this service is the deterministic counterpart to that
-guidance, not a replacement for it. The packs tell an LLM how to recognize the
-pattern; this service executes it once recognized.
+These definitions are deliberately illustrative as well as useful. The first
+four cover the most common "why projection exists at all" cases: sibling-field
+modifiers, value-carried family-history shapes, multi-row relative bundles,
+and deterministic row suppression. The latter two show that projection is also
+a good fit for ordinary coded observations and quantitative measurements once
+callers already know the row shape they want.
 
 ## Method
 
@@ -77,22 +83,27 @@ service.project(request: SemanticProjectionRequest) -> SemanticProjectionResult
 concept itself:
 
 - `raw_value` — the grounded field's own raw source code. Consulted by a
-  `SpecialValuePolicy` (e.g. `criteria_gate_condition`'s Yes/No check).
+  `SpecialValuePolicy` (e.g. `criteria_gate_condition`'s Yes/No check) or a
+  `DerivationRule` (e.g. `yes_no_observation`'s Yes/No answer mapping).
 - `raw_source_fields` — a mapping of well-known slot name to raw value, for
   definitions that resolve a row's slot from a *different* source field via a
   `DerivationRule` (e.g. `condition_with_status_from_secondary_field`'s role
   field). The key is whatever the definition documents in its `notes` —
   `role_field` today — not the field's actual name in your source data.
+- `numeric_value` — a literal numeric reading for quantitative projections such
+  as `measurement_numeric_with_unit_from_context`.
 
 ### Selecting a definition
 
 Pass `definition_hint` to select a definition explicitly. Omit it and the
 service falls back to matching on `grounded_domain` alone — but only resolves
 when exactly one registered definition applies to that domain. With both
-built-in definitions on `Condition`, that fallback is always ambiguous today;
-`definition_hint` is effectively required until a non-colliding definition is
-added. This is deliberate: the service reports `status="no_match"` with an
-audit note rather than guessing.
+built-in `Condition` definitions, that fallback is still ambiguous for
+`grounded_domain="Condition"`; `definition_hint` remains required there in
+practice. Other domains now have one shipped definition each (`Observation`
+and `Measurement`), so domain-only matching can resolve those unambiguously.
+This is deliberate: the service reports `status="no_match"` with an audit note
+rather than guessing.
 
 ### Result
 
@@ -151,9 +162,13 @@ Use `SemanticProjectionService` when:
 
 - a single grounded concept needs a second CDM column populated from a
   sibling source field's raw value
+- a fixed entity concept should carry context like family history while the
+  grounded concept belongs in a value slot
 - a source item should sometimes produce no CDM record at all, and that
   decision needs to be deterministic and auditable rather than implicit in
   caller code
+- a quantitative projection needs both a direct numeric literal and a mapped
+  OMOP unit concept
 - you want the same request to always produce the same result, with no LLM
   call in the path
 
@@ -185,10 +200,10 @@ Launch the real catalogue through the worker-backed TUI with:
 groundworkers --tui
 ```
 
-This opens the same two built-in definitions the service executes for
+This opens the same built-in definitions the service executes for
 `semantic_project`, but in an interactive terminal flow where you can browse the
-catalogue, edit a request-shaped JSON payload, run it, and inspect the result
-without standing up an MCP client first.
+catalogue, start from definition-specific example payloads, run them, and
+inspect the result without standing up an MCP client first.
 
 ## Error handling
 

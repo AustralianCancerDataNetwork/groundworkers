@@ -32,15 +32,16 @@ definition catalogue and selection rules.
 optional.
 
 `definition_hint` selects a definition explicitly. Omit it only when exactly
-one registered definition applies to `grounded_domain` — with the two
-built-in definitions both on `Condition`, that never resolves today, so treat
-`definition_hint` as required in practice.
+one registered definition applies to `grounded_domain` — with four
+built-in definitions on `Condition`, that domain still does not resolve by
+itself, so treat `definition_hint` as required there in practice.
 
 `context` carries whatever the selected definition needs beyond the grounded
 concept itself — see the field-by-field description in
 [SemanticProjectionService](../services/semantic_projection.md#method). In
 short: `raw_value` for a definition that checks the grounded field's own raw
-code, `raw_source_fields` for one that reads a *different* source field.
+code, `raw_source_fields` for one that reads a *different* source field, and
+`numeric_value` for a definition that binds a literal measurement value.
 
 **Response (row kept):**
 
@@ -106,7 +107,7 @@ explains why, with the exact source field and code that triggered it.
   "unresolved_fields": [],
   "suppressed_rows": [],
   "audit_notes": [
-    "2 definitions match domain 'Condition' ['condition_with_status_from_secondary_field', 'criteria_gate_condition']; pass definition_hint to disambiguate"
+    "4 definitions match domain 'Condition' ['condition_with_status_from_secondary_field', 'criteria_gate_condition', 'family_history_condition', 'family_member_history_bundle']; pass definition_hint to disambiguate"
   ]
 }
 ```
@@ -117,8 +118,12 @@ Use `semantic_project` when:
 
 - a grounded item needs a second CDM column populated from a sibling source
   field (a role/status pairing)
+- a fixed entity concept should carry context like family history while the
+  grounded plain concept belongs in the OMOP value slot
 - a source item should sometimes produce no CDM record at all, deterministically
   and auditably, rather than via ad hoc caller logic
+- a grounded quantitative finding needs both a literal numeric value and a
+  mapped OMOP unit concept
 - you need the same input to always produce the same output — there is no LLM
   call anywhere in this path
 
