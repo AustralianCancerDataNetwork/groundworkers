@@ -27,6 +27,20 @@ config = build_app_config()
 app = build_application(config)
 ```
 
+The CLI entry point also accepts transport overrides and an interactive
+semantic-projection explorer flag:
+
+```bash
+groundworkers --transport streamable-http --host 127.0.0.1 --port 8000
+groundworkers --tui
+```
+
+`--tui` launches the semantic projection explorer directly and exits instead of
+starting an MCP or REST server. Install the optional TUI dependencies with
+`uv sync --extra tui` or `pip install groundworkers[tui]`, and make sure a
+shared stack config is loadable with
+`tools.groundworkers.semantic_projection.enabled = true` in the active profile.
+
 ## Configuration ownership
 
 `groundworkers` does not own every setting it consumes. The shared stack keeps
@@ -37,7 +51,7 @@ package ownership explicit:
 | Shared CDM resource and schema naming | `omop-alchemy` |
 | Graph traversal tuning | `omop-graph` |
 | Embedding backend, model, cache, and embedding store | `omop-emb` |
-| MCP defaults, REST defaults, LLM worker settings, source-planning settings, knowledge-pack settings | `groundworkers` |
+| MCP defaults, REST defaults, LLM worker settings, source-planning settings, knowledge-pack settings, semantic-projection settings | `groundworkers` |
 
 This keeps the `groundworkers` package config intentionally focused on worker-
 owned behavior and transport defaults.
@@ -187,6 +201,23 @@ my-knowledge/
 If a configured pack has the same `layer` and `name` as a bundled baseline
 pack, the configured copy wins.
 
+### `semantic_projection`
+
+| Field | Type | Default |
+|---|---|---|
+| `enabled` | `bool` | `false` |
+
+Gates the `semantic_project` MCP tool and its backing `SemanticProjectionService`.
+Off by default: the service is fully deterministic (no LLM, no database), so
+there's no missing-dependency reason to disable it — the flag exists purely
+for staged rollout, per agent-stack's `SEMANTIC_INTEGRATION` design notes
+(enable in local/test environments first).
+
+```toml
+[tools.groundworkers.semantic_projection]
+enabled = true
+```
+
 ## What becomes available at runtime
 
 ### With shared CDM and `omop_graph` configured
@@ -217,6 +248,14 @@ You additionally get:
 - `DomainService`
 - text and domain MCP tools
 - LLM-assisted source planning when `source_planning.llm_assisted_enabled = true`
+
+### With `groundworkers.semantic_projection.enabled = true`
+
+You additionally get:
+
+- `SemanticProjectionService` (constructed directly, not part of `app.services`
+  — it needs no adapter)
+- the `semantic_project` MCP tool
 
 ## CLI selection rules
 

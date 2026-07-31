@@ -27,3 +27,7 @@
 ## System Tools
 
 ::: groundworkers.tools.system_tools
+
+## Semantic Projection Tools
+
+::: groundworkers.tools.semantic_projection_tools

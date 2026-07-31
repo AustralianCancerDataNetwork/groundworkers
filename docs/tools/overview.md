@@ -18,6 +18,7 @@ startup.
 | **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | LLM enabled |
 | **Domain** | `domain_classify` | LLM enabled |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
+| **Semantic projection** | `semantic_project` | `groundworkers.semantic_projection.enabled = true` (default `false`) |
 
 ## What each group is for
 
@@ -32,6 +33,8 @@ startup.
 - **Text** tools normalize or decompose free text before retrieval.
 - **Domain** tools classify structured labels into OMOP domains.
 - **System** tools expose runtime availability and vocabulary catalogue metadata.
+- **Semantic projection** tools deterministically turn an already-grounded
+  concept into one or more CDM rows — no LLM call, disabled by default.
 
 ## Registration rules
 
@@ -69,6 +72,11 @@ flowchart LR
 
 If you are building a Python application, call `app.services.*` directly rather
 than importing tool modules.
+
+`SemanticProjectionService` is the one exception — it needs no adapter, so it
+isn't part of `app.services`. Construct it directly:
+`from groundworkers.services.semantic_projection import SemanticProjectionService`.
+See [SemanticProjectionService](../services/semantic_projection.md).
 
 ## Error response shape
 

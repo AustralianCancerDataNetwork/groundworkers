@@ -7,6 +7,7 @@ from groundworkers.app import GroundworkersApp, build_adapters, build_applicatio
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig
+from groundworkers.services.semantic_projection.service import SemanticProjectionService
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.domain_tools import register_domain_tools
 from groundworkers.tools.embedding_tools import register_embedding_resources, register_embedding_tools
@@ -14,6 +15,7 @@ from groundworkers.tools.knowledge_tools import register_knowledge_tools
 from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 from groundworkers.tools.search_tools import register_search_tools
+from groundworkers.tools.semantic_projection_tools import register_semantic_projection_tools
 from groundworkers.tools.source_planning_tools import (
     register_source_planning_resources,
     register_source_planning_tools,
@@ -49,6 +51,8 @@ def create_server(
         register_source_planning_tools(server, app.services.source_planning)
     register_source_planning_resources(server)
     register_knowledge_tools(server, packs_root=config.knowledge_root)
+    if config.semantic_projection.enabled:
+        register_semantic_projection_tools(server, SemanticProjectionService())
     register_text_prompts(server)
     register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
     register_system_resources(server, config, app.adapters.omop_graph)
@@ -73,12 +77,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--host", help="Bind host override for HTTP transports.")
     parser.add_argument("--port", type=int, help="Bind port override for HTTP transports.")
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Launch the interactive semantic projection explorer and exit.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     config = build_app_config(config_path=args.config_path, profile=args.profile)
+    if args.tui:
+        if not config.semantic_projection.enabled:
+            raise RuntimeError(
+                "semantic_projection is disabled in the active stack config. "
+                "Set [tools.groundworkers.semantic_projection] enabled = true to use --tui."
+            )
+        _launch_semantic_projection_tui()
+        return
     application = build_application(config)
     server = create_server(config, application)
     if args.describe:
@@ -106,6 +123,12 @@ def main(argv: list[str] | None = None) -> None:
     host = args.host or config.mcp.host
     port = args.port or config.mcp.port
     server.run(transport=transport, host=host, port=port)
+
+
+def _launch_semantic_projection_tui() -> None:
+    from groundworkers.services.semantic_projection.tui_launcher import run_semantic_projection_tui
+
+    run_semantic_projection_tui()
 
 
 def run_rest_api(
