@@ -1,16 +1,25 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import ValidationError
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
-from groundworkers.services.semantic_projection.models import SemanticProjectionRequest
-from groundworkers.services.semantic_projection.service import SemanticProjectionService
+from groundworkers.services.semantic_projection.models import (
+    SemanticProjectionRequest,
+    SemanticProjectionResult,
+)
 
 
-def register_semantic_projection_tools(server: GroundcrewServer, service: SemanticProjectionService) -> None:
+class SemanticProjector(Protocol):
+    """The projection surface this tool needs — `SemanticProjectionService`
+    satisfies it structurally, as does any test double with the same method."""
+
+    def project(self, request: SemanticProjectionRequest) -> SemanticProjectionResult: ...
+
+
+def register_semantic_projection_tools(server: GroundcrewServer, service: SemanticProjector) -> None:
     @server.tool("semantic_project")
     def semantic_project(
         grounded_concept_id: int,

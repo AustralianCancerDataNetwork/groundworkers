@@ -46,7 +46,7 @@ def test_semantic_project_tool_returns_result_dict() -> None:
         )
     )
     server = GroundcrewServer("test-server")
-    register_semantic_projection_tools(server, service)  # type: ignore[arg-type]
+    register_semantic_projection_tools(server, service)
 
     result = server.call(
         "semantic_project",
@@ -71,7 +71,7 @@ def test_semantic_project_tool_defaults_context_to_empty_dict() -> None:
         result=SemanticProjectionResult(definition_name=None, role=None, status="no_match")
     )
     server = GroundcrewServer("test-server")
-    register_semantic_projection_tools(server, service)  # type: ignore[arg-type]
+    register_semantic_projection_tools(server, service)
 
     server.call("semantic_project", grounded_concept_id=1, grounded_domain="Observation")
 
@@ -81,7 +81,7 @@ def test_semantic_project_tool_defaults_context_to_empty_dict() -> None:
 def test_semantic_project_tool_returns_groundworkers_error_dict() -> None:
     service = StubSemanticProjectionService(error=GroundworkersError("QUERY_ERROR", "definition compile failed"))
     server = GroundcrewServer("test-server")
-    register_semantic_projection_tools(server, service)  # type: ignore[arg-type]
+    register_semantic_projection_tools(server, service)
 
     result = server.call("semantic_project", grounded_concept_id=1, grounded_domain="Condition")
 
@@ -97,7 +97,7 @@ def test_semantic_project_tool_returns_invalid_input_for_bad_request_shape() -> 
         result=SemanticProjectionResult(definition_name=None, role=None, status="no_match")
     )
     server = GroundcrewServer("test-server")
-    register_semantic_projection_tools(server, service)  # type: ignore[arg-type]
+    register_semantic_projection_tools(server, service)
 
     result = server.call(
         "semantic_project",
@@ -113,7 +113,7 @@ def test_semantic_project_tool_returns_invalid_input_for_bad_request_shape() -> 
 def test_semantic_project_tool_returns_query_error_for_unexpected_exception() -> None:
     service = StubSemanticProjectionService(error=RuntimeError("boom"))
     server = GroundcrewServer("test-server")
-    register_semantic_projection_tools(server, service)  # type: ignore[arg-type]
+    register_semantic_projection_tools(server, service)
 
     result = server.call("semantic_project", grounded_concept_id=1, grounded_domain="Condition")
 
