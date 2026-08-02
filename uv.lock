@@ -899,6 +899,19 @@ wheels = [
 ]
 
 [[package]]
+name = "groundskeeping"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "oa-configurator" },
+    { name = "textual" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/f0/ab0b1761e04f80ba2fc40dec62e2163890ae5f2b8ee77abaec28653f24bf/groundskeeping-0.1.1.tar.gz", hash = "sha256:503269ca3f775f16ee6a1203564c6a9f1a99992e0620ebd917d848593af8aa4b", size = 89142, upload-time = "2026-08-01T13:34:58.896Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/b2/9d41a77b0e02f624ad50629e7ebe878d74f103b137cc520415608de1c172/groundskeeping-0.1.1-py3-none-any.whl", hash = "sha256:fa76074cb24807bb07a544d1b3053138a67f4723e4117462215d7874e0aa9751", size = 33910, upload-time = "2026-08-01T13:34:57.553Z" },
+]
+
+[[package]]
 name = "groundworkers"
 version = "0.3.3"
 source = { editable = "." }
@@ -953,7 +966,7 @@ pdf = [
     { name = "pdfplumber" },
 ]
 tui = [
-    { name = "omop-semantics", extra = ["tui"] },
+    { name = "groundskeeping" },
 ]
 xlsx = [
     { name = "openpyxl" },
@@ -962,6 +975,7 @@ xlsx = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110,<1.0" },
+    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.1.1,<0.2" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "mcp", extras = ["cli"], specifier = ">=1,<2" },
@@ -971,12 +985,11 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "oa-configurator", specifier = ">=0.1.2" },
-    { name = "omop-emb", specifier = ">=1.1.1" },
-    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=1.1.1" },
-    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=1.1.1" },
+    { name = "omop-emb", specifier = ">=1.2.0,<1.3" },
+    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=1.2.0,<1.3" },
+    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=1.2.0,<1.3" },
     { name = "omop-graph", specifier = ">=1.3.0" },
     { name = "omop-semantics", specifier = ">=0.4.0" },
-    { name = "omop-semantics", extras = ["tui"], marker = "extra == 'tui'", specifier = ">=0.4.0" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.0" },
     { name = "openpyxl", marker = "extra == 'all-source'", specifier = ">=3.1,<4" },
     { name = "openpyxl", marker = "extra == 'xlsx'", specifier = ">=3.1,<4" },
@@ -2335,7 +2348,7 @@ wheels = [
 
 [[package]]
 name = "omop-emb"
-version = "1.1.1"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -2350,9 +2363,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/44/f2081ffd9e301c8dcd488b9af9fd278764ce0e51a29e7e8581f778cbf65c/omop_emb-1.1.1.tar.gz", hash = "sha256:d12dfe82ae64c359cc98aee0d09ccdfd29b559755bedc4ceb08c8666c6058cf6", size = 212010, upload-time = "2026-07-02T02:16:26.073Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/4f/9d80a633a94edb562158a6c68a6758798c47e73791cc9a342ff2a7a62fcc/omop_emb-1.2.0.tar.gz", hash = "sha256:a700d0caa2822cd34f82c4d2de51a4f00eea903c34d77dd60456cdd45c4aab15", size = 208793, upload-time = "2026-07-26T23:02:01.277Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/29/86d15d940ef56ca948fb02c049c681e3f5c6bd9d43281bf44455cb57b244/omop_emb-1.1.1-py3-none-any.whl", hash = "sha256:34d1e28d9e90c9872b7e2def6b539c4787e5204c119cc0fade5d1dacba17427a", size = 90496, upload-time = "2026-07-02T02:16:25.027Z" },
+    { url = "https://files.pythonhosted.org/packages/23/ff/d19aca8829dbad9de45e0950b57fdea8e77dbfc67f4b16e54de29c764a62/omop_emb-1.2.0-py3-none-any.whl", hash = "sha256:6b99bb3c188112cbac26a30fb1c805082052b5a0c4ba0463e9b9f553df210b81", size = 92184, upload-time = "2026-07-26T23:01:59.811Z" },
 ]
 
 [package.optional-dependencies]
@@ -2397,11 +2410,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b8/98/9123288af9f8406ea775be80002a8e753adcd4f15994ec097e3b908fa4dd/omop_semantics-0.4.0.tar.gz", hash = "sha256:3fa16f7561ba5c7ba65bbeb360518089fc182ac7bf6047fac54fdf8bf5687a00", size = 43823, upload-time = "2026-07-19T05:42:30.821Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/31/e8/3f399259bc8116a8825c43e34baf44357f8c528c2a8451d064c8309cac14/omop_semantics-0.4.0-py3-none-any.whl", hash = "sha256:4dc0bff6502509fc3c4a98ece21b60d8195a65e792ca5898dd51bf20f2d814c4", size = 64858, upload-time = "2026-07-19T05:42:29.67Z" },
-]
-
-[package.optional-dependencies]
-tui = [
-    { name = "textual" },
 ]
 
 [[package]]
