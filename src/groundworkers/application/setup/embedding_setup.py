@@ -340,7 +340,7 @@ def _path_exists(value: str, *, base: Path | None) -> bool:
 
 def safe_api_base(api_base: str) -> str:
     parts = urlsplit(api_base)
-    host = parts.hostname or ""
+    host = _safe_netloc_host(parts.hostname or "")
     if parts.port is not None:
         host = f"{host}:{parts.port}"
     safe_query = urlencode(
@@ -350,6 +350,12 @@ def safe_api_base(api_base: str) -> str:
         )
     )
     return urlunsplit((parts.scheme, host, parts.path, safe_query, ""))
+
+
+def _safe_netloc_host(hostname: str) -> str:
+    if ":" in hostname and not hostname.startswith("["):
+        return f"[{hostname}]"
+    return hostname
 
 
 def _sensitive_key(key: str) -> bool:

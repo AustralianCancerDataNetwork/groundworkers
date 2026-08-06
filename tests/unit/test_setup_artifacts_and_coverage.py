@@ -81,7 +81,7 @@ def test_filtered_scope_does_not_use_unfiltered_omop_emb_aggregate() -> None:
 def test_unfiltered_coverage_uses_pushed_down_counts() -> None:
     class Backend:
         def get_embedding_count_by_vocabulary(self, **_kwargs):
-            return {"SNOMED": 4}
+            return (("SNOMED", "4"),)
 
     result = load_coverage(
         _scope(standard_only=False, valid_only=False),

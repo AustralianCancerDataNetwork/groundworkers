@@ -203,6 +203,13 @@ def test_queryless_embedding_api_base_is_safe_to_display() -> None:
     assert safe_api_base("http://localhost:11434/v1") == "http://localhost:11434/v1"
 
 
+def test_ipv6_embedding_api_base_is_safe_to_display() -> None:
+    assert (
+        safe_api_base("http://[::1]:11434/v1?api_key=secret&region=local")
+        == "http://[::1]:11434/v1?api_key=%2A%2A%2A&region=local"
+    )
+
+
 def test_reachable_store_separates_registration_from_population() -> None:
     empty = probe_embedding_store(
         lambda: FakeBackend((_record(),), populated=False), backend_type="sqlitevec"

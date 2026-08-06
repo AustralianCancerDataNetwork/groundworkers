@@ -46,10 +46,12 @@ def load_coverage(
             metadata={"omop_emb_capability": "missing"},
         )
     try:
-        eligible = eligible_counter(scope)
-        embedded = aggregate(
-            model_name=scope.model_name,
-            metric_type=MetricType(scope.metric),
+        eligible = _coerce_counts(eligible_counter(scope))
+        embedded = _coerce_counts(
+            aggregate(
+                model_name=scope.model_name,
+                metric_type=MetricType(scope.metric),
+            )
         )
     except Exception:
         return CoverageSnapshot(
@@ -57,7 +59,7 @@ def load_coverage(
             available=False,
             blocker="Coverage counts could not be loaded from the configured stores.",
         )
-    return calculate_coverage(scope, eligible=eligible, embedded=embedded) # type: ignore
+    return calculate_coverage(scope, eligible=eligible, embedded=embedded)
 
 
 def calculate_coverage(
@@ -108,3 +110,10 @@ def calculate_coverage(
 
 def _invalid_counts(scope: CoverageScope, blocker: str) -> CoverageSnapshot:
     return CoverageSnapshot(scope=scope, available=False, blocker=blocker)
+
+
+def _coerce_counts(counts: Any) -> dict[str, int]:
+    return {
+        str(vocabulary): int(count)
+        for vocabulary, count in dict(counts).items()
+    }
