@@ -393,72 +393,66 @@ def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest
     assert "run" not in captured
 
 
-def test_main_blocks_tui_when_semantic_projection_is_disabled(
+def test_main_launches_setup_tui_without_building_runtime_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = build_app_config_from_stack(_stack_without_backends())
     captured: dict[str, object] = {}
 
     def fake_build_app_config(*, config_path=None, profile=None):
-        captured["build_app_config"] = {
+        raise AssertionError("setup TUI should handle config loading itself")
+
+    def fake_launch_tui(*, config_path=None, profile=None) -> None:
+        captured["launch"] = {
             "config_path": config_path,
             "profile": profile,
         }
-        return config
-
-    def fake_launch_tui() -> None:
-        captured["launch"] = True
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
+    monkeypatch.setattr("groundworkers.server._launch_groundworkers_tui", fake_launch_tui)
 
-    with pytest.raises(RuntimeError, match="semantic_projection"):
-        main(["--tui"])
+    main(["--tui", "--config-path", "/tmp/stack.toml", "--profile", "test"])
 
-    assert captured["build_app_config"] == {
-        "config_path": None,
-        "profile": None,
+    assert captured["launch"] == {
+        "config_path": "/tmp/stack.toml",
+        "profile": "test",
     }
-    assert "launch" not in captured
 
 
-def test_main_launches_tui_when_semantic_projection_is_enabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config = build_app_config_from_stack(
-        StackConfig(
-            tools={
-                "groundworkers": ToolConfig(
-                    extra={
-                        "semantic_projection": {
-                            "enabled": True,
-                        }
-                    }
-                )
-            }
-        )
-    )
+def test_main_launches_setup_tui_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_build_app_config(*, config_path=None, profile=None):
-        captured["build_app_config"] = {
+    def fake_launch_tui(*, config_path=None, profile=None) -> None:
+        captured["launch"] = {
             "config_path": config_path,
             "profile": profile,
         }
-        return config
 
-    def fake_launch_tui() -> None:
-        captured["launch"] = True
+    monkeypatch.setattr("groundworkers.server._launch_groundworkers_tui", fake_launch_tui)
 
-    monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
+    main(["tui", "--profile", "test"])
 
-    main(["--tui", "--profile", "test"])
-
-    assert captured["build_app_config"] == {
+    assert captured["launch"] == {
         "config_path": None,
         "profile": "test",
     }
+
+
+def test_main_launches_legacy_projection_tui(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_build_app_config(*, config_path=None, profile=None):
+        raise AssertionError("projection TUI does not need runtime config")
+
+    def fake_launch_tui() -> None:
+        captured["launch"] = True
+
+    monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
+    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
+
+    main(["projection-tui"])
+
     assert captured["launch"] is True
 
 

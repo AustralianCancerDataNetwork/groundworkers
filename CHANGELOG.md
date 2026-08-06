@@ -1,3 +1,7 @@
+## 0.3.4
+- started building out the configuration TUI 
+- lock upper boundary for oa_configurator compatibility
+
 ## 0.3.3
 
 feature: changed the way that knowledge packs are registered, updated baseline knowledge packs (status is very draft for this part - ymmv)

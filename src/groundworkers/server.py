@@ -80,22 +80,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tui",
         action="store_true",
-        help="Launch the interactive semantic projection explorer and exit.",
+        help="Launch the interactive Groundworkers setup TUI and exit.",
+    )
+    parser.add_argument(
+        "--projection-tui",
+        action="store_true",
+        help="Launch the legacy semantic projection explorer and exit.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["serve", "tui", "projection-tui"],
+        help="Optional command. Use 'tui' for the setup TUI or 'projection-tui' for the legacy projection explorer.",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    config = build_app_config(config_path=args.config_path, profile=args.profile)
-    if args.tui:
-        if not config.semantic_projection.enabled:
-            raise RuntimeError(
-                "semantic_projection is disabled in the active stack config. "
-                "Set [tools.groundworkers.semantic_projection] enabled = true to use --tui."
-            )
+    if args.tui or args.command == "tui":
+        _launch_groundworkers_tui(config_path=args.config_path, profile=args.profile)
+        return
+    if args.projection_tui or args.command == "projection-tui":
         _launch_semantic_projection_tui()
         return
+    config = build_app_config(config_path=args.config_path, profile=args.profile)
     application = build_application(config)
     server = create_server(config, application)
     if args.describe:
@@ -129,6 +138,12 @@ def _launch_semantic_projection_tui() -> None:
     from groundworkers.services.semantic_projection.tui_launcher import run_semantic_projection_tui
 
     run_semantic_projection_tui()
+
+
+def _launch_groundworkers_tui(*, config_path: str | None, profile: str | None) -> None:
+    from groundworkers.tui import run_groundworkers_tui
+
+    run_groundworkers_tui(config_path=config_path, profile=profile)
 
 
 def run_rest_api(

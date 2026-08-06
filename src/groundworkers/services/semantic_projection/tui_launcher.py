@@ -104,6 +104,16 @@ def build_service_project_fn(service: SemanticProjectionService) -> ProjectCalla
     return project
 
 
+def project_from_tui_template(
+    service: SemanticProjectionService,
+    definition_name: str,
+    raw: Mapping[str, Any],
+) -> SemanticProjectionResult:
+    """Project one TUI sample payload through the existing service adapter."""
+
+    return build_service_project_fn(service)(definition_name, raw)
+
+
 def build_service_payload_template(definition_name: str) -> dict[str, Any]:
     """Return a TUI-friendly starter payload for one shipped definition."""
 
