@@ -1,0 +1,7373 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Read-only OMOP tooling for MCP and direct Python services">
+      
+      
+      
+        <link rel="canonical" href="https://AustralianCancerDataNetwork.github.io/groundworkers/reference/ref_services/">
+      
+      
+        <link rel="prev" href="../ref_tools/">
+      
+      
+        <link rel="next" href="../ref_adapters/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Services - groundworkers</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#services-api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="groundworkers" class="md-header__button md-logo" aria-label="groundworkers" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            groundworkers
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Services
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="blue"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="light-blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/AustralianCancerDataNetwork/groundworkers" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    groundworkers
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="groundworkers" class="md-nav__button md-logo" aria-label="groundworkers" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    groundworkers
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/AustralianCancerDataNetwork/groundworkers" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    groundworkers
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/integrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/extending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending groundworkers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/concept/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concept Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/resolver/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolver Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Search Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/mapping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mapping Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/embedding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Embedding Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/text/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Text Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/semantic_projection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Semantic Projection Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Graph Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/grounding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grounding Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/vocab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vocab Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/mapping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mapping Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/source_planning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Planning Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/text/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Text Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/domain/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Domain Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../services/semantic_projection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Semantic Projection Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Adapters
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adapters/cdm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CDM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adapters/omop_graph/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OmopGraph
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../adapters/omop_emb/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OmopEmb
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#application-composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application Composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vocabservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VocabService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        vocab
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="vocab">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.ConceptMatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConceptMatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.MappedConcept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappedConcept
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.RelatedConceptMapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RelatedConceptMapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.StandardMapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StandardMapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VocabService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="VocabService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.fts_available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fts_available
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.navigate_to_standard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navigate_to_standard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.navigate_to_unit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navigate_to_unit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.navigate_to_value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navigate_to_value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_exact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_exact
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_fulltext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_fulltext
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_normalized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_normalized
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.normalize_text_for_matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalize_text_for_matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.serialise_concept_match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        serialise_concept_match
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.serialise_related_concept_mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        serialise_related_concept_mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.serialise_standard_mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        serialise_standard_mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#graphservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GraphService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        graph
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GraphService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GraphService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.concept_views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_views
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_associations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_associations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_extended_inheritance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_extended_inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.ground_with_plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ground_with_plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conceptgroundingservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConceptGroundingService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.grounding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        grounding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="grounding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.grounding.ConceptGroundingService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConceptGroundingService
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mappingservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappingService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mapping
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mapping">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.MappingService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappingService
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#textservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TextService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        text
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="text">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.DecomposeResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DecomposeResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.DecomposeTerm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DecomposeTerm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.DisambiguateResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DisambiguateResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.Interpretation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interpretation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.MappingCleanupResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappingCleanupResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.NormalizeResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NormalizeResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TextService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TextService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.decompose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decompose
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.disambiguate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        disambiguate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.mapping_cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mapping_cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.normalize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalize
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.build_user_prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_user_prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#domainservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DomainService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        domain
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="domain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.domain.DomainService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DomainService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DomainService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.domain.DomainService.classify_attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sourceplanningservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourcePlanningService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        source_planning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="source_planning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.AnnotatedTable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AnnotatedTable
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AnnotatedTable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.AnnotatedTable.from_normalised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_normalised
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.AssistedColumnRoleClassifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AssistedColumnRoleClassifier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnAnnotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ColumnAnnotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRole" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ColumnRole
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRoleClassifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ColumnRoleClassifier
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ColumnRoleClassifier">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRoleClassifier.classify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRoleClassifier.classify_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.FormatDetector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FormatDetector
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FormatDetector">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.FormatDetector.detect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        detect
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.HeaderProvenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HeaderProvenance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HeaderProvenance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.HeaderProvenance--attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngesterRouter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IngesterRouter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IngesterRouter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngesterRouter.route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngesterRouter.route_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionPlan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IngestionPlan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IngestionPlan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionPlan.groundable_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        groundable_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionPlan.is_safe_to_ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        is_safe_to_ingest
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionStrategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IngestionStrategy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.NormalisationPolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NormalisationPolicy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.NormalisedTable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NormalisedTable
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NormalisedTable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.NormalisedTable.from_raw" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_raw
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.PlanningError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PlanningError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.PlanningWarning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PlanningWarning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.PreIngestBundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreIngestBundle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.RawTable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RawTable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourceFormat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourceFormat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourcePlanningService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SourcePlanningService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.classify_columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_source_assisted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_source_assisted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_tables_assisted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_tables_assisted
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.TableDecomposer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TableDecomposer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.classify_columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.classify_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.normalise_headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalise_headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.normalise_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalise_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.normalise_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalise_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.plan_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.plan_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.route_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.route_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#semanticprojectionservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SemanticProjectionService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        semantic_projection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="semantic_projection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection.DefinitionTrigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DefinitionTrigger
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection.SemanticProjectionRequest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SemanticProjectionRequest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection.SemanticProjectionResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SemanticProjectionResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref_adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref_config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ref_base/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Base
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#application-composition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application Composition
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vocabservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VocabService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        vocab
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="vocab">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.ConceptMatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConceptMatch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.MappedConcept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappedConcept
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.RelatedConceptMapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RelatedConceptMapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.StandardMapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StandardMapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VocabService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="VocabService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.fts_available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fts_available
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.navigate_to_standard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navigate_to_standard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.navigate_to_unit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navigate_to_unit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.navigate_to_value" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navigate_to_value
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_exact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_exact
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_fulltext" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_fulltext
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_normalized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_normalized
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.normalize_text_for_matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalize_text_for_matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.serialise_concept_match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        serialise_concept_match
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.serialise_related_concept_mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        serialise_related_concept_mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.serialise_standard_mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        serialise_standard_mapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#graphservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GraphService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.graph" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        graph
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="graph">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GraphService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GraphService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.concept_views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_views
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_associations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_associations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_extended_inheritance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_extended_inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.ground_with_plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ground_with_plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conceptgroundingservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConceptGroundingService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.grounding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        grounding
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="grounding">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.grounding.ConceptGroundingService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConceptGroundingService
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mappingservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappingService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mapping
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="mapping">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.MappingService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappingService
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#textservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TextService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        text
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="text">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.DecomposeResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DecomposeResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.DecomposeTerm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DecomposeTerm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.DisambiguateResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DisambiguateResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.Interpretation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interpretation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.MappingCleanupResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MappingCleanupResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.NormalizeResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NormalizeResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TextService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TextService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.decompose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decompose
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.disambiguate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        disambiguate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.mapping_cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        mapping_cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.TextService.normalize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalize
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.text.build_user_prompt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_user_prompt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#domainservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DomainService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        domain
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="domain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.domain.DomainService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DomainService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DomainService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.domain.DomainService.classify_attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sourceplanningservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourcePlanningService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        source_planning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="source_planning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.AnnotatedTable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AnnotatedTable
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AnnotatedTable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.AnnotatedTable.from_normalised" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_normalised
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.AssistedColumnRoleClassifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AssistedColumnRoleClassifier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnAnnotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ColumnAnnotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRole" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ColumnRole
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRoleClassifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ColumnRoleClassifier
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ColumnRoleClassifier">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRoleClassifier.classify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.ColumnRoleClassifier.classify_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.FormatDetector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FormatDetector
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="FormatDetector">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.FormatDetector.detect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        detect
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.HeaderProvenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HeaderProvenance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HeaderProvenance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.HeaderProvenance--attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngesterRouter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IngesterRouter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IngesterRouter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngesterRouter.route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngesterRouter.route_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionPlan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IngestionPlan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IngestionPlan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionPlan.groundable_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        groundable_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionPlan.is_safe_to_ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        is_safe_to_ingest
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.IngestionStrategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IngestionStrategy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.NormalisationPolicy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NormalisationPolicy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.NormalisedTable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NormalisedTable
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NormalisedTable">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.NormalisedTable.from_raw" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_raw
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.PlanningError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PlanningError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.PlanningWarning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PlanningWarning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.PreIngestBundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreIngestBundle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.RawTable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RawTable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourceFormat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourceFormat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SourcePlanningService
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SourcePlanningService">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.classify_columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_source_assisted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_source_assisted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.SourcePlanningService.plan_tables_assisted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_tables_assisted
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.TableDecomposer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TableDecomposer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.classify_columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.classify_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        classify_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.normalise_headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalise_headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.normalise_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalise_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.normalise_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalise_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.plan_source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.plan_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.route_table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route_table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.source_planning.route_tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        route_tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#semanticprojectionservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SemanticProjectionService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        semantic_projection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="semantic_projection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection.DefinitionTrigger" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DefinitionTrigger
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection.SemanticProjectionRequest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SemanticProjectionRequest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.semantic_projection.SemanticProjectionResult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SemanticProjectionResult
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../ref_tools/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    API Reference
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="services-api-reference">Services — API Reference</h1>
+<h2 id="application-composition">Application Composition</h2>
+<p><code>build_application(config)</code> is the shared composition root for direct Python
+consumers. It builds the adapters, the service container, and returns a
+<code>GroundworkersApp</code> with both attached.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.app" class="doc doc-heading">
+            <code>groundworkers.app</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="vocabservice">VocabService</h2>
+<p><code>VocabService</code> provides vocabulary search and concept navigation over OMOP CDM
+vocabulary tables. It is the backing service for the search MCP tools and a
+dependency of <code>MappingService</code>.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.vocab" class="doc doc-heading">
+            <code>groundworkers.services.vocab</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.vocab.ConceptMatch" class="doc doc-heading">
+            <code>ConceptMatch</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>A single candidate returned by search_exact, search_normalized, or search_fulltext.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.vocab.MappedConcept" class="doc doc-heading">
+            <code>MappedConcept</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>A standard concept that a source concept maps to.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.vocab.RelatedConceptMapping" class="doc doc-heading">
+            <code>RelatedConceptMapping</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Relationship-driven mapping result for a single source concept_id.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.vocab.StandardMapping" class="doc doc-heading">
+            <code>StandardMapping</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Navigation result for a single source concept_id.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.vocab.VocabService" class="doc doc-heading">
+            <code>VocabService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Direct Python API for OMOP vocabulary search and concept navigation.</p>
+<p>Exposes raw quality signals (ts_rank, standard_concept flag) so callers
+can apply their own quality thresholds and decide whether to navigate
+non-standard results to their standard equivalents.</p>
+<p>Raises GroundworkersError for database or query errors.
+Raises ValueError for invalid arguments.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="groundworkers.services.vocab.VocabService.fts_available" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">fts_available</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>True when the concept_name_tsvector sidecar column is present.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.navigate_to_standard" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">navigate_to_standard</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return standard equivalents for a list of concept_ids via "Maps to" relationship edges.</p>
+<p>For concept_ids that are already standard: standard_concepts = [self].
+For concept_ids with no outbound "Maps to" relationship: standard_concepts = [].
+concept_ids not found in the vocabulary are silently omitted.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.navigate_to_unit" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">navigate_to_unit</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return "Maps to unit" related concepts for the given concept_ids.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.navigate_to_value" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">navigate_to_value</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return "Maps to value" related concepts for the given concept_ids.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.search_exact" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">search_exact</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Case-insensitive exact match against concept_name and optionally concept_synonym_name.</p>
+<p>standard_only defaults to False so the caller can inspect non-standard candidates
+and decide whether to navigate to their standard equivalents.</p>
+<p>Returns name matches before synonym matches; deduplicates by concept_id so a concept
+that matches both name and synonym only appears once.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.search_fulltext" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">search_fulltext</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">min_rank</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>PostgreSQL FTS match using the tsvector sidecar column (GIN-indexed).</p>
+<p>Returns (results, fts_available). When fts_available is False the sidecar
+column was not detected and results is always []; the caller should fall
+through to another search strategy.</p>
+<p>ts_rank is included in each result so the caller can apply its own quality
+threshold. Synonym FTS is included when the synonym sidecar column is also
+present; otherwise synonym results are silently omitted.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.search_normalized" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">search_normalized</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalization_profile</span><span class="o">=</span><span class="s1">&#39;verbatim&#39;</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Deterministic near-verbatim search after text normalization.</p>
+<p>Both the query and candidate text are normalized before comparison.
+Distinct from full-text search: deterministic equality, not ranked retrieval.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.vocab.normalize_text_for_matching" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">normalize_text_for_matching</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">profile</span><span class="o">=</span><span class="s1">&#39;verbatim&#39;</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Normalize free text into a deterministic matching form.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.vocab.serialise_concept_match" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">serialise_concept_match</span><span class="p">(</span><span class="n">match</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Serialise a ConceptMatch to a JSON-safe dict for MCP tool responses.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.vocab.serialise_related_concept_mapping" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">serialise_related_concept_mapping</span><span class="p">(</span><span class="n">mapping</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Serialise a RelatedConceptMapping to a JSON-safe dict for MCP tool responses.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.vocab.serialise_standard_mapping" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">serialise_standard_mapping</span><span class="p">(</span><span class="n">mapping</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Serialise a StandardMapping to a JSON-safe dict for MCP tool responses.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="graphservice">GraphService</h2>
+<p><code>GraphService</code> is the direct-Python surface for deterministic graph-backed
+concept lookup, hierarchy traversal, path finding, standard mapping, and
+neighbor exploration.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.graph" class="doc doc-heading">
+            <code>groundworkers.services.graph</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.graph.GraphService" class="doc doc-heading">
+            <code>GraphService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Caller-facing graph domain logic backed by the omop-graph runtime.</p>
+<p>This service owns multi-step orchestration — hierarchy walks, edge and path
+assembly, neighbourhood shaping, standard-mapping, and grounding tier
+selection — composing the normalized primitives exposed by
+<code>OmopGraphAdapter</code>. It never touches omop-graph internals directly; the
+adapter owns the backend and returns plain dicts/tuples.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.graph.GraphService.concept_views" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">concept_views</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Batch-fetch normalized concept views keyed by concept_id.</p>
+<p>Thin passthrough to the adapter's batch lookup. Returns an empty dict
+for unknown ids or on backend failure (the adapter swallows enrichment
+errors), so callers can treat a missing key as "unknown concept".</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.graph.GraphService.get_associations" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_associations</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s1">&#39;out&#39;</span><span class="p">,</span> <span class="n">predicate_subkinds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Enumerate ASSOCIATION-kind edges (therapeutic/associative links).</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.graph.GraphService.get_extended_inheritance" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_extended_inheritance</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s1">&#39;out&#39;</span><span class="p">,</span> <span class="n">predicate_subkinds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Enumerate HIERARCHY-kind relationship edges (extended inheritance).</p>
+<p>This is the raw edge-level HIERARCHY view — NOT the concept_ancestor
+closure used by get_ancestors/get_descendants. See the tool docstring.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.graph.GraphService.ground_with_plan" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">ground_with_plan</span><span class="p">(</span><span class="n">request</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Execute a caller-supplied grounding plan: run tiers in order, keep the
+first tier that yields (FTS-overlap filtered) hits, then enrich and shape.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="conceptgroundingservice">ConceptGroundingService</h2>
+<p><code>ConceptGroundingService</code> owns the caller-facing grounding policy over
+<code>GraphService</code>: resolver tier ordering, ancestry constraints, and grounding
+explanations.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.grounding" class="doc doc-heading">
+            <code>groundworkers.services.grounding</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.grounding.ConceptGroundingService" class="doc doc-heading">
+            <code>ConceptGroundingService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Use-case policy for free-text grounding over the OMOP graph.</p>
+<p>The graph service owns omop-graph execution details.
+This service owns the caller-facing grounding strategy: domain normalization,
+optional ancestry constraints, tier ordering, and response explanation.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="mappingservice">MappingService</h2>
+<p><code>MappingService</code> is the direct-Python API for mapping workflows. The mapping MCP
+tools delegate to this service rather than implementing orchestration in the tool
+module.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.mapping" class="doc doc-heading">
+            <code>groundworkers.services.mapping</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.mapping.MappingService" class="doc doc-heading">
+            <code>MappingService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Direct Python API for mapping-oriented vocabulary workflows.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="textservice">TextService</h2>
+<p><code>TextService</code> provides LLM-backed clinical text preprocessing. The text MCP tools
+(<code>text_normalize</code>, <code>text_decompose</code>, <code>text_disambiguate</code>) delegate to this service.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.text" class="doc doc-heading">
+            <code>groundworkers.services.text</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>LLM-backed clinical text semantics.</p>
+<p>This package keeps the public TextService surface small and stable while
+separating result models, prompt definitions, and service orchestration into
+modules that can grow independently.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.DecomposeResult" class="doc doc-heading">
+            <code>DecomposeResult</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>Result of decomposing free text into a list of clinical search terms.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.DecomposeTerm" class="doc doc-heading">
+            <code>DecomposeTerm</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>One extracted clinical concept from a decomposition.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.DisambiguateResult" class="doc doc-heading">
+            <code>DisambiguateResult</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>Result of listing all plausible interpretations of an ambiguous term.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.Interpretation" class="doc doc-heading">
+            <code>Interpretation</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>One candidate interpretation of an ambiguous term.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.MappingCleanupResult" class="doc doc-heading">
+            <code>MappingCleanupResult</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>Result of rewriting source text into a more mappable search phrase.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.NormalizeResult" class="doc doc-heading">
+            <code>NormalizeResult</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>Result of a single-term normalization.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.text.TextService" class="doc doc-heading">
+            <code>TextService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Direct Python API for LLM-backed clinical text preprocessing.</p>
+<p>TextService interprets caller-provided clinical phrases. It normalizes
+single terms, decomposes multi-concept free text, and surfaces ranked
+interpretations when the input is ambiguous. The outputs are typed and
+ready to feed into downstream concept grounding workflows.</p>
+<p>All methods raise ValueError for invalid input and GroundworkersError for
+LLM backend failures or malformed structured responses.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.text.TextService.decompose" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">decompose</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_terms</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Decompose a free-text clinical description into normalized search terms.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.text.TextService.disambiguate" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">disambiguate</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_interpretations</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>List all plausible clinical interpretations of an ambiguous term.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.text.TextService.mapping_cleanup" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">mapping_cleanup</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">domain_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Rewrite source text into a more mappable OMOP search phrase.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.text.TextService.normalize" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">normalize</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Normalize a clinical term, abbreviation, lay phrase, or misspelling.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.text.build_user_prompt" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">build_user_prompt</span><span class="p">(</span><span class="n">operation</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Construct the user-turn prompt for a text operation.</p>
+<p>Shared between TextService methods and MCP prompt handlers so both present
+the same request surface to the LLM.</p>
+<p>Clamping is applied here so prompt handlers and service calls always show
+the same bounded values.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="domainservice">DomainService</h2>
+<p><code>DomainService</code> provides LLM-backed batch OMOP domain classification for structured
+field labels and example values. The <code>domain_classify</code> MCP tool delegates to this
+service.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.domain" class="doc doc-heading">
+            <code>groundworkers.services.domain</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>DomainService — LLM-assisted OMOP domain classification for data dictionary attributes.</p>
+<p>Accepts a batch of field labels and their example response values, and returns a
+mapping of label → OMOP domain string for any label that can be confidently
+classified.  Labels that yield null or an unrecognised domain are omitted so that
+callers fall through to the next resolution tier (keyword heuristics).</p>
+<p>Valid domains returned: Measurement, Condition, Observation, Procedure, Drug,
+Device, Metadata, Identifier.</p>
+<p>"Metadata" and "Identifier" are groundcrew-internal sentinel values, not OMOP
+CDM domains.  The ingester treats them as skip signals and does not create
+SourceItems for those rows.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.domain.DomainService" class="doc doc-heading">
+            <code>DomainService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Classify data dictionary field labels into OMOP CDM domains via the LLM adapter.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.domain.DomainService.classify_attributes" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify_attributes</span><span class="p">(</span><span class="n">label_values</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Classify field labels into OMOP domains.</p>
+<p><em>label_values</em> maps each field label text to a (possibly empty) list of
+example response-value strings.  Returns a dict containing only labels
+that received a valid domain string — labels mapped to null or an
+unrecognised value are excluded so callers fall through to the next tier.</p>
+<p>Raises <code>BACKEND_UNAVAIL</code> when the LLM cannot be reached.
+Raises <code>QUERY_ERROR</code> when the response is not valid JSON.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="sourceplanningservice">SourcePlanningService</h2>
+<p><code>SourcePlanningService</code> provides stateless source-analysis and assisted planning
+workflows for pre-ingest artifacts.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.source_planning" class="doc doc-heading">
+            <code>groundworkers.services.source_planning</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+        <p>Stateless source-planning artifacts.</p>
+<p>This package defines the neutral planning objects that dependency-facing
+services can produce without knowing anything about ACP session state,
+review queues, or persistence models.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.AnnotatedTable" class="doc doc-heading">
+            <code>AnnotatedTable</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="NormalisedTable
+
+
+  
+      dataclass
+   (groundworkers.services.source_planning.models.NormalisedTable)" href="#groundworkers.services.source_planning.NormalisedTable">NormalisedTable</a></code></p>
+
+
+
+        <p>Normalized table plus semantic annotation.</p>
+<p>This is the first stage that may infer downstream semantic intent. It should
+retain enough signal for caller-facing orchestration to decide whether the
+result is strong enough to accept, assist, or route for review.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.AnnotatedTable.from_normalised" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_normalised</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build semantic annotation output from a normalized table.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.AssistedColumnRoleClassifier" class="doc doc-heading">
+            <code>AssistedColumnRoleClassifier</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Apply explicit LLM assistance to uncertain or unresolved columns only.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.ColumnAnnotation" class="doc doc-heading">
+            <code>ColumnAnnotation</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Semantic annotation for one normalized column.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.ColumnRole" class="doc doc-heading">
+            <code>ColumnRole</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="enum.StrEnum">StrEnum</span></code></p>
+
+
+
+        <p>Semantic role assigned during column annotation.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.ColumnRoleClassifier" class="doc doc-heading">
+            <code>ColumnRoleClassifier</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Classify normalized columns using deterministic header and sample rules.</p>
+<p>The classifier is intentionally conservative. It should assign obvious
+semantic roles confidently and leave weaker cases visible as uncertain
+instead of overfitting to one source-system shape.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.ColumnRoleClassifier.classify" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return semantic annotations for one normalized table.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.ColumnRoleClassifier.classify_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Classify multiple normalized tables.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.FormatDetector" class="doc doc-heading">
+            <code>FormatDetector</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Identify a submitted source container format from bytes and filename.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.FormatDetector.detect" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">detect</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the most likely <code>SourceFormat</code> for <code>content</code>.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.HeaderProvenance" class="doc doc-heading">
+            <code>HeaderProvenance</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Column-level record of structural cleanup performed during normalization.</p>
+<h5 id="groundworkers.services.source_planning.HeaderProvenance--attributes">Attributes</h5>
+<p>original:
+    The raw header surface emitted by decomposition.
+normalised:
+    The final structural header surface used by downstream semantic stages.
+operations:
+    Ordered normalization steps applied to reach <code>normalised</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.IngesterRouter" class="doc doc-heading">
+            <code>IngesterRouter</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Map semantically annotated tables to ingestion strategies.</p>
+<p>The router stays deterministic and stateless. It does not create chunks,
+items, or review records; it only turns semantic table annotation into a
+planning decision that caller-facing orchestration can consume.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.IngesterRouter.route" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">route</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return <code>(strategy, routed_table)</code> for one annotated table.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.IngesterRouter.route_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">route_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Route multiple annotated tables.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.IngestionPlan" class="doc doc-heading">
+            <code>IngestionPlan</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Cross-table planning result consumed by stateful orchestration.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.IngestionPlan.groundable_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">groundable_tables</span><span class="p">()</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return tables that remain eligible for downstream ingestion.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.IngestionPlan.is_safe_to_ingest" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">is_safe_to_ingest</span><span class="p">()</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return <code>True</code> when the plan has no hard failures.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.IngestionStrategy" class="doc doc-heading">
+            <code>IngestionStrategy</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="enum.StrEnum">StrEnum</span></code></p>
+
+
+
+        <p>Downstream ingestion strategy chosen from semantic annotation outputs.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.NormalisationPolicy" class="doc doc-heading">
+            <code>NormalisationPolicy</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Configuration for structural cleanup.</p>
+
+
+<details class="the-defaults-are-intentionally-conservative" open>
+  <summary>The defaults are intentionally conservative</summary>
+  <ul>
+<li>preserve table identity and row order</li>
+<li>stabilize headers and cell text</li>
+<li>prune only columns that are structurally empty after cleanup</li>
+</ul>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.NormalisedTable" class="doc doc-heading">
+            <code>NormalisedTable</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Structural cleanup output for downstream semantic reasoning.</p>
+<p>This is the stage where header surfaces and cell text are stabilized.
+It must not assign column roles, domain hints, or strategy choices.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.NormalisedTable.from_raw" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_raw</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">headers</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">sample_rows</span><span class="p">,</span> <span class="n">header_provenance</span><span class="p">,</span> <span class="n">normalisation_notes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">warnings</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build a normalized table while preserving non-semantic identity.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.PlanningError" class="doc doc-heading">
+            <code>PlanningError</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Hard planning failure that should stop autonomous progression.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.PlanningWarning" class="doc doc-heading">
+            <code>PlanningWarning</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Recoverable planning issue that should remain visible to callers.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.PreIngestBundle" class="doc doc-heading">
+            <code>PreIngestBundle</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Top-level stateless planning result envelope.</p>
+<p><code>IngestionPlan</code> remains the core decision object. The optional artifact
+lists exist for transparency, debugging, and adapter-facing inspection.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.RawTable" class="doc doc-heading">
+            <code>RawTable</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Post-decomposition table artifact before structural normalization.</p>
+<p><code>RawTable</code> stays close to the extracted source shape. It may preserve
+typed or format-specific cell values and should not imply downstream
+semantic meaning.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.SourceFormat" class="doc doc-heading">
+            <code>SourceFormat</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="enum.StrEnum">StrEnum</span></code></p>
+
+
+
+        <p>Container format of the submitted source content.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.SourcePlanningService" class="doc doc-heading">
+            <code>SourcePlanningService</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Thin composition root for the stateless source-planning pipeline.</p>
+<p>This service owns stage sequencing only. It detects source format,
+decomposes content into tables, normalises structure, classifies columns,
+routes tables to ingestion strategies, and packages the result as a
+<code>PreIngestBundle</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.SourcePlanningService.classify_columns" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify_columns</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Expose deterministic classification directly when needed.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.SourcePlanningService.plan_source" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plan_source</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">caller_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Plan one submitted source artifact end to end.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.SourcePlanningService.plan_source_assisted" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plan_source_assisted</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">caller_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Plan one submitted source artifact with explicit LLM assistance.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.SourcePlanningService.plan_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plan_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">caller_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Plan already-decomposed tables.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.source_planning.SourcePlanningService.plan_tables_assisted" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plan_tables_assisted</span><span class="p">(</span><span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">caller_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Plan already-decomposed tables with explicit LLM assistance.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.source_planning.TableDecomposer" class="doc doc-heading">
+            <code>TableDecomposer</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Convert source bytes into one or more <code>RawTable</code> artifacts.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.classify_columns" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify_columns</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convenience wrapper for one-shot deterministic classification.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.classify_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">classify_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convenience wrapper for one-shot classification over many tables.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.normalise_headers" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">normalise_headers</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Backward-compatible alias for the PR1 helper name.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.normalise_table" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">normalise_table</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">policy</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Normalize a raw table into a stable structural representation.</p>
+<p>It takes a <code>RawTable</code> and returns a <code>NormalisedTable</code> with cleaned
+headers, cleaned cell text, deterministic duplicate handling, conservative
+empty-column pruning, and explicit provenance about the structural changes
+that were made.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.normalise_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">normalise_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">policy</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Normalize multiple raw tables with one shared policy.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.plan_source" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plan_source</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">caller_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convenience wrapper for one-shot source planning.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.plan_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">plan_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">caller_hint</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convenience wrapper for planning already-decomposed tables.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.route_table" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">route_table</span><span class="p">(</span><span class="n">table</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convenience wrapper for routing one annotated table.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.source_planning.route_tables" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">route_tables</span><span class="p">(</span><span class="n">tables</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convenience wrapper for routing many annotated tables.</p>
+
+
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="semanticprojectionservice">SemanticProjectionService</h2>
+<p><code>SemanticProjectionService</code> deterministically projects a grounded concept into
+one or more CDM rows via <code>omop-semantics</code>. Not part of <code>app.services</code> — see
+<a href="../../services/semantic_projection/">SemanticProjectionService</a> for why.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<h2 id="groundworkers.services.semantic_projection" class="doc doc-heading">
+            <code>groundworkers.services.semantic_projection</code>
+
+
+</h2>
+
+    <div class="doc doc-contents first">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.semantic_projection.DefinitionTrigger" class="doc doc-heading">
+            <code>DefinitionTrigger</code>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Declares which grounded domains a definition applies to.</p>
+<p>Deliberately simple: domain-only matching. Concept-group-aware matching
+(e.g. "only for descendants of concept X") belongs in <code>omop_semantics</code>
+itself if it turns out to be needed by more than one consumer — see
+agent-stack's SEMANTIC_INTEGRATION design notes. Until then, an ambiguous
+domain match is reported as <code>no_match</code> rather than guessed.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.semantic_projection.SemanticProjectionRequest" class="doc doc-heading">
+            <code>SemanticProjectionRequest</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>Input to <code>SemanticProjectionService.project()</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h3 id="groundworkers.services.semantic_projection.SemanticProjectionResult" class="doc doc-heading">
+            <code>SemanticProjectionResult</code>
+
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="pydantic.BaseModel">BaseModel</span></code></p>
+
+
+
+        <p>Deterministic projection outcome, transport-ready for the MCP response.</p>
+<p><code>status</code> semantics:
+- <code>ok</code> — a definition matched and every row is fully bound.
+- <code>partial</code> — a definition matched but some row fields still need more
+  context (see <code>unresolved_fields</code>).
+- <code>suppressed</code> — a definition matched but every row it would have produced
+  was dropped by a <code>DerivationRule</code> or <code>SpecialValuePolicy</code> (see
+  <code>suppressed_rows</code>) — nothing should be written for this item.
+- <code>no_match</code> — no definition matched (including an ambiguous match with no
+  <code>definition_hint</code> to disambiguate).</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "navigation.path", "navigation.top", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

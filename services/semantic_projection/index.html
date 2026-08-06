@@ -1,0 +1,1244 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Read-only OMOP tooling for MCP and direct Python services" name="description"/>
+<link href="https://AustralianCancerDataNetwork.github.io/groundworkers/services/semantic_projection/" rel="canonical"/>
+<link href="../domain/" rel="prev"/>
+<link href="../../adapters/cdm/" rel="next"/>
+<link href="../../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.7" name="generator"/>
+<title>Semantic Projection Service - groundworkers</title>
+<link href="../../assets/stylesheets/main.ec1eaa64.min.css" rel="stylesheet"/>
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../../assets/_mkdocstrings.css" rel="stylesheet"/>
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="blue" data-md-color-primary="indigo" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#semanticprojectionservice">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header md-header--shadow" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="groundworkers" class="md-header__button md-logo" data-md-component="logo" href="../.." title="groundworkers">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            groundworkers
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Semantic Projection Service
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="blue" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="light-blue" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/AustralianCancerDataNetwork/groundworkers" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    groundworkers
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="groundworkers" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="groundworkers">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    groundworkers
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/AustralianCancerDataNetwork/groundworkers" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    groundworkers
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../usage/installation/">
+<span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../usage/configuration/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../usage/integrations/">
+<span class="md-ellipsis">
+    
+  
+    Integrations
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../usage/testing/">
+<span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../development/extending/">
+<span class="md-ellipsis">
+    
+  
+    Extending groundworkers
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Tools
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/concept/">
+<span class="md-ellipsis">
+    
+  
+    Concept Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/resolver/">
+<span class="md-ellipsis">
+    
+  
+    Resolver Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/search/">
+<span class="md-ellipsis">
+    
+  
+    Search Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/mapping/">
+<span class="md-ellipsis">
+    
+  
+    Mapping Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/embedding/">
+<span class="md-ellipsis">
+    
+  
+    Embedding Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/text/">
+<span class="md-ellipsis">
+    
+  
+    Text Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/domain/">
+<span class="md-ellipsis">
+    
+  
+    Domain Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/system/">
+<span class="md-ellipsis">
+    
+  
+    System Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../tools/semantic_projection/">
+<span class="md-ellipsis">
+    
+  
+    Semantic Projection Tools
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_6" type="checkbox"/>
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Services
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../graph/">
+<span class="md-ellipsis">
+    
+  
+    Graph Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../grounding/">
+<span class="md-ellipsis">
+    
+  
+    Grounding Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../vocab/">
+<span class="md-ellipsis">
+    
+  
+    Vocab Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../mapping/">
+<span class="md-ellipsis">
+    
+  
+    Mapping Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../source_planning/">
+<span class="md-ellipsis">
+    
+  
+    Source Planning Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../text/">
+<span class="md-ellipsis">
+    
+  
+    Text Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../domain/">
+<span class="md-ellipsis">
+    
+  
+    Domain Service
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Semantic Projection Service
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Semantic Projection Service
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#construction">
+<span class="md-ellipsis">
+      
+        Construction
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-built-in-catalogue">
+<span class="md-ellipsis">
+      
+        The built-in catalogue
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#method">
+<span class="md-ellipsis">
+      
+        Method
+      
+    </span>
+</a>
+<nav aria-label="Method" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#project">
+<span class="md-ellipsis">
+      
+        project
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#selecting-a-definition">
+<span class="md-ellipsis">
+      
+        Selecting a definition
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#result">
+<span class="md-ellipsis">
+      
+        Result
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#typical-inputoutput">
+<span class="md-ellipsis">
+      
+        Typical input/output
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#when-to-use-it">
+<span class="md-ellipsis">
+      
+        When to use it
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#relationship-to-downstream-mapping">
+<span class="md-ellipsis">
+      
+        Relationship to downstream mapping
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#interactive-exploration">
+<span class="md-ellipsis">
+      
+        Interactive exploration
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#error-handling">
+<span class="md-ellipsis">
+      
+        Error handling
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_7" type="checkbox"/>
+<label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Adapters
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_7_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_7">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Adapters
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../adapters/cdm/">
+<span class="md-ellipsis">
+    
+  
+    CDM
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../adapters/omop_graph/">
+<span class="md-ellipsis">
+    
+  
+    OmopGraph
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../adapters/omop_emb/">
+<span class="md-ellipsis">
+    
+  
+    OmopEmb
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--section md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_8" type="checkbox"/>
+<label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_8_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_8">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/ref_tools/">
+<span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/ref_services/">
+<span class="md-ellipsis">
+    
+  
+    Services
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/ref_adapters/">
+<span class="md-ellipsis">
+    
+  
+    Adapters
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/ref_config/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/ref_base/">
+<span class="md-ellipsis">
+    
+  
+    Base
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#construction">
+<span class="md-ellipsis">
+      
+        Construction
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#the-built-in-catalogue">
+<span class="md-ellipsis">
+      
+        The built-in catalogue
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#method">
+<span class="md-ellipsis">
+      
+        Method
+      
+    </span>
+</a>
+<nav aria-label="Method" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#project">
+<span class="md-ellipsis">
+      
+        project
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#selecting-a-definition">
+<span class="md-ellipsis">
+      
+        Selecting a definition
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#result">
+<span class="md-ellipsis">
+      
+        Result
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#typical-inputoutput">
+<span class="md-ellipsis">
+      
+        Typical input/output
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#when-to-use-it">
+<span class="md-ellipsis">
+      
+        When to use it
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#relationship-to-downstream-mapping">
+<span class="md-ellipsis">
+      
+        Relationship to downstream mapping
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#interactive-exploration">
+<span class="md-ellipsis">
+      
+        Interactive exploration
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#error-handling">
+<span class="md-ellipsis">
+      
+        Error handling
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<nav aria-label="Navigation" class="md-path">
+<ol class="md-path__list">
+<li class="md-path__item">
+<a class="md-path__link" href="../..">
+<span class="md-ellipsis">
+    Home
+  </span>
+</a>
+</li>
+<li class="md-path__item">
+<a class="md-path__link" href="../graph/">
+<span class="md-ellipsis">
+    Services
+  </span>
+</a>
+</li>
+</ol>
+</nav>
+<article class="md-content__inner md-typeset">
+<h1 id="semanticprojectionservice">SemanticProjectionService</h1>
+<p><code>SemanticProjectionService</code> deterministically projects a grounded OMOP concept
+into one or more CDM rows. It wraps <a href="https://australiancancerdatanetwork.github.io/omop-semantics/"><code>omop-semantics</code></a>'s
+<code>OutputDefinitionRuntime</code>: no LLM call, no database access. The same input
+always produces the same output.</p>
+<p>It exists for cases a single grounded <code>concept_id</code> can't express on its own —
+a diagnosis paired with a separately-collected role/status field, a family-
+history statement where the grounded condition belongs in the OMOP value slot,
+or a Yes/No field whose negative answer should produce no record at all.
+Ordinary single-concept mappings don't need it.</p>
+<h2 id="construction">Construction</h2>
+<p>Unlike the other services documented here, <code>SemanticProjectionService</code> is
+<strong>not</strong> part of <code>app.services</code> — it needs no adapter (no database, no LLM), so
+it doesn't participate in the <code>build_application()</code> / <code>Services</code> composition
+described in <a href="../../architecture/">Architecture</a>. It's constructed directly
+where it's registered, the same way <code>KnowledgeCatalogue</code> is:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.services.semantic_projection</span><span class="w"> </span><span class="kn">import</span> <span class="n">SemanticProjectionService</span>
+
+<span class="n">service</span> <span class="o">=</span> <span class="n">SemanticProjectionService</span><span class="p">()</span>
+</code></pre></div>
+<p>Compiling the catalogue happens once, at construction — an invalid definition
+(a <code>derivation_rules</code> entry pointing at a slot the profile doesn't allow, for
+example) raises immediately rather than failing on the first request that
+happens to hit it. <code>create_server()</code> builds one instance at startup when
+<code>groundworkers.semantic_projection.enabled = true</code>; see
+<a href="../../usage/configuration/#semantic_projection">Configuration</a>.</p>
+<p>Pass a custom <code>definitions</code> iterable to test against a smaller catalogue, or
+to run a project-specific set instead of the built-in one:</p>
+<div class="highlight"><pre><span></span><code><span class="n">service</span> <span class="o">=</span> <span class="n">SemanticProjectionService</span><span class="p">(</span><span class="n">definitions</span><span class="o">=</span><span class="n">my_definitions</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="the-built-in-catalogue">The built-in catalogue</h2>
+<p>Six definitions ship today:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Pattern</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>condition_with_status_from_secondary_field</code></td>
+<td>A diagnosis paired with a separately-collected role/status field (Primary/Contributing/Non-contributing). Populates <code>condition_status_concept_id</code> from the role field's raw code; the Non-contributing code drops the row.</td>
+</tr>
+<tr>
+<td><code>family_history_condition</code></td>
+<td>A value-carried family-history observation. The fixed OMOP entity concept <code>4167217</code> ("Family history of clinical finding") carries the family-history meaning; the grounded plain condition lands in <code>value_as_concept_id</code>. Known non-emitting family-history codes suppress the row.</td>
+</tr>
+<tr>
+<td><code>family_member_history_bundle</code></td>
+<td>A multi-row family-member bundle. One relative emits several coordinated observation rows: relationship label, birth year, age-at-death, age-at-onset, method-of-evaluation text, primary diagnosis, and secondary diagnosis, with row-level links showing that they belong to the same relative.</td>
+</tr>
+<tr>
+<td><code>criteria_gate_condition</code></td>
+<td>A Yes/No field phrased "meets criteria for X". The positive answer keeps the row; the negative answer drops it — a negative answer carries no positive clinical content of its own.</td>
+</tr>
+<tr>
+<td><code>yes_no_observation</code></td>
+<td>An ordinary Yes/No observation where both answers remain informative. Raw <code>1</code>/<code>0</code> map to OMOP answer concepts in <code>value_as_concept_id</code>; unlike a gate, <code>0</code> still writes a row.</td>
+</tr>
+<tr>
+<td><code>measurement_numeric_with_unit_from_context</code></td>
+<td>A quantitative measurement with a literal numeric value plus a derived OMOP unit concept. Shows how projection can bind both direct source values and code-mapped slots.</td>
+</tr>
+</tbody>
+</table>
+<p>These definitions are deliberately illustrative as well as useful. The first
+four cover the most common "why projection exists at all" cases: sibling-field
+modifiers, value-carried family-history shapes, multi-row relative bundles,
+and deterministic row suppression. The latter two show that projection is also
+a good fit for ordinary coded observations and quantitative measurements once
+callers already know the row shape they want.</p>
+<h2 id="method">Method</h2>
+<h3 id="project"><code>project</code></h3>
+<div class="highlight"><pre><span></span><code><span class="n">service</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">SemanticProjectionRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SemanticProjectionResult</span>
+</code></pre></div>
+<p><code>SemanticProjectionRequest</code> fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>grounded_concept_id</code></td>
+<td><code>int</code></td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>grounded_domain</code></td>
+<td><code>str</code></td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>grounded_concept_name</code></td>
+<td><code>str \| null</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>source_text</code></td>
+<td><code>str \| null</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>source_item_id</code></td>
+<td><code>str \| null</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>definition_hint</code></td>
+<td><code>str \| null</code></td>
+<td>see below</td>
+</tr>
+<tr>
+<td><code>context</code></td>
+<td><code>dict</code></td>
+<td>see below</td>
+</tr>
+</tbody>
+</table>
+<p><code>context</code> carries whatever the selected definition needs beyond the grounded
+concept itself:</p>
+<ul>
+<li><code>raw_value</code> — the grounded field's own raw source code. Consulted by a
+  <code>SpecialValuePolicy</code> (e.g. <code>criteria_gate_condition</code>'s Yes/No check) or a
+  <code>DerivationRule</code> (e.g. <code>yes_no_observation</code>'s Yes/No answer mapping).</li>
+<li><code>raw_source_fields</code> — a mapping of well-known slot name to raw value, for
+  definitions that resolve a row's slot from a <em>different</em> source field via a
+  <code>DerivationRule</code> (e.g. <code>condition_with_status_from_secondary_field</code>'s role
+  field). The key is whatever the definition documents in its <code>notes</code> —
+  <code>role_field</code> today — not the field's actual name in your source data.</li>
+<li><code>numeric_value</code> — a literal numeric reading for quantitative projections such
+  as <code>measurement_numeric_with_unit_from_context</code>.</li>
+</ul>
+<h3 id="selecting-a-definition">Selecting a definition</h3>
+<p>Pass <code>definition_hint</code> to select a definition explicitly. Omit it and the
+service falls back to matching on <code>grounded_domain</code> alone — but only resolves
+when exactly one registered definition applies to that domain. With both
+built-in <code>Condition</code> definitions, that fallback is still ambiguous for
+<code>grounded_domain="Condition"</code>; <code>definition_hint</code> remains required there in
+practice. Other domains now have one shipped definition each (<code>Observation</code>
+and <code>Measurement</code>), so domain-only matching can resolve those unambiguously.
+This is deliberate: the service reports <code>status="no_match"</code> with an audit note
+rather than guessing.</p>
+<h3 id="result">Result</h3>
+<p><code>SemanticProjectionResult.status</code> is one of:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ok</code></td>
+<td>A definition matched and every row is fully bound.</td>
+</tr>
+<tr>
+<td><code>partial</code></td>
+<td>A definition matched but some row still needs more context (<code>unresolved_fields</code>).</td>
+</tr>
+<tr>
+<td><code>suppressed</code></td>
+<td>A definition matched but every row it would have produced was dropped by a <code>DerivationRule</code> or <code>SpecialValuePolicy</code> (<code>suppressed_rows</code>) — nothing should be written.</td>
+</tr>
+<tr>
+<td><code>no_match</code></td>
+<td>No definition matched, including an ambiguous domain match with no <code>definition_hint</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Suppressed rows are never silently absent from <code>rows</code> — they're always listed
+in <code>suppressed_rows</code> with the reason, the source field consulted, and the raw
+code that triggered it. A <code>status="suppressed"</code> result carries exactly as much
+information as an <code>ok</code> one; it just says the deterministic answer is "write
+nothing here."</p>
+<h2 id="typical-inputoutput">Typical input/output</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.services.semantic_projection</span><span class="w"> </span><span class="kn">import</span> <span class="n">SemanticProjectionRequest</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">service</span><span class="o">.</span><span class="n">project</span><span class="p">(</span>
+    <span class="n">SemanticProjectionRequest</span><span class="p">(</span>
+        <span class="n">grounded_concept_id</span><span class="o">=</span><span class="mi">4152280</span><span class="p">,</span>
+        <span class="n">grounded_domain</span><span class="o">=</span><span class="s2">"Condition"</span><span class="p">,</span>
+        <span class="n">definition_hint</span><span class="o">=</span><span class="s2">"condition_with_status_from_secondary_field"</span><span class="p">,</span>
+        <span class="n">context</span><span class="o">=</span><span class="p">{</span><span class="s2">"raw_source_fields"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"role_field"</span><span class="p">:</span> <span class="s2">"1"</span><span class="p">}},</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="n">SemanticProjectionResult</span><span class="p">(</span>
+    <span class="n">definition_name</span><span class="o">=</span><span class="s2">"condition_with_status_from_secondary_field"</span><span class="p">,</span>
+    <span class="n">role</span><span class="o">=</span><span class="s2">"condition_modifier"</span><span class="p">,</span>
+    <span class="n">status</span><span class="o">=</span><span class="s2">"ok"</span><span class="p">,</span>
+    <span class="n">rows</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">ProjectedRowModel</span><span class="p">(</span>
+            <span class="n">row_id</span><span class="o">=</span><span class="s2">"condition"</span><span class="p">,</span>
+            <span class="n">table</span><span class="o">=</span><span class="s2">"condition_occurrence"</span><span class="p">,</span>
+            <span class="n">fields</span><span class="o">=</span><span class="p">{</span><span class="s2">"condition_concept_id"</span><span class="p">:</span> <span class="mi">4152280</span><span class="p">,</span> <span class="s2">"condition_status_concept_id"</span><span class="p">:</span> <span class="mi">32902</span><span class="p">},</span>
+        <span class="p">)</span>
+    <span class="p">],</span>
+    <span class="o">...</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Role field code <code>"3"</code> (Non-contributing) instead of <code>"1"</code> produces
+<code>status="suppressed"</code>, <code>rows=[]</code>, and one <code>suppressed_rows</code> entry.</p>
+<h2 id="when-to-use-it">When to use it</h2>
+<p>Use <code>SemanticProjectionService</code> when:</p>
+<ul>
+<li>a single grounded concept needs a second CDM column populated from a
+  sibling source field's raw value</li>
+<li>a fixed entity concept should carry context like family history while the
+  grounded concept belongs in a value slot</li>
+<li>a source item should sometimes produce no CDM record at all, and that
+  decision needs to be deterministic and auditable rather than implicit in
+  caller code</li>
+<li>a quantitative projection needs both a direct numeric literal and a mapped
+  OMOP unit concept</li>
+<li>you want the same request to always produce the same result, with no LLM
+  call in the path</li>
+</ul>
+<p>Do not use it for:</p>
+<ul>
+<li>ordinary single-concept grounding — that's <code>ConceptGroundingService</code> /
+  <code>concept_ground</code></li>
+<li>deciding <em>which</em> definition applies from free text or ambiguous context —
+  that inference doesn't exist yet (see the implementation-plan notes in
+  agent-stack's <code>SEMANTIC_INTEGRATION</code> design docs); today's callers must
+  already know to pass <code>definition_hint</code></li>
+</ul>
+<h2 id="relationship-to-downstream-mapping">Relationship to downstream mapping</h2>
+<div class="mermaid">flowchart TD
+    G[grounded concept + domain] --&gt; S[SemanticProjectionService.project]
+    C[context: raw_value / raw_source_fields] --&gt; S
+    S --&gt;|ok / partial| R[CDM rows]
+    S --&gt;|suppressed| N[nothing written, reason recorded]
+    S --&gt;|no_match| U[caller falls back to plain grounding]
+</div>
+<h2 id="interactive-exploration">Interactive exploration</h2>
+<p>Launch the real catalogue through the worker-backed TUI with:</p>
+<div class="highlight"><pre><span></span><code>groundworkers<span class="w"> </span>--tui
+</code></pre></div>
+<p>This opens the same built-in definitions the service executes for
+<code>semantic_project</code>, but in an interactive terminal flow where you can browse the
+catalogue, start from definition-specific example payloads, run them, and
+inspect the result without standing up an MCP client first.</p>
+<h2 id="error-handling">Error handling</h2>
+<ul>
+<li>Raises <code>ValueError</code> at construction time for an invalid definition (bad
+  <code>derivation_rules</code>/<code>special_value_policy</code> reference, duplicate row id,
+  dangling link rule) — this is a startup-time failure, not a per-request one.</li>
+<li><code>project()</code> itself does not raise for ordinary "nothing matched" outcomes —
+  those are <code>status="no_match"</code> results, not exceptions.</li>
+<li>A <code>SpecialValuePolicy</code> configured with <code>suppression_mode="fail"</code> raises
+  <code>ValueError</code> from <code>project()</code> if its trigger value actually occurs — that
+  mode exists for values that should never reach projection.</li>
+<li><code>keep_as_value</code> and <code>keep_as_modifier</code> suppression modes raise
+  <code>NotImplementedError</code> if triggered; no shipped definition uses them yet.</li>
+</ul>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "navigation.path", "navigation.top", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({});</script></body>
+</html>
