@@ -43,3 +43,11 @@ class GroundworkersPage(Widget):
 
     def row_selected(self, row_key: str, context: PageContext) -> None:
         return None
+
+    def selection_changed(
+        self,
+        row_key: str,
+        selected_keys: tuple[str, ...],
+        context: PageContext,
+    ) -> None:
+        return None

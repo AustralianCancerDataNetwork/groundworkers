@@ -209,11 +209,18 @@ def _incomplete_issues(stack: StackConfig) -> tuple[SetupIssue, ...]:
     try:
         backend = BackendType(embedding_config.backend)
     except ValueError:
+        if str(embedding_config.backend).lower() == "faiss":
+            message = (
+                "FAISS is a cache accelerator, not an embedding backend. "
+                "Set backend to 'sqlitevec' or 'pgvector' and configure faiss_cache_dir instead."
+            )
+        else:
+            message = "The embedding backend is not supported by this installation."
         issues.append(
             SetupIssue(
                 code="embedding_backend_invalid",
                 field="tools.omop_emb.extra.backend",
-                message="The embedding backend is not supported by this installation.",
+                message=message,
             )
         )
         return tuple(issues)

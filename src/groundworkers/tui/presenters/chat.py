@@ -9,9 +9,10 @@ from groundskeeping.contracts import (
 )
 
 from groundworkers.application.setup.models import ChatConfiguration
+from groundworkers.tui.presenters.base import SetupPresenterBase
 
 
-class ChatPresenter:
+class ChatPresenter(SetupPresenterBase):
     def status(self, configuration: ChatConfiguration | None) -> SemanticStatus:
         return SemanticStatus.WARNING
 

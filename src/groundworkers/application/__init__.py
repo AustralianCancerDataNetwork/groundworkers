@@ -1,1 +1,1 @@
-"""Application-layer services that sit outside MCP and REST transports."""
+"""Application-layer administration services that sit outside MCP and REST transports."""

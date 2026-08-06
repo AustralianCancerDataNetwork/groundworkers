@@ -9,9 +9,10 @@ from groundskeeping.contracts import (
 )
 
 from groundworkers.application.setup.models import GraphConfiguration
+from groundworkers.tui.presenters.base import SetupPresenterBase
 
 
-class GraphPresenter:
+class GraphPresenter(SetupPresenterBase):
     def status(
         self, *, database_ready: bool, configuration: GraphConfiguration | None
     ) -> SemanticStatus:

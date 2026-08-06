@@ -13,7 +13,7 @@ def build_groundworkers_tui_spec(
     """Build the Groundworkers console with setup as its first registered page."""
 
     from groundskeeping.app import OperatorAppSpec
-    from groundskeeping.contracts import PageRegistration
+    from groundskeeping.contracts import PageRegistration, WorkbenchLabels
 
     from groundworkers.tui.pages import SetupPage
     from groundworkers.tui.presenters.chat import ChatPresenter
@@ -42,6 +42,7 @@ def build_groundworkers_tui_spec(
         subtitle="setup and operations",
         default_page=SETUP_ROUTE.key,
         pages=(PageRegistration(route=SETUP_ROUTE, factory=setup_factory),),
+        workbench_labels=WorkbenchLabels(result_panel="Setup"),
         metadata={
             "config_path": str(session.configuration.path),
             "profile": session.configuration.profile,
@@ -62,4 +63,8 @@ def run_groundworkers_tui(
     ).run()
 
 
-__all__ = ["SetupSession", "build_groundworkers_tui_spec", "run_groundworkers_tui"]
+__all__ = [
+    "SetupSession",
+    "build_groundworkers_tui_spec",
+    "run_groundworkers_tui",
+]

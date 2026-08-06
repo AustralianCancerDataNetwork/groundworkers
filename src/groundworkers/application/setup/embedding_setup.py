@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -93,7 +94,7 @@ class OpenAICompatibleProviderAdapter:
 def load_embedding_configuration(
     snapshot: ConfigurationSnapshot,
 ) -> EmbeddingConfiguration | None:
-    if not snapshot.usable or snapshot.stack is None:
+    if snapshot.stack is None:
         return None
     stack = snapshot.stack
     configured = "omop_emb" in stack.tools or bool(
@@ -107,12 +108,26 @@ def load_embedding_configuration(
         config = OmopEmbConfig.from_stack(stack)
     except (KeyError, TypeError, ValueError):
         return None
+    config_base = snapshot.path.parent if snapshot.path is not None else None
+    sqlite_path_exists = (
+        _path_exists(config.sqlite_path, base=config_base)
+        if config.sqlite_path is not None
+        else None
+    )
+    faiss_cache_dir_exists = (
+        _path_exists(config.faiss_cache_dir, base=config_base)
+        if config.faiss_cache_dir is not None
+        else None
+    )
     return EmbeddingConfiguration(
         backend=config.backend,
         provider_kind=_enum_value(config.provider_type),
         model_name=config.embedding_model,
         api_base=safe_api_base(config.api_base),
         sqlite_path=config.sqlite_path,
+        sqlite_path_exists=sqlite_path_exists,
+        faiss_cache_dir=config.faiss_cache_dir,
+        faiss_cache_dir_exists=faiss_cache_dir_exists,
     )
 
 
@@ -312,6 +327,15 @@ def _diagnostic(
 
 def _enum_value(value: object) -> str:
     return str(getattr(value, "value", value))
+
+
+def _path_exists(value: str, *, base: Path | None) -> bool:
+    if value == ":memory:":
+        return True
+    path = Path(value).expanduser()
+    if not path.is_absolute() and base is not None:
+        path = base / path
+    return path.exists()
 
 
 def safe_api_base(api_base: str) -> str:

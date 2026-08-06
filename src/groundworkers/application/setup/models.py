@@ -72,6 +72,10 @@ class DatabaseTarget:
     cdm_schema: str
     vocabulary_schema: str
     connection_url: str = field(repr=False)
+    role: str = "cdm"
+    expected_embedding_model_name: str | None = None
+    embedding_safe_url: str | None = None
+    embedding_connection_url: str | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         return (
@@ -102,6 +106,19 @@ class ClassifiedFailure:
     next_action: str
 
 
+class DiagnosticSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class ResourceDiagnostic:
+    code: str
+    message: str
+    severity: DiagnosticSeverity = DiagnosticSeverity.INFO
+
+
 @dataclass(frozen=True)
 class ConnectionResult:
     target_key: str
@@ -109,6 +126,14 @@ class ConnectionResult:
     latency_ms: float | None
     safe_url: str
     failure: ClassifiedFailure | None = None
+    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+
+    @property
+    def has_warnings(self) -> bool:
+        return any(
+            diagnostic.severity is DiagnosticSeverity.WARNING
+            for diagnostic in self.diagnostics
+        )
 
 
 @dataclass(frozen=True)
@@ -132,6 +157,49 @@ class LlmProviderConfiguration:
 
 
 @dataclass(frozen=True)
+class LlmModelMetadata:
+    name: str
+    size_bytes: int | None = None
+    modified_at: str | None = None
+    digest: str | None = None
+    parameter_size: str | None = None
+    quantization_level: str | None = None
+    family: str | None = None
+    format: str | None = None
+
+
+@dataclass(frozen=True)
+class LlmProviderCheckResult:
+    provider: str
+    api_base: str | None
+    default_model_name: str | None
+    reachable: bool
+    model_available: bool | None = None
+    inventory: tuple[str, ...] | None = None
+    model_metadata: tuple[LlmModelMetadata, ...] = ()
+    failure: ClassifiedFailure | None = None
+    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+
+    @property
+    def has_warnings(self) -> bool:
+        return any(
+            diagnostic.severity is DiagnosticSeverity.WARNING
+            for diagnostic in self.diagnostics
+        )
+
+    @property
+    def has_errors(self) -> bool:
+        return any(
+            diagnostic.severity is DiagnosticSeverity.ERROR
+            for diagnostic in self.diagnostics
+        )
+
+    @property
+    def ready(self) -> bool:
+        return self.reachable and self.model_available is True and not self.has_errors
+
+
+@dataclass(frozen=True)
 class ChatConfiguration:
     provider: str
     model_name: str
@@ -151,6 +219,9 @@ class EmbeddingConfiguration:
     model_name: str
     api_base: str
     sqlite_path: str | None = None
+    sqlite_path_exists: bool | None = None
+    faiss_cache_dir: str | None = None
+    faiss_cache_dir_exists: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -199,12 +270,6 @@ class ProviderSnapshot:
         if self.inventory is None:
             return True if self.encoding_succeeded else None
         return self.configured_model in self.inventory
-
-
-class DiagnosticSeverity(StrEnum):
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
 
 
 @dataclass(frozen=True)
@@ -282,3 +347,86 @@ class CoverageSnapshot:
     pending_total: int = 0
     blocker: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EmbeddingIndexSnapshot:
+    model_name: str
+    registered: bool
+    storage_identifier: str | None = None
+    registry_index_type: str | None = None
+    registry_metric: str | None = None
+    physical_indexes: tuple[str, ...] = ()
+    drop_sql: tuple[str, ...] = ()
+
+    @property
+    def has_physical_index(self) -> bool:
+        return bool(self.physical_indexes)
+
+    @property
+    def display(self) -> str:
+        if not self.registered:
+            return "Unregistered"
+        index_type = (self.registry_index_type or "unknown").upper()
+        metric = f" {self.registry_metric}" if self.registry_metric else ""
+        if self.registry_index_type == "flat" and self.has_physical_index:
+            return "Registry FLAT; physical index present"
+        if self.registry_index_type == "flat":
+            return "FLAT / exact scan"
+        if self.registry_index_type and self.has_physical_index:
+            return f"{index_type}{metric}"
+        return f"{index_type}{metric} missing"
+
+    @property
+    def insert_warning(self) -> str | None:
+        if not self.has_physical_index:
+            return None
+        return (
+            "Adding embeddings over an existing physical vector index will be slow. "
+            "Drop the index before a large run, then rebuild it afterwards."
+        )
+
+
+@dataclass(frozen=True)
+class EmbeddingCoverageReport:
+    configuration: EmbeddingConfiguration
+    coverage: CoverageSnapshot
+    index: EmbeddingIndexSnapshot
+
+    @property
+    def incomplete_vocabularies(self) -> tuple[str, ...]:
+        return tuple(row.vocabulary for row in self.coverage.rows if row.pending > 0)
+
+
+@dataclass(frozen=True)
+class EmbeddingPopulationRequest:
+    standard_only: bool
+    vocabulary_mode: str
+    vocabularies: tuple[str, ...]
+    limit: int | None
+    batch_size: int
+
+
+@dataclass(frozen=True)
+class EmbeddingPopulationCommand:
+    argv: tuple[str, ...]
+    environment: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def display(self) -> str:
+        parts = [f"{key}={_shell_quote(value)}" for key, value in self.environment]
+        parts.extend(_shell_quote(part) for part in self.argv)
+        return " ".join(parts)
+
+
+@dataclass(frozen=True)
+class EmbeddingPopulationLaunch:
+    command: EmbeddingPopulationCommand
+    pid: int
+    log_path: Path
+
+
+def _shell_quote(value: str) -> str:
+    if value and all(ch.isalnum() or ch in "-_./:=+" for ch in value):
+        return value
+    return "'" + value.replace("'", "'\"'\"'") + "'"

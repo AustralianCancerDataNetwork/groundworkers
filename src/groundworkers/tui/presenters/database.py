@@ -14,14 +14,21 @@ from groundskeeping.contracts import (
 )
 
 from groundworkers.application.setup.models import (
+    ClassifiedFailure,
     ConfigurationSnapshot,
     ConfigurationState,
     ConnectionResult,
     DatabaseTarget,
+    DiagnosticSeverity,
+)
+from groundworkers.tui.presenters.base import (
+    DetailRows,
+    SetupPresenterBase,
+    detail_row,
 )
 
 
-class DatabasePresenter:
+class DatabasePresenter(SetupPresenterBase):
     def status(
         self,
         snapshot: ConfigurationSnapshot,
@@ -39,6 +46,8 @@ class DatabasePresenter:
         snapshot: ConfigurationSnapshot,
         targets: Sequence[DatabaseTarget],
         results: Sequence[ConnectionResult],
+        *,
+        selected_target_key: str | None = None,
     ) -> SurfaceView:
         if snapshot.state is ConfigurationState.MISSING:
             return EmptyView(
@@ -48,7 +57,10 @@ class DatabasePresenter:
                     "schemas before continuing."
                 ),
                 status=SemanticStatus.WARNING,
-                actions=(ViewAction("database.refresh", "Refresh"),),
+                actions=(
+                    ViewAction("database.configure", "Configure", variant="primary"),
+                    ViewAction("database.refresh", "Refresh"),
+                ),
             )
         if snapshot.state in {
             ConfigurationState.MALFORMED,
@@ -70,7 +82,10 @@ class DatabasePresenter:
                 ),
                 status=SemanticStatus.ERROR,
                 message=str(snapshot.path),
-                actions=(ViewAction("database.refresh", "Refresh"),),
+                actions=(
+                    ViewAction("database.configure", "Configure", variant="primary"),
+                    ViewAction("database.refresh", "Refresh"),
+                ),
             )
 
         result_by_key = {item.target_key: item for item in results}
@@ -85,14 +100,7 @@ class DatabasePresenter:
                 f"{snapshot.path}  |  profile {snapshot.profile or 'default'}  |  "
                 f"{snapshot.ownership.mode.value}"
             ),
-            actions=(
-                ViewAction(
-                    "database.test_connections",
-                    "Test connections",
-                    variant="primary",
-                ),
-                ViewAction("database.refresh", "Refresh"),
-            ),
+            actions=_database_actions(selected_target_key),
         )
 
     def loading(self) -> LoadingView:
@@ -118,21 +126,15 @@ def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> Tabl
     if result is None:
         status = "Not tested"
         latency = ""
-        detail = {"safe_url": target.safe_url}
+        detail = (detail_row("unknown", f"Connection not tested: {target.safe_url}"),)
     elif result.connected:
-        status = "Connected"
+        status = "Warnings" if result.has_warnings else "Connected"
         latency = f"{result.latency_ms:.1f} ms" if result.latency_ms is not None else ""
-        detail = {"safe_url": result.safe_url}
+        detail = _success_detail(result)
     else:
-        status = "Failed"
+        status = _failure_status(result.failure)
         latency = ""
-        detail = {
-            "safe_url": result.safe_url,
-            "cause": result.failure.detail if result.failure else "Connection failed.",
-            "next_action": result.failure.next_action
-            if result.failure
-            else "Review logs.",
-        }
+        detail = _failure_detail(result)
     return TableRow(
         key=target.key,
         cells=(
@@ -143,6 +145,22 @@ def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> Tabl
             latency,
         ),
         detail=detail,
+    )
+
+
+def _database_actions(selected_target_key: str | None) -> tuple[ViewAction, ...]:
+    return (
+        ViewAction(
+            "database.configure",
+            "Configure",
+            variant="primary",
+            disabled=selected_target_key == "database.groundworkers",
+        ),
+        ViewAction(
+            "database.test_connections",
+            "Test connections",
+        ),
+        ViewAction("database.refresh", "Refresh"),
     )
 
 
@@ -157,8 +175,36 @@ def _configuration_status(snapshot: ConfigurationSnapshot) -> SemanticStatus:
 def _connection_status(results: Sequence[ConnectionResult]) -> SemanticStatus:
     if not results:
         return SemanticStatus.WARNING
-    return (
-        SemanticStatus.OK
-        if all(item.connected for item in results)
-        else SemanticStatus.ERROR
-    )
+    if not all(item.connected for item in results):
+        return SemanticStatus.ERROR
+    if any(item.has_warnings for item in results):
+        return SemanticStatus.WARNING
+    return SemanticStatus.OK
+
+
+def _failure_status(failure: ClassifiedFailure | None) -> str:
+    if failure is None:
+        return "Failed"
+    return failure.kind.value.replace("_", " ").title()
+
+
+def _success_detail(result: ConnectionResult) -> DetailRows:
+    detail = [detail_row("ok", f"Connected: {result.safe_url}")]
+    if not result.diagnostics:
+        detail.append(detail_row("ok", "Read-only connection check succeeded."))
+        return tuple(detail)
+    for index, diagnostic in enumerate(result.diagnostics, start=1):
+        marker = "warn" if diagnostic.severity is DiagnosticSeverity.WARNING else "ok"
+        detail.append(detail_row(marker, diagnostic.message))
+    return tuple(detail)
+
+
+def _failure_detail(result: ConnectionResult) -> DetailRows:
+    detail = [detail_row("fail", f"Connection failed: {result.safe_url}")]
+    if result.failure is None:
+        detail.append(detail_row("fail", "Connection failed."))
+        detail.append(detail_row("unknown", "Review logs."))
+        return tuple(detail)
+    detail.append(detail_row("fail", result.failure.detail))
+    detail.append(detail_row("unknown", result.failure.next_action))
+    return tuple(detail)

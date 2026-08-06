@@ -57,7 +57,7 @@ def load_coverage(
             available=False,
             blocker="Coverage counts could not be loaded from the configured stores.",
         )
-    return calculate_coverage(scope, eligible=eligible, embedded=embedded)
+    return calculate_coverage(scope, eligible=eligible, embedded=embedded) # type: ignore
 
 
 def calculate_coverage(
