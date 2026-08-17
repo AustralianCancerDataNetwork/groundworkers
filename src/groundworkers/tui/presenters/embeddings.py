@@ -95,13 +95,17 @@ def _configuration_view(
             key="embeddings.provider",
             cells=(
                 "Provider",
-                f"{configuration.provider_kind} · {configuration.api_base}",
+                _provider_label(configuration),
                 "Not tested",
             ),
         ),
         TableRow(
             key="embeddings.model",
-            cells=("Model", configuration.model_name, "Not tested"),
+            cells=(
+                "Model",
+                _model_label(configuration),
+                "Not tested" if configuration.embeddings_supported else "Not embedding-capable",
+            ),
         ),
     ]
     if configuration.faiss_cache_dir is not None:
@@ -183,13 +187,19 @@ def _setup_rows_with_coverage(
             key="embeddings.provider",
             cells=(
                 "Provider",
-                f"{report.configuration.provider_kind} · {report.configuration.api_base}",
+                _provider_label(report.configuration),
                 "Configured",
             ),
         ),
         TableRow(
             key="embeddings.model",
-            cells=("Model", report.configuration.model_name, "Configured"),
+            cells=(
+                "Model",
+                _model_label(report.configuration),
+                "Configured"
+                if report.configuration.embeddings_supported
+                else "Not embedding-capable",
+            ),
         ),
         TableRow(
             key="embeddings.index",
@@ -241,14 +251,26 @@ def _store_cells(configuration: EmbeddingConfiguration) -> tuple[str, str, str]:
     if configuration.backend == "sqlitevec":
         return (
             "Store",
-            f"sqlitevec · {configuration.sqlite_path or '(path missing)'}",
-            _path_status(configuration.sqlite_path_exists),
+            (
+                f"{configuration.vector_store_name} · sqlitevec · "
+                f"{configuration.database_path or configuration.database_name}"
+            ),
+            _path_status(configuration.database_path_exists),
         )
     if configuration.backend == "pgvector":
-        return ("Store", "pgvector database resource", "See Database")
-    if configuration.backend == "faiss":
-        return ("Store", "FAISS configured as backend", "Invalid")
-    return ("Store", configuration.backend, "Unsupported")
+        return (
+            "Store",
+            (
+                f"{configuration.vector_store_name} · pgvector · "
+                f"{configuration.database_name}"
+            ),
+            "See Database",
+        )
+    return (
+        "Store",
+        f"{configuration.vector_store_name} · {configuration.backend}",
+        "Unsupported",
+    )
 
 
 def _embedding_status(
@@ -260,7 +282,9 @@ def _embedding_status(
         return SemanticStatus.ERROR
     if configuration.backend == "pgvector" and not database_ready:
         return SemanticStatus.WARNING
-    if configuration.sqlite_path_exists is False:
+    if not configuration.embeddings_supported:
+        return SemanticStatus.ERROR
+    if configuration.database_path_exists is False:
         return SemanticStatus.WARNING
     if configuration.faiss_cache_dir_exists is False:
         return SemanticStatus.WARNING
@@ -272,8 +296,10 @@ def _embedding_message(
     *,
     database_ready: bool,
 ) -> str:
-    if configuration.backend == "faiss":
-        return "FAISS is a cache accelerator; set backend to sqlitevec or pgvector and configure faiss_cache_dir."
+    if configuration.backend not in {"sqlitevec", "pgvector"}:
+        return "Choose a supported vector store backend: sqlitevec or pgvector. FAISS can be configured separately as a query cache."
+    if not configuration.embeddings_supported:
+        return "The selected model is not declared as embedding-capable. Choose an embedding model before population."
     if configuration.backend == "pgvector" and database_ready:
         return "pgvector store metadata is verified on the Database screen."
     if configuration.backend == "sqlitevec":
@@ -287,6 +313,17 @@ def _path_status(exists: bool | None) -> str:
     if exists is False:
         return "Missing"
     return "Not configured"
+
+
+def _provider_label(configuration: EmbeddingConfiguration) -> str:
+    endpoint = configuration.api_base or "provider default"
+    return (
+        f"{configuration.provider_name} ({configuration.provider_kind}) · {endpoint}"
+    )
+
+
+def _model_label(configuration: EmbeddingConfiguration) -> str:
+    return f"{configuration.model_entry_name} · {configuration.model_name}"
 
 
 def _coverage_detail_view(report: EmbeddingCoverageReport) -> TableView | TextView:

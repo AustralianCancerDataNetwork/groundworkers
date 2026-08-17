@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from datetime import UTC, datetime
 import os
-from pathlib import Path
 import shutil
 import subprocess
-from typing import Any
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from pathlib import Path
 
-from oa_configurator import Resolver
-from omop_emb.config import OmopEmbConfig, ProviderType
-from omop_emb.embeddings.embedding_providers import get_provider_from_provider_type
-from sqlalchemy import create_engine, inspect, text
+from oa_configurator import ResolvedVectorStore, Resolver
+from omop_emb import EmbeddingBackend
+from omop_emb.backends import resolve_backend_from_resolved_vector_store
+from omop_llm import canonical_model_name
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
 from groundworkers.application.setup.embedding_coverage import calculate_coverage
@@ -27,10 +27,7 @@ from groundworkers.application.setup.models import (
     EmbeddingPopulationLaunch,
     EmbeddingPopulationRequest,
 )
-from groundworkers.config import (
-    resolve_cdm_resource_name,
-    resolve_embedding_resource_name,
-)
+from groundworkers.config import GroundworkersConfig
 
 DEFAULT_EMBEDDING_BATCH_SIZE = 100
 DEFAULT_EMBEDDING_BACKFILL_LIMIT = 1000
@@ -54,27 +51,39 @@ def load_embedding_coverage_report(
         valid_only=False,
     )
     try:
-        omop_emb = OmopEmbConfig.from_stack(snapshot.stack)
-        cdm_engine, cdm_schema = _cdm_engine_and_schema(snapshot)
-        eligible = _eligible_counts_by_vocabulary(
-            cdm_engine,
-            schema=cdm_schema,
-            standard_only=standard_only,
+        groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
+        if (
+            groundworkers.embedding_model_name is None
+            or groundworkers.vector_store_name is None
+        ):
+            raise ValueError("Embedding model and vector store references are required.")
+        resolver = Resolver(snapshot.stack)
+        resolved_model = resolver.resolve_model(groundworkers.embedding_model_name)
+        vector_store = resolver.resolve_vector_store(
+            groundworkers.vector_store_name
         )
+        backend = resolve_backend_from_resolved_vector_store(vector_store)
+        cdm_engine, cdm_schema = _cdm_engine_and_schema(snapshot)
+        try:
+            eligible = _eligible_counts_by_vocabulary(
+                cdm_engine,
+                schema=cdm_schema,
+                standard_only=standard_only,
+            )
+        finally:
+            cdm_engine.dispose()
         canonical_model = _canonical_model_name(
-            configuration.model_name,
-            provider_kind=configuration.provider_kind,
+            resolved_model.model,
+            provider_kind=resolved_model.provider.provider,
         )
         index = _embedding_index_snapshot(
-            snapshot,
-            configuration=configuration,
-            omop_emb=omop_emb,
+            backend=backend,
+            vector_store=vector_store,
             canonical_model=canonical_model,
         )
         embedded = (
             _embedded_counts_by_vocabulary(
-                snapshot,
-                omop_emb=omop_emb,
+                vector_store=vector_store,
                 storage_identifier=index.storage_identifier,
                 standard_only=standard_only,
             )
@@ -96,11 +105,14 @@ def load_embedding_coverage_report(
                 for key, value in embedded.items()
             },
         )
-    except Exception as exc:  # noqa: BLE001 - rendered as setup state
+    except Exception as exc:  # noqa: BLE001 - rendered as secret-safe setup state
         coverage = CoverageSnapshot(
             scope=scope,
             available=False,
-            blocker=f"Embedding coverage could not be loaded: {exc}",
+            blocker=(
+                "Embedding coverage could not be loaded because setup failed with "
+                f"{type(exc).__name__}."
+            ),
         )
         index = EmbeddingIndexSnapshot(
             model_name=configuration.model_name,
@@ -118,7 +130,6 @@ def build_embedding_population_command(
     request: EmbeddingPopulationRequest,
     *,
     config_path: str | Path | None = None,
-    profile: str | None = None,
 ) -> EmbeddingPopulationCommand:
     """Build the omop-emb command used to populate missing concept embeddings."""
 
@@ -127,8 +138,8 @@ def build_embedding_population_command(
         executable,
         "embeddings",
         "add-embeddings",
-        "--model",
-        configuration.model_name,
+        "--model-name",
+        configuration.model_entry_name,
         "--batch-size",
         str(request.batch_size),
     ]
@@ -141,8 +152,6 @@ def build_embedding_population_command(
     environment: list[tuple[str, str]] = []
     if config_path is not None:
         environment.append(("OA_CONFIG_PATH", str(Path(config_path).expanduser())))
-    if profile is not None:
-        environment.append(("OA_ACTIVE_PROFILE", profile))
     return EmbeddingPopulationCommand(
         argv=tuple(argv),
         environment=tuple(environment),
@@ -162,7 +171,7 @@ def launch_embedding_population(
     env = os.environ.copy()
     env.update(dict(command.environment))
     with log_path.open("ab") as log_file:
-        process = subprocess.Popen(  # noqa: S603 - argv is generated, not shell text
+        process = subprocess.Popen(
             command.argv,
             stdout=log_file,
             stderr=subprocess.STDOUT,
@@ -179,31 +188,15 @@ def launch_embedding_population(
 def _cdm_engine_and_schema(snapshot: ConfigurationSnapshot) -> tuple[Engine, str]:
     assert snapshot.stack is not None
     resolver = Resolver(snapshot.stack)
-    resource = resolver.resolve_resource(resolve_cdm_resource_name(snapshot.stack))
-    return create_engine(resource.database.url), resource.cdm_schema
+    groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
+    database = resolver.resolve_database(groundworkers.cdm_db)
+    return database.create_engine(), database.schema_name or "main"
 
 
 def _embedding_engine(
-    snapshot: ConfigurationSnapshot,
-    *,
-    omop_emb: OmopEmbConfig,
+    vector_store: ResolvedVectorStore,
 ) -> Engine:
-    assert snapshot.stack is not None
-    if omop_emb.backend == "pgvector":
-        resolver = Resolver(snapshot.stack)
-        resource = resolver.resolve_resource(
-            resolve_embedding_resource_name(snapshot.stack)
-        )
-        return create_engine(resource.database.url)
-    if omop_emb.backend == "sqlitevec":
-        from omop_emb.backends.sqlitevec.sqlitevec_backend import (
-            create_sqlitevec_engine,
-        )
-
-        if omop_emb.sqlite_path is None:
-            raise ValueError("sqlitevec backend is missing sqlite_path.")
-        return create_sqlitevec_engine(_resolved_path(snapshot, omop_emb.sqlite_path))
-    raise ValueError(f"Unsupported embedding backend: {omop_emb.backend}")
+    return vector_store.database.create_engine()
 
 
 def _eligible_counts_by_vocabulary(
@@ -226,16 +219,19 @@ def _eligible_counts_by_vocabulary(
 
 
 def _embedded_counts_by_vocabulary(
-    snapshot: ConfigurationSnapshot,
     *,
-    omop_emb: OmopEmbConfig,
+    vector_store: ResolvedVectorStore,
     storage_identifier: str | None,
     standard_only: bool,
 ) -> Mapping[str, int]:
     if storage_identifier is None:
         return {}
-    engine = _embedding_engine(snapshot, omop_emb=omop_emb)
-    table = _quote_identifier(engine, storage_identifier)
+    engine = _embedding_engine(vector_store)
+    table = _qualified_name(
+        engine,
+        vector_store.database.schema_name,
+        storage_identifier,
+    )
     where = "WHERE is_standard = true" if standard_only else ""
     if engine.dialect.name == "sqlite" and standard_only:
         where = "WHERE is_standard = 1"
@@ -246,67 +242,59 @@ def _embedded_counts_by_vocabulary(
         "GROUP BY vocabulary_id "
         "ORDER BY vocabulary_id"
     )
-    with engine.connect() as connection:
-        return {str(row.vocabulary_id): int(row.n) for row in connection.execute(query)}
+    try:
+        with engine.connect() as connection:
+            return {
+                str(row.vocabulary_id): int(row.n)
+                for row in connection.execute(query)
+            }
+    finally:
+        engine.dispose()
 
 
 def _embedding_index_snapshot(
-    snapshot: ConfigurationSnapshot,
     *,
-    configuration: EmbeddingConfiguration,
-    omop_emb: OmopEmbConfig,
+    backend: EmbeddingBackend,
+    vector_store: ResolvedVectorStore,
     canonical_model: str,
 ) -> EmbeddingIndexSnapshot:
-    engine = _embedding_engine(snapshot, omop_emb=omop_emb)
-    record = _registered_model(
-        engine, backend=omop_emb.backend, model_name=canonical_model
-    )
+    record = backend.get_registered_model(model_name=canonical_model)
     if record is None:
         return EmbeddingIndexSnapshot(model_name=canonical_model, registered=False)
-    physical_indexes = _physical_vector_indexes(
-        engine,
-        table_name=record.storage_identifier,
-    )
-    return EmbeddingIndexSnapshot(
-        model_name=canonical_model,
-        registered=True,
-        storage_identifier=record.storage_identifier,
-        registry_index_type=_enum_value(record.index_type),
-        registry_metric=_enum_value(record.metric_type),
-        physical_indexes=physical_indexes,
-        drop_sql=tuple(_drop_index_sql(engine, name) for name in physical_indexes),
-    )
-
-
-def _registered_model(engine: Engine, *, backend: str, model_name: str) -> Any | None:
-    if backend == "pgvector":
-        from omop_emb.backends.pgvector.pg_backend import PGVectorEmbeddingBackend
-
-        return PGVectorEmbeddingBackend(engine).get_registered_model(
-            model_name=model_name
+    engine = _embedding_engine(vector_store)
+    try:
+        physical_indexes = _physical_vector_indexes(
+            engine,
+            table_name=record.storage_identifier,
+            schema=vector_store.database.schema_name,
         )
-    if backend == "sqlitevec":
-        from omop_emb.backends.sqlitevec.sqlitevec_backend import (
-            SQLiteVecEmbeddingBackend,
+        return EmbeddingIndexSnapshot(
+            model_name=canonical_model,
+            registered=True,
+            storage_identifier=record.storage_identifier,
+            registry_index_type=_enum_value(record.index_type),
+            registry_metric=_enum_value(record.metric_type),
+            physical_indexes=physical_indexes,
+            drop_sql=tuple(
+                _drop_index_sql(engine, name) for name in physical_indexes
+            ),
         )
-
-        return SQLiteVecEmbeddingBackend(engine).get_registered_model(
-            model_name=model_name
-        )
-    return None
+    finally:
+        engine.dispose()
 
 
 def _physical_vector_indexes(
     engine: Engine,
     *,
     table_name: str,
+    schema: str | None,
 ) -> tuple[str, ...]:
     if engine.dialect.name != "postgresql":
         return ()
     expected_prefix = f"idx_{table_name}_"
     return tuple(
         str(item["name"])
-        for item in inspect(engine).get_indexes(table_name)
+        for item in inspect(engine).get_indexes(table_name, schema=schema)
         if str(item["name"]).startswith(expected_prefix)
     )
 
@@ -326,15 +314,7 @@ def _quote_identifier(engine: Engine, name: str) -> str:
 
 
 def _canonical_model_name(model_name: str, *, provider_kind: str) -> str:
-    provider = get_provider_from_provider_type(ProviderType(provider_kind))
-    return provider.canonical_model_name(model_name)
-
-
-def _resolved_path(snapshot: ConfigurationSnapshot, value: str) -> str:
-    path = Path(value).expanduser()
-    if path.is_absolute() or snapshot.path is None:
-        return str(path)
-    return str(snapshot.path.parent / path)
+    return canonical_model_name(provider_kind, model_name)
 
 
 def _enum_value(value: object) -> str | None:

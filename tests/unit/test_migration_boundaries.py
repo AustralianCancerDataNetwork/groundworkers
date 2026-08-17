@@ -12,29 +12,16 @@ THIS_FILE = Path(__file__).resolve()
 LEGACY_API_DEBT: dict[str, dict[str, int]] = {
     "ResourceConfig": {},
     "ToolConfig": {},
-    "EmbeddingClient": {
-        "src/groundworkers/application/setup/embedding_setup.py": 2,
-    },
-    "ProviderType": {
-        "src/groundworkers/application/setup/embedding_population.py": 2,
-        "src/groundworkers/application/setup/embedding_setup.py": 5,
-        "tests/unit/test_setup_embeddings.py": 2,
-    },
-    "omop_emb.embeddings.embedding_client": {
-        "src/groundworkers/application/setup/embedding_setup.py": 1,
-    },
-    "omop_emb.embeddings.embedding_providers": {
-        "src/groundworkers/application/setup/embedding_population.py": 1,
-    },
+    "EmbeddingClient": {},
+    "ProviderType": {},
+    "omop_emb.embeddings.embedding_client": {},
+    "omop_emb.embeddings.embedding_providers": {},
 }
 
 LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
     "resources section": (
         re.compile(r"\[resources\."),
-        {
-            "tests/unit/test_setup_embeddings.py": 4,
-            "tests/unit/test_tui_app.py": 2,
-        },
+        {},
     ),
     "resources argument": (
         re.compile(r"\bresources\s*="),
@@ -62,10 +49,7 @@ LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
     ),
     "tool extra section": (
         re.compile(r"\[(?:profiles\.[^]]+\.)?tools\.[^]]+\.extra"),
-        {
-            "tests/unit/test_setup_embeddings.py": 3,
-            "tests/unit/test_tui_app.py": 2,
-        },
+        {},
     ),
 }
 

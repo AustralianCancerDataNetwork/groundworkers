@@ -4,6 +4,13 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from oa_configurator import save_stack_config
+
+from tests.support.stack_config import build_embedding_stack
+
+
+def _write_embedding_stack(path: Path) -> None:
+    save_stack_config(build_embedding_stack(), path)
 
 
 def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
@@ -397,26 +404,7 @@ def test_embedding_coverage_refresh_shows_loading_state(
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
     config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.omop_emb.extra]
-backend = "sqlitevec"
-sqlite_path = "embeddings.db"
-embedding_model = "test-model"
-api_base = "http://localhost:11434/v1"
-provider_type = "ollama"
-""",
-        encoding="utf-8",
-    )
+    _write_embedding_stack(config_path)
 
     def slow_refresh(*_args, **_kwargs):
         sleep(0.4)
@@ -469,32 +457,20 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
     config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.omop_emb.extra]
-backend = "sqlitevec"
-sqlite_path = "embeddings.db"
-embedding_model = "test-model"
-api_base = "http://localhost:11434/v1"
-provider_type = "ollama"
-""",
-        encoding="utf-8",
-    )
+    _write_embedding_stack(config_path)
 
     report = EmbeddingCoverageReport(
         configuration=EmbeddingConfiguration(
             backend="sqlitevec",
+            vector_store_name="embedding_store",
+            database_name="embedding_db",
+            connection_name="embedding_main",
+            database_safe_url="sqlite:///embeddings.db",
+            provider_name="embedding_provider",
             provider_kind="ollama",
+            model_entry_name="embedding_model",
             model_name="test-model",
+            embeddings_supported=True,
             api_base="http://localhost:11434/v1",
         ),
         coverage=CoverageSnapshot(

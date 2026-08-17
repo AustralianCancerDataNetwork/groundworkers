@@ -214,11 +214,18 @@ class EmbeddingStoreState(StrEnum):
 @dataclass(frozen=True)
 class EmbeddingConfiguration:
     backend: str
+    vector_store_name: str
+    database_name: str
+    connection_name: str
+    database_safe_url: str
+    provider_name: str
     provider_kind: str
+    model_entry_name: str
     model_name: str
-    api_base: str
-    sqlite_path: str | None = None
-    sqlite_path_exists: bool | None = None
+    embeddings_supported: bool
+    api_base: str | None
+    database_path: str | None = None
+    database_path_exists: bool | None = None
     faiss_cache_dir: str | None = None
     faiss_cache_dir_exists: bool | None = None
 
@@ -254,8 +261,10 @@ class ProviderCapabilities:
 
 @dataclass(frozen=True)
 class ProviderSnapshot:
+    provider_name: str
     provider_kind: str
-    api_base: str
+    model_entry_name: str
+    api_base: str | None
     configured_model: str
     capabilities: ProviderCapabilities
     reachable: bool

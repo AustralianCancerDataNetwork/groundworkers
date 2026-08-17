@@ -35,6 +35,24 @@ from groundworkers.tui.wizards.llm_provider import (
 )
 
 
+def _embedding_configuration(**overrides) -> EmbeddingConfiguration:
+    values = {
+        "backend": "sqlitevec",
+        "vector_store_name": "embedding_store",
+        "database_name": "embedding_db",
+        "connection_name": "embedding_main",
+        "database_safe_url": "sqlite:///embeddings.db",
+        "provider_name": "embedding_provider",
+        "provider_kind": "ollama",
+        "model_entry_name": "embedding_model",
+        "model_name": "qwen3-embedding:0.6b",
+        "embeddings_supported": True,
+        "api_base": "http://localhost:11434/v1",
+    }
+    values.update(overrides)
+    return EmbeddingConfiguration(**values)
+
+
 def test_setup_session_starts_with_missing_config() -> None:
     session = SetupSession(
         config_path="/definitely/not/a/groundworkers-config.toml",
@@ -179,37 +197,48 @@ cdm_db = "cdm_db"
 def test_embeddings_presenter_shows_sqlitevec_and_faiss_paths() -> None:
     view = EmbeddingsPresenter().landing(
         database_ready=True,
-        configuration=EmbeddingConfiguration(
-            backend="sqlitevec",
-            provider_kind="ollama",
-            model_name="qwen3-embedding:0.6b",
-            api_base="http://localhost:11434/v1",
-            sqlite_path="embeddings.db",
-            sqlite_path_exists=True,
+        configuration=_embedding_configuration(
+            database_path="embeddings.db",
+            database_path_exists=True,
             faiss_cache_dir="faiss-cache",
             faiss_cache_dir_exists=False,
         ),
     )
 
     assert view.status.name == "WARNING"
-    assert view.rows[0].cells == ("Store", "sqlitevec · embeddings.db", "Found")
+    assert view.rows[0].cells == (
+        "Store",
+        "embedding_store · sqlitevec · embeddings.db",
+        "Found",
+    )
+    assert view.rows[1].cells == (
+        "Provider",
+        "embedding_provider (ollama) · http://localhost:11434/v1",
+        "Not tested",
+    )
+    assert view.rows[2].cells == (
+        "Model",
+        "embedding_model · qwen3-embedding:0.6b",
+        "Not tested",
+    )
     assert view.rows[3].cells == ("FAISS cache", "faiss-cache", "Missing")
 
 
 def test_embeddings_presenter_explains_faiss_is_not_a_backend() -> None:
     view = EmbeddingsPresenter().landing(
         database_ready=True,
-        configuration=EmbeddingConfiguration(
+        configuration=_embedding_configuration(
             backend="faiss",
-            provider_kind="ollama",
-            model_name="qwen3-embedding:0.6b",
-            api_base="http://localhost:11434/v1",
         ),
     )
 
     assert view.status.name == "ERROR"
-    assert view.rows[0].cells == ("Store", "FAISS configured as backend", "Invalid")
-    assert "faiss_cache_dir" in str(view.message)
+    assert view.rows[0].cells == (
+        "Store",
+        "embedding_store · faiss",
+        "Unsupported",
+    )
+    assert "sqlitevec or pgvector" in str(view.message)
 
 
 def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
@@ -235,11 +264,8 @@ def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
         embedded_total=4,
         pending_total=6,
     )
-    configuration = EmbeddingConfiguration(
+    configuration = _embedding_configuration(
         backend="pgvector",
-        provider_kind="ollama",
-        model_name="qwen3-embedding:0.6b",
-        api_base="http://localhost:11434/v1",
     )
     report = EmbeddingCoverageReport(
         configuration=configuration,

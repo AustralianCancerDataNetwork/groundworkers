@@ -276,7 +276,6 @@ class EmbeddingPopulationWizardController:
             self._coverage.configuration,
             self._request,
             config_path=self._session.configuration.path,
-            profile=self._session.configuration.profile,
         )
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import h5py
 from omop_emb.storage.embedding_bundle import ExportMetadata
@@ -106,7 +106,7 @@ def _inspect_bundle(path: Path) -> ArtifactMetadata:
         model_name=metadata.model_name,
         dimensions=metadata.dimensions,
         metric=metadata.metric_type.value,
-        provider=metadata.provider_type.value,
+        provider=metadata.provider_type,
         row_count=metadata.row_count,
         vocabularies=vocabularies,
         standard_only=standard_only,

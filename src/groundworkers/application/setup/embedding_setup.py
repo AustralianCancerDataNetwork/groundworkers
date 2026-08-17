@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from omop_emb import EmbeddingBackend, EmbeddingClient
-from omop_emb.config import MetricType, OmopEmbConfig, ProviderType
-from omop_emb.embeddings.embedding_client import EmbeddingRole
+from oa_configurator import ResolvedModel, Resolver
+from omop_emb import EmbeddingBackend, MetricType
+from omop_llm import (
+    ModelBackend,
+    build_model_backend_from_resolved,
+    canonical_model_name,
+)
 
 from groundworkers.application.setup.databases import classify_connection_error
 from groundworkers.application.setup.models import (
@@ -22,73 +25,10 @@ from groundworkers.application.setup.models import (
     ProviderSnapshot,
     RegisteredEmbeddingModel,
 )
+from groundworkers.config import GroundworkersConfig
 
-
-class ProviderProbeAdapter(Protocol):
-    provider_kind: str
-    api_base: str
-    model_name: str
-    capabilities: ProviderCapabilities
-
-    def list_models(self) -> Sequence[str]: ...
-
-    def encode_probe(self) -> int: ...
-
-
-class OpenAICompatibleProviderAdapter:
-    """Probe an Ollama, OpenAI, or compatible embeddings endpoint."""
-
-    def __init__(
-        self,
-        *,
-        provider_kind: str,
-        api_base: str,
-        api_key: str,
-        model_name: str,
-        supports_model_listing: bool = False,
-        pull_model: Callable[[str], None] | None = None,
-    ) -> None:
-        provider_type = (
-            ProviderType.OLLAMA
-            if provider_kind == ProviderType.OLLAMA.value
-            else ProviderType.OPENAI
-        )
-        self.provider_kind = provider_kind
-        self.api_base = safe_api_base(api_base)
-        self.model_name = model_name
-        self._client = EmbeddingClient(
-            model=model_name,
-            api_base=api_base,
-            api_key=api_key,
-            provider_type=provider_type,
-        )
-        self._pull_model = pull_model
-        self.capabilities = ProviderCapabilities(
-            list_models=supports_model_listing,
-            pull_model=pull_model is not None,
-            reported_dimensions=provider_type is ProviderType.OLLAMA,
-        )
-
-    def list_models(self) -> Sequence[str]:
-        if not self.capabilities.list_models:
-            raise NotImplementedError(
-                "This provider does not advertise model inventory."
-            )
-        response = self._client.base_client.models.list()
-        return tuple(str(item.id) for item in response.data)
-
-    def encode_probe(self) -> int:
-        vectors = self._client.embeddings(
-            "OMOP embedding setup probe",
-            embedding_role=EmbeddingRole.QUERY,
-            batch_size=1,
-        )
-        return int(vectors.shape[1])
-
-    def pull_model(self) -> None:
-        if self._pull_model is None:
-            raise NotImplementedError("This provider does not advertise model pulling.")
-        self._pull_model(self.model_name)
+ModelBackendFactory = Callable[[ResolvedModel], ModelBackend]
+ModelInventoryDiscoverer = Callable[[ResolvedModel], Sequence[str]]
 
 
 def load_embedding_configuration(
@@ -97,36 +37,56 @@ def load_embedding_configuration(
     if snapshot.stack is None:
         return None
     stack = snapshot.stack
-    configured = "omop_emb" in stack.tools or bool(
-        stack.active_profile
-        and stack.active_profile in stack.profiles
-        and "omop_emb" in stack.profiles[stack.active_profile].tools
-    )
-    if not configured:
-        return None
     try:
-        config = OmopEmbConfig.from_stack(stack)
+        groundworkers = GroundworkersConfig.validate_candidate(stack)
+        if (
+            groundworkers.embedding_model_name is None
+            or groundworkers.vector_store_name is None
+        ):
+            return None
+        resolver = Resolver(stack)
+        model = resolver.resolve_model(groundworkers.embedding_model_name)
+        vector_store = resolver.resolve_vector_store(
+            groundworkers.vector_store_name
+        )
     except (KeyError, TypeError, ValueError):
         return None
+
+    vector_store_config = stack.vector_stores[groundworkers.vector_store_name]
+    database_config = stack.databases[vector_store_config.database]
+    connection_name = database_config.connection
+    connection_config = stack.connections[connection_name]
+    database_path = (
+        connection_config.database_name
+        if connection_config.dialect.startswith("sqlite")
+        else None
+    )
     config_base = snapshot.path.parent if snapshot.path is not None else None
-    sqlite_path_exists = (
-        _path_exists(config.sqlite_path, base=config_base)
-        if config.sqlite_path is not None
+    database_path_exists = (
+        _path_exists(database_path, base=config_base)
+        if database_path is not None
         else None
     )
     faiss_cache_dir_exists = (
-        _path_exists(config.faiss_cache_dir, base=config_base)
-        if config.faiss_cache_dir is not None
+        _path_exists(vector_store.faiss_cache_dir, base=config_base)
+        if vector_store.faiss_cache_dir is not None
         else None
     )
     return EmbeddingConfiguration(
-        backend=config.backend,
-        provider_kind=_enum_value(config.provider_type),
-        model_name=config.embedding_model,
-        api_base=safe_api_base(config.api_base),
-        sqlite_path=config.sqlite_path,
-        sqlite_path_exists=sqlite_path_exists,
-        faiss_cache_dir=config.faiss_cache_dir,
+        backend=vector_store.backend_type,
+        vector_store_name=vector_store.name,
+        database_name=vector_store.database.name,
+        connection_name=vector_store.database.connection.name,
+        database_safe_url=vector_store.database.connection.safe_url,
+        provider_name=model.provider.name,
+        provider_kind=model.provider.provider,
+        model_entry_name=model.name,
+        model_name=model.model,
+        embeddings_supported=model.embeddings,
+        api_base=(safe_api_base(model.provider.base_url) if model.provider.base_url else None),
+        database_path=database_path,
+        database_path_exists=database_path_exists,
+        faiss_cache_dir=vector_store.faiss_cache_dir,
         faiss_cache_dir_exists=faiss_cache_dir_exists,
     )
 
@@ -153,6 +113,7 @@ def probe_embedding_store(
             has_embeddings = backend.has_any_embeddings(
                 model_name=record.model_name,
                 metric_type=metric,
+                _model_record=record,
             )
             models.append(
                 RegisteredEmbeddingModel(
@@ -188,36 +149,118 @@ def probe_embedding_store(
     )
 
 
-def probe_provider(adapter: ProviderProbeAdapter) -> ProviderSnapshot:
-    """Run optional inventory and a bounded encode probe."""
+def probe_provider(
+    resolved_model: ResolvedModel,
+    *,
+    backend_factory: ModelBackendFactory = build_model_backend_from_resolved,
+    inventory_discoverer: ModelInventoryDiscoverer | None = None,
+) -> ProviderSnapshot:
+    """Probe one resolved model through omop-llm's provider-neutral backend."""
 
     inventory: tuple[str, ...] | None = None
-    inventory_reachable = False
-    if adapter.capabilities.list_models:
+    if inventory_discoverer is not None:
         try:
-            inventory = tuple(adapter.list_models())
-            inventory_reachable = True
+            inventory = tuple(
+                canonical_model_name(resolved_model.provider.provider, model_name)
+                for model_name in inventory_discoverer(resolved_model)
+            )
         except Exception:  # noqa: BLE001 - encode is the decisive probe
             inventory = None
 
     try:
-        dimensions = adapter.encode_probe()
+        backend = backend_factory(resolved_model)
     except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
         return ProviderSnapshot(
-            provider_kind=adapter.provider_kind,
-            api_base=adapter.api_base,
-            configured_model=adapter.model_name,
-            capabilities=adapter.capabilities,
-            reachable=inventory_reachable,
+            provider_name=resolved_model.provider.name,
+            provider_kind=resolved_model.provider.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_api_base(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=resolved_model.model,
+            capabilities=ProviderCapabilities(
+                list_models=inventory_discoverer is not None,
+                encode_probe=resolved_model.embeddings,
+                reported_dimensions=resolved_model.embedding_dim is not None,
+            ),
+            reachable=False,
+            encoding_succeeded=False,
+            inventory=inventory,
+            failure=classify_connection_error(exc),
+        )
+
+    capabilities = ProviderCapabilities(
+        list_models=inventory_discoverer is not None,
+        encode_probe=backend.capabilities.embeddings,
+        reported_dimensions=resolved_model.embedding_dim is not None,
+    )
+    if not backend.is_available():
+        return ProviderSnapshot(
+            provider_name=resolved_model.provider.name,
+            provider_kind=backend.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_api_base(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=backend.model,
+            capabilities=capabilities,
+            reachable=False,
+            encoding_succeeded=False,
+            inventory=inventory,
+            failure=classify_connection_error(ConnectionError("provider unavailable")),
+        )
+
+    if not backend.capabilities.embeddings:
+        return ProviderSnapshot(
+            provider_name=resolved_model.provider.name,
+            provider_kind=backend.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_api_base(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=backend.model,
+            capabilities=capabilities,
+            reachable=True,
+            encoding_succeeded=False,
+            inventory=inventory,
+        )
+
+    try:
+        dimensions = backend.dimensions()
+    except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
+        return ProviderSnapshot(
+            provider_name=resolved_model.provider.name,
+            provider_kind=backend.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_api_base(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=backend.model,
+            capabilities=capabilities,
+            reachable=True,
             encoding_succeeded=False,
             inventory=inventory,
             failure=classify_connection_error(exc),
         )
     return ProviderSnapshot(
-        provider_kind=adapter.provider_kind,
-        api_base=adapter.api_base,
-        configured_model=adapter.model_name,
-        capabilities=adapter.capabilities,
+        provider_name=resolved_model.provider.name,
+        provider_kind=backend.provider,
+        model_entry_name=resolved_model.name,
+        api_base=(
+            safe_api_base(resolved_model.provider.base_url)
+            if resolved_model.provider.base_url
+            else None
+        ),
+        configured_model=backend.model,
+        capabilities=capabilities,
         reachable=True,
         encoding_succeeded=True,
         dimensions=dimensions,
@@ -273,7 +316,15 @@ def reconcile_models(
             )
         )
     elif provider is not None:
-        if not provider.encoding_succeeded:
+        if not provider.capabilities.encode_probe:
+            diagnostics.append(
+                _diagnostic(
+                    "provider_embeddings_unsupported",
+                    DiagnosticSeverity.ERROR,
+                    "The selected model is not configured for embedding operations.",
+                )
+            )
+        elif not provider.encoding_succeeded:
             diagnostics.append(
                 _diagnostic(
                     "provider_encode_failed",
