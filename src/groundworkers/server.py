@@ -63,7 +63,11 @@ def create_server(
         register_semantic_projection_tools(server, SemanticProjectionService())
     register_text_prompts(server)
     register_system_tools(
-        server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm
+        server,
+        app.adapters.omop_graph,
+        app.adapters.omop_emb,
+        app.adapters.llm,
+        embedding_configuration_detail=app.adapters.embedding_configuration_detail,
     )
     register_system_resources(server, config, app.adapters.omop_graph)
     return server

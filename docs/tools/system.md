@@ -24,7 +24,7 @@ arguments.
       "available": true,
       "backend_type": "pgvector",
       "model_count": 1,
-      "client_configured": true,
+      "model_backend_configured": true,
       "detail": null
     }
   }
@@ -38,6 +38,7 @@ arguments.
 - `unavailable`: no configured components are available, or none are configured
 
 `components` only includes backends that are configured for the current runtime.
+For `omop_emb`, `available` means the vector store can be inspected and contains at least one registered model. `model_backend_configured` tells you whether live text search and encoding can call the configured embedding model. Stored-neighbour lookup can still work when this is `false`.
 
 Use this tool when you want to confirm:
 

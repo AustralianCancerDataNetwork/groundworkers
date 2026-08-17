@@ -1,29 +1,31 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from omop_graph.extensions.omop_alchemy import PredicateKind
-from omop_graph.graph.kg import KnowledgeGraph, KnowledgeGraphEmbeddingConfiguration
-from omop_graph.graph.paths import find_shortest_paths_batch
-from omop_graph.graph.traverse import traverse
-from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
-from omop_graph.reasoning.resolvers import ResolverPipeline
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
     Concept_Class,
     Domain,
     Vocabulary,
 )
+from omop_graph.extensions.omop_alchemy import PredicateKind
+from omop_graph.graph.kg import KnowledgeGraph, KnowledgeGraphEmbeddingConfiguration
+from omop_graph.graph.paths import find_shortest_paths_batch
+from omop_graph.graph.traverse import traverse
+from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
+from omop_graph.reasoning.resolvers import ResolverPipeline
 from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
 
-from omop_emb import EmbeddingClient
-
 from groundworkers.base.errors import GroundworkersError
+
+if TYPE_CHECKING:
+    from oa_configurator import ResolvedModel
+    from omop_emb import EmbeddingBackend
 
 logger = logging.getLogger(__name__)
 
@@ -47,34 +49,26 @@ class OmopGraphAdapter:
         engine: Engine,
         *,
         vocab_schema: str = "omop_vocab",
-        emb_model_name: str | None = None,
-        embedding_client: EmbeddingClient | None = None,
+        embedding_backend_factory: Callable[[], EmbeddingBackend] | None = None,
+        resolved_embedding_model: ResolvedModel | None = None,
+        embedding_metric: str = "cosine",
+        faiss_cache_dir: str | None = None,
     ) -> None:
         self.engine = engine
         self.vocab_schema = vocab_schema
-        self.emb_model_name = emb_model_name
-        self._embedding_client: EmbeddingClient | None = embedding_client
+        self._embedding_backend_factory = embedding_backend_factory
+        self._resolved_embedding_model = resolved_embedding_model
+        self._embedding_metric = embedding_metric
+        self._faiss_cache_dir = faiss_cache_dir
+        self._embedding_configuration_error: str | None = None
+        self._embedding_resolver_active = False
         self._kg: KnowledgeGraph | None = None
-
-    def set_embedding_client(self, client: EmbeddingClient, model_name: str | None = None) -> None:
-        """Configure an EmbeddingClient so the embedding grounding tier can encode queries.
-
-        Safe to call after construction. Any cached KnowledgeGraph is invalidated so the
-        embedding-enabled graph configuration is rebuilt on the next request.
-        """
-        self._embedding_client = client
-        if model_name is not None:
-            self.emb_model_name = model_name
-        self._kg = None
 
     @property
     def embedding_resolver_active(self) -> bool:
-        """True when an EmbeddingClient is configured and the embedding grounding tier is live.
+        """Whether complete read-only embedding inputs were accepted."""
 
-        Independent from OmopEmbAdapter.is_available() — both must be True to confirm
-        the full embedding pipeline is operational.
-        """
-        return self._embedding_client is not None
+        return self._embedding_resolver_active
 
     def is_available(self) -> bool:
         try:
@@ -87,7 +81,7 @@ class OmopGraphAdapter:
         """Return (available, detail) without raising."""
         try:
             self._get_kg()
-            return True, None
+            return True, self._embedding_configuration_error
         except GroundworkersError as exc:
             return False, exc.message
         except Exception as exc:
@@ -422,16 +416,29 @@ class OmopGraphAdapter:
 
         try:
             emb_config: KnowledgeGraphEmbeddingConfiguration | None = None
-            if self._embedding_client is not None:
+            if (
+                self._embedding_backend_factory is not None
+                and self._resolved_embedding_model is not None
+            ):
                 try:
-                    from omop_emb.config import MetricType
+                    from omop_emb import MetricType
+
                     emb_config = KnowledgeGraphEmbeddingConfiguration(
-                        metric_type=MetricType.COSINE,
-                        model_name=self.emb_model_name,
-                        client=self._embedding_client,
+                        metric_type=MetricType(self._embedding_metric),
+                        backend=self._embedding_backend_factory(),
+                        resolved_model=self._resolved_embedding_model,
+                        write=False,
+                        compute_missing_embeddings=False,
+                        faiss_cache_dir=self._faiss_cache_dir,
                     )
-                except Exception:
-                    emb_config = None  # Non-fatal: grounding falls back to non-embedding tiers
+                    self._embedding_resolver_active = True
+                except Exception as exc:  # noqa: BLE001 - lexical fallback is intentional
+                    self._embedding_resolver_active = False
+                    self._embedding_configuration_error = (
+                        "Embedding configuration failed with "
+                        f"{type(exc).__name__}; lexical grounding remains available."
+                    )
+                    logger.warning("%s", self._embedding_configuration_error)
             self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=emb_config)
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="BACKEND_UNAVAIL")

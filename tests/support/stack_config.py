@@ -63,7 +63,7 @@ def build_embedding_stack(
     *,
     provider_name: str = "embedding_provider",
     model_entry_name: str = "embedding_model",
-    model_name: str = "nomic-embed-text:latest",
+    model_name: str = "qwen3-embedding:0.6b",
     vector_store_name: str = "embedding_store",
     vector_database_name: str = "embedding_db",
     vector_connection_name: str = "embedding_main",

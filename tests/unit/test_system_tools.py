@@ -1,15 +1,13 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.tools.system_tools import register_system_tools
-
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -34,17 +32,17 @@ class StubGraphAdapter:
 
 class StubEmbAdapter:
     def __init__(self, *, available: bool = True, backend_type: str = "sqlitevec",
-                 model_count: int = 1, has_client: bool = True,
+                 model_count: int = 1, has_model_backend: bool = True,
                  raise_on_status: bool = False, detail: str | None = None):
         self._available = available
         self._backend_type = backend_type
         self._model_count = model_count
-        self._has_client = has_client
+        self._has_model_backend = has_model_backend
         self._raise_on_status = raise_on_status
         self._detail = detail
 
-    def has_client(self) -> bool:
-        return self._has_client
+    def has_model_backend(self) -> bool:
+        return self._has_model_backend
 
     def index_status(self) -> dict:
         if self._raise_on_status:
@@ -83,9 +81,20 @@ class StubLLMAdapter:
         return result
 
 
-def _server(graph=None, emb=None, llm=None) -> GroundcrewServer:
+def _server(
+    graph=None,
+    emb=None,
+    llm=None,
+    embedding_configuration_detail: str | None = None,
+) -> GroundcrewServer:
     server = GroundcrewServer("test-server")
-    register_system_tools(server, graph_adapter=graph, emb_adapter=emb, llm_adapter=llm)
+    register_system_tools(
+        server,
+        graph_adapter=graph,
+        emb_adapter=emb,
+        llm_adapter=llm,
+        embedding_configuration_detail=embedding_configuration_detail,
+    )
     return server
 
 
@@ -172,18 +181,20 @@ def test_system_status_embedding_resolver_active_true_when_wired():
 
 def test_system_status_omop_emb_component_shape():
     server = _server(emb=StubEmbAdapter(available=True, backend_type="sqlitevec",
-                                        model_count=2, has_client=True))
+                                        model_count=2, has_model_backend=True))
     result = server.call("system_status")
     comp = result["components"]["omop_emb"]
     assert comp["available"] is True
     assert comp["backend_type"] == "sqlitevec"
     assert comp["model_count"] == 2
-    assert comp["client_configured"] is True
+    assert comp["model_backend_configured"] is True
     assert comp["detail"] is None
 
 
 def test_system_status_omop_emb_backend_failure_reflected_in_component():
-    server = _server(emb=StubEmbAdapter(raise_on_status=True, has_client=False))
+    server = _server(
+        emb=StubEmbAdapter(raise_on_status=True, has_model_backend=False)
+    )
     result = server.call("system_status")
     comp = result["components"]["omop_emb"]
     assert comp["available"] is False
@@ -195,7 +206,7 @@ def test_system_status_omop_emb_detail_propagated_from_index_status():
     # Mirrors the real OmopEmbAdapter behaviour: index_status never raises but
     # includes a 'detail' field when the backend is unreachable.
     server = _server(emb=StubEmbAdapter(
-        available=False, model_count=0, has_client=False,
+        available=False, model_count=0, has_model_backend=False,
         detail="GroundworkersError('BACKEND_UNAVAIL', 'Embedding backend is unavailable: ...')",
     ))
     result = server.call("system_status")
@@ -203,6 +214,25 @@ def test_system_status_omop_emb_detail_propagated_from_index_status():
     assert comp["available"] is False
     assert comp["detail"] is not None
     assert "BACKEND_UNAVAIL" in comp["detail"]
+
+
+def test_system_status_reports_model_without_vector_store():
+    server = _server(
+        embedding_configuration_detail=(
+            "The embedding model is configured without a vector store."
+        )
+    )
+
+    result = server.call("system_status")
+
+    assert result["overall"] == "unavailable"
+    assert result["components"]["omop_emb"] == {
+        "available": False,
+        "backend_type": None,
+        "model_count": 0,
+        "model_backend_configured": True,
+        "detail": "The embedding model is configured without a vector store.",
+    }
 
 
 # ---------------------------------------------------------------------------

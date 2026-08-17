@@ -13,20 +13,14 @@ LEGACY_API_DEBT: dict[str, dict[str, int]] = {
     "ResourceConfig": {},
     "ToolConfig": {},
     "EmbeddingClient": {
-        "src/groundworkers/adapters/omop_emb.py": 5,
-        "src/groundworkers/adapters/omop_graph.py": 6,
-        "src/groundworkers/app.py": 4,
         "src/groundworkers/application/setup/embedding_setup.py": 2,
-        "src/groundworkers/tools/system_tools.py": 1,
     },
     "ProviderType": {
-        "src/groundworkers/app.py": 2,
         "src/groundworkers/application/setup/embedding_population.py": 2,
         "src/groundworkers/application/setup/embedding_setup.py": 5,
         "tests/unit/test_setup_embeddings.py": 2,
     },
     "omop_emb.embeddings.embedding_client": {
-        "src/groundworkers/adapters/omop_emb.py": 1,
         "src/groundworkers/application/setup/embedding_setup.py": 1,
     },
     "omop_emb.embeddings.embedding_providers": {

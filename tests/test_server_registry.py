@@ -6,8 +6,6 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-import logging
-
 import pytest
 
 from groundworkers.app import build_adapters, build_application
@@ -22,7 +20,9 @@ def _stack_without_backends():
 
 
 def _stack_with_cdm():
-    return build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
+    stack = build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
+    stack.tools["omop_graph"] = {}
+    return stack
 
 
 def test_server_starts_with_cdm_only_without_graph_or_embedding_tools():
@@ -87,16 +87,28 @@ def test_runtime_config_masks_api_keys(tmp_path: Path):
     assert described["model"]["provider"]["api_key"] == "***"
 
 
-def test_embedding_wiring_failure_emits_warning(caplog, tmp_path: Path):
+def test_embedding_store_is_resolved_lazily_and_shared(monkeypatch, tmp_path: Path):
     stack = build_embedding_stack()
-    stack.providers["embedding_provider"].base_url = "http://localhost:9999/v1"
-    stack.providers["embedding_provider"].api_key = "test-key"
     stack.connections["embedding_main"].database_name = str(tmp_path / "emb.db")
     config = build_app_config_from_stack(stack)
-    with caplog.at_level(logging.WARNING, logger="groundworkers.app"):
-        build_adapters(config)
+    backend = object()
+    calls: list[object] = []
 
-    assert any("embedding tier" in r.message for r in caplog.records)
+    def resolve(resolved_store):
+        calls.append(resolved_store)
+        return backend
+
+    monkeypatch.setattr(
+        "omop_emb.backends.resolve_backend_from_resolved_vector_store", resolve
+    )
+
+    adapters = build_adapters(config)
+
+    assert calls == []
+    assert adapters.omop_emb is not None
+    assert adapters.omop_emb._get_backend() is backend
+    assert adapters.omop_emb._get_backend() is backend
+    assert calls == [config.vector_store]
 
 
 def test_streamable_http_transport_runs_in_stateless_json_mode(

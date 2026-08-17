@@ -71,6 +71,7 @@ def register_system_tools(
     graph_adapter: OmopGraphAdapter | None = None,
     emb_adapter: OmopEmbAdapter | None = None,
     llm_adapter: LLMAdapter | None = None,
+    embedding_configuration_detail: str | None = None,
 ) -> None:
     @server.tool("system_status")
     def system_status() -> dict[str, Any]:
@@ -82,10 +83,8 @@ def register_system_tools(
           "unavailable" — no components available (or none configured)
 
         components only contains entries for configured backends.
-        omop_graph.embedding_resolver_active is true only when an EmbeddingClient
-        was successfully wired into the omop-graph backend at startup — it is independent
-        from omop_emb.available and must be checked separately to confirm the
-        embedding tier of concept_ground is operational.
+        omop_graph.embedding_resolver_active is true only when the graph accepted a
+        complete read-only vector-store and resolved-model configuration.
         """
         components: dict[str, Any] = {}
 
@@ -105,7 +104,7 @@ def register_system_tools(
                     "available": status["available"],
                     "backend_type": status.get("backend_type"),
                     "model_count": len(status.get("models", [])),
-                    "client_configured": emb_adapter.has_client(),
+                    "model_backend_configured": emb_adapter.has_model_backend(),
                     "detail": status.get("detail"),
                 }
             except Exception as exc:
@@ -113,9 +112,19 @@ def register_system_tools(
                     "available": False,
                     "backend_type": None,
                     "model_count": 0,
-                    "client_configured": emb_adapter.has_client(),
-                    "detail": repr(exc),
+                    "model_backend_configured": emb_adapter.has_model_backend(),
+                    "detail": (
+                        "Embedding status failed with " f"{type(exc).__name__}."
+                    ),
                 }
+        elif embedding_configuration_detail is not None:
+            components["omop_emb"] = {
+                "available": False,
+                "backend_type": None,
+                "model_count": 0,
+                "model_backend_configured": True,
+                "detail": embedding_configuration_detail,
+            }
 
         if llm_adapter is not None:
             try:
