@@ -14,6 +14,7 @@ dependencies = [
   "oa-configurator>=1.1,<2",
   "omop-graph>=2,<3",
   "omop-emb>=2,<3",
+  "omop-llm>=1,<2",
   "omop-semantics>=0.6,<1",
   "uvicorn[standard]>=0.29,<1.0",
 ]

@@ -20,7 +20,6 @@ from oa_configurator import (
     ConfigurationError,
     GenericDatabaseConfig,
     StackConfig,
-    plan_configure,
     save_stack_config,
 )
 
@@ -33,6 +32,7 @@ from groundworkers.application.setup.configuration_provider import (
     model_setup_workflow,
 )
 from groundworkers.config import GroundworkersConfig
+from tests.support import build_cdm_stack
 
 CDM_SUBMISSIONS = (
     (
@@ -382,22 +382,7 @@ def test_generic_controller_returns_actionable_conflict(tmp_path: Path) -> None:
 
 
 def _cdm_stack() -> StackConfig:
-    return plan_configure(
-        GroundworkersConfig,
-        StackConfig(),
-        {
-            "cdm_db": {
-                "name": "cdm_db",
-                "connection": {
-                    "name": "cdm_main",
-                    "dialect": "sqlite",
-                    "database_name": ":memory:",
-                },
-                "schema_name": "main",
-                "vocab_schema": "main",
-            }
-        },
-    )
+    return build_cdm_stack()
 
 
 def _planned_cdm(service: GroundworkersConfigMutationService):
