@@ -12,11 +12,14 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from oa_configurator import Resolver
-from omop_emb.config import OmopEmbConfig
+from oa_configurator import (  # type: ignore[import-untyped]
+    ResolvedCDMDatabase,
+    Resolver,
+)
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Connection, Engine
-from sqlalchemy.exc import NoSuchModuleError, TimeoutError as SQLAlchemyTimeoutError
+from sqlalchemy.exc import NoSuchModuleError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from groundworkers.application.setup.models import (
     ClassifiedFailure,
@@ -27,11 +30,7 @@ from groundworkers.application.setup.models import (
     DiagnosticSeverity,
     ResourceDiagnostic,
 )
-from groundworkers.config import (
-    GroundworkersConfig,
-    resolve_cdm_resource_name,
-    resolve_embedding_resource_name,
-)
+from groundworkers.config import GroundworkersConfig
 
 CDM_TABLES = (
     "concept",
@@ -103,86 +102,85 @@ def resolve_database_targets(
         return ()
     stack = snapshot.stack
     resolver = Resolver(stack)
-    cdm_name = resolve_cdm_resource_name(stack)
-    cdm = resolver.resolve_resource(cdm_name)
-    groundworkers = GroundworkersConfig.from_stack(stack)
+    groundworkers = GroundworkersConfig.validate_candidate(stack)
+    cdm = resolver.resolve_database(groundworkers.cdm_db)
+    if not isinstance(cdm, ResolvedCDMDatabase):
+        return ()
     embedding_target: DatabaseTarget | None = None
     expected_embedding_model_name: str | None = None
     embedding_safe_url: str | None = None
     embedding_connection_url: str | None = None
 
-    if _has_tool(stack, "omop_emb"):
-        embedding_config = OmopEmbConfig.from_stack(stack)
-        if embedding_config.backend == "pgvector":
-            embedding_name = resolve_embedding_resource_name(stack)
-            embedding = resolver.resolve_resource(embedding_name)
-            expected_embedding_model_name = (
-                groundworkers.grounding.embedding_model_name
-                or embedding_config.embedding_model
-            )
-            embedding_safe_url = embedding.database.safe_url
-            embedding_connection_url = embedding.database.url
-            embedding_target = DatabaseTarget(
-                key="database.embedding",
-                label="Embedding store",
-                resource_name=embedding_name,
-                database_name=embedding.database.name,
-                safe_url=embedding.database.safe_url,
-                cdm_schema=embedding.cdm_schema,
-                vocabulary_schema=embedding.vocab_schema,
-                connection_url=embedding.database.url,
-                role="embedding",
-            )
+    if groundworkers.embedding_model_name is not None:
+        expected_embedding_model_name = resolver.resolve_model(
+            groundworkers.embedding_model_name
+        ).model
+    if groundworkers.vector_store_name is not None:
+        embedding = resolver.resolve_vector_store(groundworkers.vector_store_name)
+        embedding_safe_url = embedding.database.connection.safe_url
+        embedding_connection_url = embedding.database.connection.url
+        embedding_schema = embedding.database.schema_name or "main"
+        embedding_target = DatabaseTarget(
+            key="database.embedding",
+            label="Embedding store",
+            database_entry_name=embedding.database.name,
+            connection_name=embedding.database.connection.name,
+            safe_url=embedding.database.connection.safe_url,
+            cdm_schema=embedding_schema,
+            vocabulary_schema=embedding_schema,
+            connection_url=embedding.database.connection.url,
+            role="embedding",
+        )
 
     targets = [
         DatabaseTarget(
             key="database.cdm",
             label="CDM / vocabulary",
-            resource_name=cdm_name,
-            database_name=cdm.database.name,
-            safe_url=cdm.database.safe_url,
-            cdm_schema=cdm.cdm_schema,
+            database_entry_name=cdm.name,
+            connection_name=cdm.connection.name,
+            safe_url=cdm.connection.safe_url,
+            cdm_schema=cdm.schema_name or "main",
             vocabulary_schema=cdm.vocab_schema,
-            connection_url=cdm.database.url,
+            connection_url=cdm.connection.url,
             role="cdm",
         ),
         DatabaseTarget(
             key="database.graph",
             label="Graph readiness",
-            resource_name=cdm_name,
-            database_name=cdm.database.name,
-            safe_url=cdm.database.safe_url,
-            cdm_schema=cdm.cdm_schema,
+            database_entry_name=cdm.name,
+            connection_name=cdm.connection.name,
+            safe_url=cdm.connection.safe_url,
+            cdm_schema=cdm.schema_name or "main",
             vocabulary_schema=cdm.vocab_schema,
-            connection_url=cdm.database.url,
+            connection_url=cdm.connection.url,
             role="graph",
         ),
         DatabaseTarget(
             key="database.groundworkers",
             label="Groundworkers tuning",
-            resource_name=cdm_name,
-            database_name=cdm.database.name,
-            safe_url=cdm.database.safe_url,
-            cdm_schema=cdm.cdm_schema,
+            database_entry_name=cdm.name,
+            connection_name=cdm.connection.name,
+            safe_url=cdm.connection.safe_url,
+            cdm_schema=cdm.schema_name or "main",
             vocabulary_schema=cdm.vocab_schema,
-            connection_url=cdm.database.url,
+            connection_url=cdm.connection.url,
             role="groundworkers",
             expected_embedding_model_name=expected_embedding_model_name,
             embedding_safe_url=embedding_safe_url,
             embedding_connection_url=embedding_connection_url,
         ),
     ]
-    if cdm.vocab_database.name != cdm.database.name:
+    if cdm.vocab_connection.name != cdm.connection.name:
         targets.append(
             DatabaseTarget(
                 key="database.vocabulary",
                 label="Vocabulary",
-                resource_name=cdm_name,
-                database_name=cdm.vocab_database.name,
-                safe_url=cdm.vocab_database.safe_url,
-                cdm_schema=cdm.cdm_schema,
+                database_entry_name=cdm.name,
+                connection_name=cdm.vocab_connection.name,
+                safe_url=cdm.vocab_connection.safe_url,
+                cdm_schema=cdm.schema_name or "main",
                 vocabulary_schema=cdm.vocab_schema,
-                connection_url=cdm.vocab_database.url,
+                connection_url=cdm.vocab_connection.url,
                 role="vocabulary",
             )
         )
@@ -662,8 +660,8 @@ def classify_connection_error(exc: BaseException) -> ClassifiedFailure:
     ):
         return _failure(
             ConnectionFailureKind.DATABASE_MISSING,
-            "The configured database or provider resource was not found.",
-            "Check the database, model or resource name.",
+            "A configured database, model, vector store, or provider entry was not found.",
+            "Check the named stack entry and the Groundworkers reference to it.",
         )
     if any(
         phrase in lowered
@@ -703,7 +701,7 @@ def _index_exists(inspector: Any, schema: str | None, index_name: str) -> bool:
     for table_name in CDM_TABLES + GRAPH_TABLES:
         try:
             indexes = inspector.get_indexes(table_name, schema=schema)
-        except Exception:  # noqa: BLE001 - absence is reported as a warning
+        except Exception:  # noqa: BLE001, S112 - absence is reported as a warning
             continue
         if any(index.get("name") == index_name for index in indexes):
             return True
@@ -870,13 +868,3 @@ def _exception_chain(exc: BaseException):
         seen.add(id(current))
         yield current
         current = current.__cause__ or current.__context__
-
-
-def _has_tool(stack: Any, name: str) -> bool:
-    if name in stack.tools:
-        return True
-    return bool(
-        stack.active_profile
-        and stack.active_profile in stack.profiles
-        and name in stack.profiles[stack.active_profile].tools
-    )

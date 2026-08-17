@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from groundskeeping.configurator import ConfigWizardController, MutationOperation
 from groundskeeping.contracts import (
     NavigationItem,
     PageContext,
@@ -11,13 +12,14 @@ from groundskeeping.contracts import (
     TextView,
 )
 
+from groundworkers.application.setup.configuration_provider import (
+    CDM_SETUP_TARGET,
+    GroundworkersConfigMutationService,
+    cdm_setup_workflow,
+)
 from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
-)
-from groundworkers.application.setup.embedding_setup import load_embedding_configuration
-from groundworkers.application.setup.embedding_population import (
-    load_embedding_coverage_report,
 )
 from groundworkers.application.setup.runtime_setup import (
     load_chat_configuration,
@@ -26,15 +28,13 @@ from groundworkers.application.setup.runtime_setup import (
     verify_llm_provider,
 )
 from groundworkers.tui.pages.base import GroundworkersPage
-from groundworkers.tui.presenters.chat import ChatPresenter
 from groundworkers.tui.presenters.base import key_value_detail
+from groundworkers.tui.presenters.chat import ChatPresenter
 from groundworkers.tui.presenters.database import DatabasePresenter
 from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.state import SetupSession
-from groundworkers.tui.wizards.database import DatabaseConfigurationWizardController
-from groundworkers.tui.wizards.embeddings import EmbeddingPopulationWizardController
 from groundworkers.tui.wizards.llm_provider import (
     LlmProviderConfigurationWizardController,
 )
@@ -205,11 +205,29 @@ class SetupPage(GroundworkersPage):
         if action_key == "database.configure":
             if self._selected_database_target_key == "database.groundworkers":
                 context.notify(
-                    "Groundworkers tuning is derived from CDM and embedding resources; configure those resources directly.",
+                    "Groundworkers tuning is derived from the CDM database, embedding model, and vector store; configure those entries directly.",
                     severity="warning",
                 )
                 return
-            context.open_wizard(DatabaseConfigurationWizardController(self._session))
+            service = GroundworkersConfigMutationService(
+                self._session.configuration.path,
+                ownership=self._session.ownership,
+                on_applied=self._session.refresh_configuration,
+            )
+            operation = (
+                MutationOperation.UPDATE
+                if service.capabilities(
+                    CDM_SETUP_TARGET,
+                    MutationOperation.UPDATE,
+                ).supported
+                else MutationOperation.CREATE
+            )
+            context.open_wizard(
+                ConfigWizardController(
+                    cdm_setup_workflow(operation),
+                    service,
+                )
+            )
             return
         if action_key == "database.refresh":
             self._session.refresh_configuration()
@@ -241,6 +259,10 @@ class SetupPage(GroundworkersPage):
                     severity="warning",
                 )
                 return
+            from groundworkers.tui.wizards.embeddings import (
+                EmbeddingPopulationWizardController,
+            )
+
             context.open_wizard(
                 EmbeddingPopulationWizardController(
                     self._session,
@@ -426,3 +448,23 @@ class SetupPage(GroundworkersPage):
             return
         self._session.embedding_vocabulary_selection_all = True
         self._session.embedding_selected_vocabularies = ()
+
+
+def load_embedding_configuration(snapshot):
+    """Keep CDM setup available while the embedding runtime is being migrated."""
+
+    try:
+        from groundworkers.application.setup.embedding_setup import (
+            load_embedding_configuration as load,
+        )
+    except ImportError:
+        return None
+    return load(snapshot)
+
+
+def load_embedding_coverage_report(snapshot, *, standard_only: bool):
+    from groundworkers.application.setup.embedding_population import (
+        load_embedding_coverage_report as load,
+    )
+
+    return load(snapshot, standard_only=standard_only)

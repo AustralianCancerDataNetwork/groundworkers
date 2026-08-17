@@ -10,6 +10,8 @@ from groundworkers.application.setup.models import (
     ConfigurationState,
     ConnectionFailureKind,
     ConnectionResult,
+    CoverageScope,
+    CoverageSnapshot,
     DatabaseTarget,
     DiagnosticSeverity,
     EmbeddingConfiguration,
@@ -18,8 +20,6 @@ from groundworkers.application.setup.models import (
     LlmModelMetadata,
     LlmProviderCheckResult,
     LlmProviderConfiguration,
-    CoverageScope,
-    CoverageSnapshot,
     ResourceDiagnostic,
     VocabularyCoverage,
 )
@@ -38,7 +38,6 @@ from groundworkers.tui.wizards.llm_provider import (
 def test_setup_session_starts_with_missing_config() -> None:
     session = SetupSession(
         config_path="/definitely/not/a/groundworkers-config.toml",
-        profile="test",
     )
 
     assert session.configuration.state is ConfigurationState.MISSING
@@ -74,13 +73,17 @@ def test_database_failure_status_uses_classified_kind(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -88,8 +91,8 @@ cdm_schema = "main"
     target = DatabaseTarget(
         key="database.cdm",
         label="CDM / vocabulary",
-        resource_name="cdm_db",
-        database_name="main",
+        database_entry_name="cdm_db",
+        connection_name="main",
         safe_url="sqlite:///:memory:",
         cdm_schema="main",
         vocabulary_schema="main",
@@ -120,13 +123,17 @@ def test_database_warning_status_uses_successful_diagnostics(tmp_path: Path) -> 
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -134,8 +141,8 @@ cdm_schema = "main"
     target = DatabaseTarget(
         key="database.cdm",
         label="CDM / vocabulary",
-        resource_name="cdm_db",
-        database_name="main",
+        database_entry_name="cdm_db",
+        connection_name="main",
         safe_url="sqlite:///:memory:",
         cdm_schema="main",
         vocabulary_schema="main",
@@ -447,16 +454,20 @@ def test_llm_provider_wizard_scans_then_saves_selected_model(
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
+[tools.groundworkers]
+cdm_db = "cdm_db"
+
+[tools.groundworkers.llm]
 enabled = true
 provider = "ollama"
 api_base = "http://localhost:11434/v1"
@@ -521,16 +532,20 @@ def test_llm_provider_wizard_model_choices_include_ollama_metadata(
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
+[tools.groundworkers]
+cdm_db = "cdm_db"
+
+[tools.groundworkers.llm]
 enabled = true
 provider = "ollama"
 api_base = "http://localhost:11434/v1"

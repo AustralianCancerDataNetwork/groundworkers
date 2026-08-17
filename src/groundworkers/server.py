@@ -3,24 +3,32 @@ from __future__ import annotations
 import argparse
 import json
 
-from groundworkers.app import GroundworkersApp, build_adapters, build_application
+from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig
 from groundworkers.services.semantic_projection.service import SemanticProjectionService
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.domain_tools import register_domain_tools
-from groundworkers.tools.embedding_tools import register_embedding_resources, register_embedding_tools
+from groundworkers.tools.embedding_tools import (
+    register_embedding_resources,
+    register_embedding_tools,
+)
 from groundworkers.tools.knowledge_tools import register_knowledge_tools
 from groundworkers.tools.mapping_tools import register_mapping_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 from groundworkers.tools.search_tools import register_search_tools
-from groundworkers.tools.semantic_projection_tools import register_semantic_projection_tools
+from groundworkers.tools.semantic_projection_tools import (
+    register_semantic_projection_tools,
+)
 from groundworkers.tools.source_planning_tools import (
     register_source_planning_resources,
     register_source_planning_tools,
 )
-from groundworkers.tools.system_tools import register_system_resources, register_system_tools
+from groundworkers.tools.system_tools import (
+    register_system_resources,
+    register_system_tools,
+)
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 from groundworkers.transports.rest import create_rest_app
 
@@ -54,7 +62,9 @@ def create_server(
     if config.semantic_projection.enabled:
         register_semantic_projection_tools(server, SemanticProjectionService())
     register_text_prompts(server)
-    register_system_tools(server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm)
+    register_system_tools(
+        server, app.adapters.omop_graph, app.adapters.omop_emb, app.adapters.llm
+    )
     register_system_resources(server, config, app.adapters.omop_graph)
     return server
 
@@ -66,17 +76,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to the shared OMOP stack config TOML. Defaults to OA_CONFIG_PATH or ~/.config/omop/config.toml.",
     )
     parser.add_argument(
-        "--profile",
-        help="Stack profile override for this process only. Defaults to the stack's active profile.",
+        "--describe", action="store_true", help="Print configured tools and exit"
     )
-    parser.add_argument("--describe", action="store_true", help="Print configured tools and exit")
     parser.add_argument(
         "--transport",
         choices=["stdio", "sse", "streamable-http", "rest"],
         help="Transport override. Defaults to tools.groundworkers.mcp.transport for MCP runtimes.",
     )
     parser.add_argument("--host", help="Bind host override for HTTP transports.")
-    parser.add_argument("--port", type=int, help="Bind port override for HTTP transports.")
+    parser.add_argument(
+        "--port", type=int, help="Bind port override for HTTP transports."
+    )
     parser.add_argument(
         "--tui",
         action="store_true",
@@ -99,12 +109,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.tui or args.command == "tui":
-        _launch_groundworkers_tui(config_path=args.config_path, profile=args.profile)
+        _launch_groundworkers_tui(config_path=args.config_path)
         return
     if args.projection_tui or args.command == "projection-tui":
         _launch_semantic_projection_tui()
         return
-    config = build_app_config(config_path=args.config_path, profile=args.profile)
+    config = build_app_config(config_path=args.config_path)
     application = build_application(config)
     server = create_server(config, application)
     if args.describe:
@@ -135,15 +145,17 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _launch_semantic_projection_tui() -> None:
-    from groundworkers.services.semantic_projection.tui_launcher import run_semantic_projection_tui
+    from groundworkers.services.semantic_projection.tui_launcher import (
+        run_semantic_projection_tui,
+    )
 
     run_semantic_projection_tui()
 
 
-def _launch_groundworkers_tui(*, config_path: str | None, profile: str | None) -> None:
+def _launch_groundworkers_tui(*, config_path: str | None) -> None:
     from groundworkers.tui import run_groundworkers_tui
 
-    run_groundworkers_tui(config_path=config_path, profile=profile)
+    run_groundworkers_tui(config_path=config_path)
 
 
 def run_rest_api(

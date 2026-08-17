@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from oa_configurator import StackConfig
+from oa_configurator import StackConfig  # type: ignore[import-untyped]
 
 
 class ConfigurationState(StrEnum):
@@ -65,8 +65,8 @@ class ConfigurationSaveResult:
 class DatabaseTarget:
     key: str
     label: str
-    resource_name: str
-    database_name: str
+    database_entry_name: str
+    connection_name: str
     safe_url: str
     cdm_schema: str
     vocabulary_schema: str
@@ -80,8 +80,8 @@ class DatabaseTarget:
         return (
             "DatabaseTarget("
             f"key={self.key!r}, label={self.label!r}, "
-            f"resource_name={self.resource_name!r}, "
-            f"database_name={self.database_name!r}, safe_url={self.safe_url!r}, "
+            f"database_entry_name={self.database_entry_name!r}, "
+            f"connection_name={self.connection_name!r}, safe_url={self.safe_url!r}, "
             f"cdm_schema={self.cdm_schema!r}, "
             f"vocabulary_schema={self.vocabulary_schema!r})"
         )

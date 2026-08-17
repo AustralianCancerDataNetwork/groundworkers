@@ -18,7 +18,6 @@ class SetupSession:
     """Mounted TUI state; all I/O remains in headless setup services."""
 
     config_path: str | Path | None = None
-    profile: str | None = None
     ownership: ConfigurationOwnership = field(default_factory=ConfigurationOwnership)
     configuration: ConfigurationSnapshot = field(init=False)
     connection_results: tuple[ConnectionResult, ...] = ()
@@ -34,7 +33,6 @@ class SetupSession:
     def refresh_configuration(self) -> None:
         self.configuration = load_configuration(
             config_path=self.config_path,
-            profile=self.profile,
             ownership=self.ownership,
         )
         self.connection_results = ()
@@ -50,10 +48,8 @@ class SetupSession:
         )
 
 
-def load_tui_state(
-    *, config_path: str | Path | None = None, profile: str | None = None
-) -> SetupSession:
-    return SetupSession(config_path=config_path, profile=profile)
+def load_tui_state(*, config_path: str | Path | None = None) -> SetupSession:
+    return SetupSession(config_path=config_path)
 
 
 TuiState = SetupSession

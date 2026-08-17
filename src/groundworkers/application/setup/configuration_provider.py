@@ -38,7 +38,11 @@ from groundskeeping.contracts import (
     FieldSpec,
     ValidationIssue,
 )
-from oa_configurator import ConfigurationError, StackConfig, plan_configure
+from oa_configurator import (  # type: ignore[import-untyped]
+    ConfigurationError,
+    StackConfig,
+    plan_configure,
+)
 from pydantic import ValidationError
 
 from groundworkers.application.setup.configuration import (
@@ -64,6 +68,7 @@ MODEL_SETUP_TARGET: Final = ConfigTarget(
 )
 
 ModelDiscoverer = Callable[[str, str | None, str | None], Sequence[str]]
+ApplyCallback = Callable[[], None]
 
 
 @dataclass(repr=False)
@@ -88,10 +93,12 @@ class GroundworkersConfigMutationService:
         *,
         ownership: ConfigurationOwnership | None = None,
         model_discoverer: ModelDiscoverer | None = None,
+        on_applied: ApplyCallback | None = None,
     ) -> None:
         self._path = Path(config_path).expanduser().resolve()
         self._ownership = ownership or ConfigurationOwnership()
         self._model_discoverer = model_discoverer or _no_model_discovery
+        self._on_applied = on_applied
         self._sessions: dict[str, _MutationSession] = {}
         self._apply_tokens: dict[str, str] = {}
 
@@ -129,7 +136,9 @@ class GroundworkersConfigMutationService:
             else operation is MutationOperation.CREATE
         ) and self._ownership.editable
         if not supported:
-            raise ValueError(f"{operation.value.title()} is unavailable for {target.title}.")
+            raise ValueError(
+                f"{operation.value.title()} is unavailable for {target.title}."
+            )
         base = snapshot.stack.model_copy(deep=True) if snapshot.stack else StackConfig()
         if base.loaded_path is None:
             base.bind_loaded_path(self._path)
@@ -335,8 +344,10 @@ class GroundworkersConfigMutationService:
             )
 
         self._sessions.pop(session_token, None)
+        if self._on_applied is not None:
+            self._on_applied()
         refresh = (
-            frozenset({"configuration", "database"})
+            frozenset({"configuration", "database", "setup"})
             if session.target == CDM_SETUP_TARGET
             else frozenset({"configuration", "models"})
         )
@@ -405,10 +416,14 @@ class GroundworkersConfigMutationService:
             dialect = _optional_text(proposed.get("dialect"))
             if dialect not in {"sqlite", "postgresql+psycopg"}:
                 issues.append(
-                    ValidationIssue("Choose a supported database type.", field_key="dialect")
+                    ValidationIssue(
+                        "Choose a supported database type.", field_key="dialect"
+                    )
                 )
-            if step_key == "server" and dialect != "sqlite" and not _optional_text(
-                proposed.get("host")
+            if (
+                step_key == "server"
+                and dialect != "sqlite"
+                and not _optional_text(proposed.get("host"))
             ):
                 issues.append(
                     ValidationIssue("A database host is required.", field_key="host")
@@ -418,7 +433,9 @@ class GroundworkersConfigMutationService:
                 proposed.get("provider_name")
             ):
                 issues.append(
-                    ValidationIssue("A provider name is required.", field_key="provider_name")
+                    ValidationIssue(
+                        "A provider name is required.", field_key="provider_name"
+                    )
                 )
             if step_key == "model":
                 for key in ("model_entry_name", "model_choice"):
@@ -534,7 +551,9 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
                 ChoiceOption("postgresql+psycopg", "PostgreSQL"),
             ),
         ),
-        FieldSpec("host", "Host", required=False, default=getattr(connection, "host", None)),
+        FieldSpec(
+            "host", "Host", required=False, default=getattr(connection, "host", None)
+        ),
         FieldSpec(
             "port",
             "Port",
@@ -544,7 +563,9 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             maximum=65535,
             default=getattr(connection, "port", None),
         ),
-        FieldSpec("user", "User", required=False, default=getattr(connection, "user", None)),
+        FieldSpec(
+            "user", "User", required=False, default=getattr(connection, "user", None)
+        ),
         FieldSpec(
             "password",
             "Password",
@@ -613,7 +634,9 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             sensitive=True,
             help="Leave blank to preserve an existing key.",
         ),
-        FieldSpec("model_entry_name", "Model entry", default=model_name or "embedding_model"),
+        FieldSpec(
+            "model_entry_name", "Model entry", default=model_name or "embedding_model"
+        ),
         FieldSpec(
             "model_choice",
             "Model",
@@ -713,7 +736,9 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
                 session.operation.value,
                 session.target,
                 "physical database connection",
-                ConfigTarget(ConfigTargetKind.CONNECTION, connection_name, connection_name),
+                ConfigTarget(
+                    ConfigTargetKind.CONNECTION, connection_name, connection_name
+                ),
                 "connections",
             ),
             EffectRef(

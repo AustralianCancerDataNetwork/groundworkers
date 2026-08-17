@@ -108,9 +108,13 @@ def test_generic_wizard_runs_multi_target_cdm_flow_without_early_write(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "config.toml"
+    refreshed: list[bool] = []
     controller = ConfigWizardController(
         cdm_setup_workflow(MutationOperation.CREATE),
-        GroundworkersConfigMutationService(path),
+        GroundworkersConfigMutationService(
+            path,
+            on_applied=lambda: refreshed.append(True),
+        ),
     )
 
     review = _reach_cdm_review(controller)
@@ -131,7 +135,8 @@ def test_generic_wizard_runs_multi_target_cdm_flow_without_early_write(
     result = controller.apply()
 
     assert result.status is WizardResultStatus.APPLIED
-    assert result.refresh_pages == frozenset({"configuration", "database"})
+    assert result.refresh_pages == frozenset({"configuration", "database", "setup"})
+    assert refreshed == [True]
     assert path.exists()
 
 

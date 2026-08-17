@@ -12,19 +12,21 @@ from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
 )
-from groundworkers.application.setup.models import ConnectionFailureKind
-from groundworkers.application.setup.models import DatabaseTarget
-
+from groundworkers.application.setup.models import ConnectionFailureKind, DatabaseTarget
 
 VALID_DATABASE_CONFIG = """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """
 
 
@@ -40,6 +42,40 @@ def test_database_targets_are_resolved_with_safe_urls(tmp_path: Path) -> None:
     assert targets[2].key == "database.groundworkers"
     assert targets[0].safe_url == "sqlite:///:memory:"
     assert "connection_url" not in repr(targets[0])
+
+
+def test_distinct_vocabulary_connection_is_a_separate_target(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        """
+[connections.cdm]
+dialect = "sqlite"
+database_name = ":memory:"
+
+[connections.vocabulary]
+dialect = "sqlite"
+database_name = "vocabulary.db"
+
+[databases.cdm_db]
+kind = "cdm"
+connection = "cdm"
+schema_name = "main"
+vocab_connection = "vocabulary"
+vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
+""",
+        encoding="utf-8",
+    )
+
+    targets = resolve_database_targets(load_configuration(config_path=path))
+
+    vocabulary = next(
+        target for target in targets if target.key == "database.vocabulary"
+    )
+    assert vocabulary.connection_name == "vocabulary"
+    assert vocabulary.safe_url.endswith("vocabulary.db")
 
 
 def test_database_verification_records_latency(tmp_path: Path) -> None:
@@ -291,8 +327,8 @@ def _target(
     return DatabaseTarget(
         key=f"database.{role}",
         label=role,
-        resource_name="cdm_db",
-        database_name="main",
+        database_entry_name="cdm_db",
+        connection_name="main",
         safe_url=f"sqlite:///{db_path}",
         cdm_schema="main",
         vocabulary_schema="main",

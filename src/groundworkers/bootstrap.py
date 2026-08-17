@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-import os
 import tomllib
 from pathlib import Path
 
-from oa_configurator import Resolver, StackConfig, load_stack_config
-from omop_emb.config import BackendType, OmopEmbConfig
+from oa_configurator import (  # type: ignore[import-untyped]
+    ConfigurationError,
+    ResolvedCDMDatabase,
+    Resolver,
+    StackConfig,
+    load_stack_config,
+)
 from pydantic import ValidationError
 
-from groundworkers.config import (
-    AppConfig,
-    GroundworkersConfig,
-    has_tool_config,
-    resolve_cdm_resource_name,
-    resolve_embedding_resource_name,
-)
+from groundworkers.config import AppConfig, GroundworkersConfig
 
 
 def load_stack_config_from_path(path: str | Path) -> StackConfig:
@@ -29,86 +27,81 @@ def load_stack_config_from_path(path: str | Path) -> StackConfig:
     except tomllib.TOMLDecodeError as exc:
         raise ValueError(f"Malformed TOML in {resolved_path}: {exc}") from exc
 
-    config = StackConfig.model_validate(data)
-    active_profile = os.environ.get("OA_ACTIVE_PROFILE")
-    if active_profile:
-        config.active_profile = active_profile
+    try:
+        config = StackConfig.model_validate(data)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors(
+                include_input=False,
+                include_url=False,
+                include_context=False,
+            )
+        )
+        raise ConfigurationError(
+            f"Invalid stack configuration in {resolved_path}: {problems}"
+        ) from None
     config.bind_loaded_path(resolved_path)
     return config
 
 
-def build_app_config(
-    *,
-    config_path: str | Path | None = None,
-    profile: str | None = None,
-) -> AppConfig:
-    """Resolve the active stack config into a runtime AppConfig."""
+def build_app_config(*, config_path: str | Path | None = None) -> AppConfig:
+    """Resolve the stack configuration into Groundworkers' runtime view."""
 
-    stack = load_stack_config_from_path(config_path) if config_path is not None else load_stack_config()
-    if profile is not None:
-        stack.active_profile = profile
+    stack = (
+        load_stack_config_from_path(config_path)
+        if config_path is not None
+        else load_stack_config()
+    )
     return build_app_config_from_stack(stack)
 
 
 def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
-    """Resolve a supplied stack config into a runtime AppConfig."""
+    """Resolve a supplied stack without constructing embedding runtime objects."""
 
+    groundworkers = GroundworkersConfig.validate_candidate(stack)
     resolver = Resolver(stack)
-    groundworkers = GroundworkersConfig.from_stack(stack)
+    cdm_database = resolver.resolve_database(groundworkers.cdm_db)
+    if not isinstance(cdm_database, ResolvedCDMDatabase):
+        raise TypeError(
+            f"Groundworkers cdm_db {groundworkers.cdm_db!r} must reference a CDM database."
+        )
 
-    cdm_resource_name: str | None = None
-    cdm_engine = None
-    omop_graph = None
-    try:
-        cdm_resource_name = resolve_cdm_resource_name(stack)
-    except Exception:
-        if has_tool_config(stack, "omop_graph"):
-            raise
+    cdm_engine = cdm_database.connection.create_engine(future=True)
+    if cdm_database.vocab_connection.name == cdm_database.connection.name:
+        vocabulary_engine = cdm_engine
     else:
-        cdm_engine = resolver.resolve_resource(cdm_resource_name).create_engine(future=True)
-        omop_graph = GroundworkersOmopGraphConfigLoader.load(stack)
+        vocabulary_engine = cdm_database.vocab_connection.create_engine(future=True)
 
-    omop_emb = None
-    emb_resource_name: str | None = None
-    emb_engine = None
-    if has_tool_config(stack, OmopEmbConfig.tool_name):
-        omop_emb = OmopEmbConfig.from_stack(stack)
-        backend = BackendType(omop_emb.backend)
-        if backend is BackendType.PGVECTOR:
-            emb_resource_name = resolve_embedding_resource_name(stack)
-            emb_engine = resolver.resolve_resource(emb_resource_name).create_engine(future=True)
+    embedding_model = (
+        resolver.resolve_model(groundworkers.embedding_model_name)
+        if groundworkers.embedding_model_name is not None
+        else None
+    )
+    vector_store = (
+        resolver.resolve_vector_store(groundworkers.vector_store_name)
+        if groundworkers.vector_store_name is not None
+        else None
+    )
 
     knowledge_root = None
     if groundworkers.knowledge.packs_root is not None:
-        knowledge_root = _resolve_path(groundworkers.knowledge.packs_root, stack.loaded_path)
+        knowledge_root = _resolve_path(
+            groundworkers.knowledge.packs_root,
+            stack.loaded_path,
+        )
 
     return AppConfig(
         stack=stack,
         resolver=resolver,
         groundworkers=groundworkers,
-        omop_graph=omop_graph,
-        omop_emb=omop_emb,
-        cdm_resource_name=cdm_resource_name,
+        cdm_database=cdm_database,
         cdm_engine=cdm_engine,
-        emb_resource_name=emb_resource_name,
-        emb_engine=emb_engine,
+        vocabulary_engine=vocabulary_engine,
+        embedding_model=embedding_model,
+        vector_store=vector_store,
         knowledge_root=knowledge_root,
     )
-
-
-class GroundworkersOmopGraphConfigLoader:
-    """Load omop-graph config lazily without making it a hard runtime requirement."""
-
-    @staticmethod
-    def load(stack: StackConfig):
-        return _load_omop_graph_config(stack)
-
-
-def _load_omop_graph_config(stack: StackConfig):
-    try:
-        return __import__("omop_graph.config", fromlist=["OmopGraphConfig"]).OmopGraphConfig.from_stack(stack)
-    except ValidationError as exc:
-        raise ValueError(f"Invalid omop_graph config: {exc}") from exc
 
 
 def _resolve_path(path: str, loaded_path: Path | None) -> Path:

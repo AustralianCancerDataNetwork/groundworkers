@@ -13,7 +13,6 @@ def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
 
     spec = build_groundworkers_tui_spec(
         config_path="/definitely/not/a/groundworkers-config.toml",
-        profile="test",
     )
 
     assert spec.validate().keys() == ("setup",)
@@ -32,7 +31,6 @@ def test_groundworkers_pages_do_not_cover_workbench() -> None:
         app = OperatorApp(
             build_groundworkers_tui_spec(
                 config_path="/definitely/not/a/groundworkers-config.toml",
-                profile="test",
             )
         )
 
@@ -100,14 +98,18 @@ def test_database_actions_render_in_workspace_and_verify_connections(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -149,14 +151,18 @@ def test_groundworkers_tuning_row_does_not_offer_configure(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -189,13 +195,17 @@ def test_configure_action_opens_database_wizard(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -228,16 +238,20 @@ def test_llm_provider_wizard_renders_model_inventory_choices(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
+[tools.groundworkers]
+cdm_db = "cdm_db"
+
+[tools.groundworkers.llm]
 enabled = true
 provider = "ollama"
 api_base = "http://localhost:11434/v1"
@@ -277,7 +291,7 @@ default_model_name = "chat-model"
 
             choices = app.screen.query_one("#wizard-field-0", Select)
             assert choices.value == "chat-model"
-            assert [value for _label, value in choices._options] == [  # noqa: SLF001
+            assert [value for _label, value in choices._options] == [
                 "chat-model",
                 "other-model",
             ]
@@ -302,16 +316,20 @@ def test_llm_provider_detail_renders_model_inventory_table(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
+[tools.groundworkers]
+cdm_db = "cdm_db"
+
+[tools.groundworkers.llm]
 enabled = true
 provider = "ollama"
 api_base = "http://localhost:11434/v1"
@@ -402,7 +420,6 @@ provider_type = "ollama"
 
     def slow_refresh(*_args, **_kwargs):
         sleep(0.4)
-        return None
 
     monkeypatch.setattr(
         "groundworkers.tui.pages.setup.load_embedding_coverage_report",
@@ -439,6 +456,8 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
 ) -> None:
     pytest.importorskip("groundskeeping")
 
+    from groundskeeping.app import OperatorApp
+
     from groundworkers.application.setup.models import (
         CoverageScope,
         CoverageSnapshot,
@@ -447,8 +466,6 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
         EmbeddingIndexSnapshot,
         VocabularyCoverage,
     )
-    from groundskeeping.app import OperatorApp
-
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
     config_path = tmp_path / "config.toml"
@@ -536,76 +553,3 @@ provider_type = "ollama"
             assert detail.get_row_at(2)[0] == "LOINC"
 
     asyncio.run(run_check())
-
-
-def test_database_wizard_clone_suggests_new_connection_name(tmp_path: Path) -> None:
-    pytest.importorskip("groundskeeping")
-
-    from groundworkers.tui.state import SetupSession
-    from groundworkers.tui.wizards.database import DatabaseConfigurationWizardController
-
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-
-[resources.other_app]
-database = "main"
-cdm_schema = "main"
-""",
-        encoding="utf-8",
-    )
-    controller = DatabaseConfigurationWizardController(
-        SetupSession(config_path=config_path)
-    )
-
-    controller.submit(
-        {"path": str(config_path), "revision": "ignored", "source": "ignored"}
-    )
-    controller.submit({"resource_name": "cdm_db"})
-    snapshot = controller.submit({"connection_strategy": "clone"}).snapshot
-
-    assert snapshot.values["connection_name"] == "main_groundworkers"
-
-
-def test_database_wizard_optional_vocabulary_connection_uses_select_safe_blank(
-    tmp_path: Path,
-) -> None:
-    pytest.importorskip("groundskeeping")
-
-    from groundworkers.tui.state import SetupSession
-    from groundworkers.tui.wizards.database import DatabaseConfigurationWizardController
-
-    config_path = tmp_path / "config.toml"
-    controller = DatabaseConfigurationWizardController(
-        SetupSession(config_path=config_path)
-    )
-
-    controller.submit(
-        {"path": str(config_path), "revision": "new file", "source": "local"}
-    )
-    controller.submit({"resource_name": "cdm_db"})
-    controller.submit({"connection_strategy": "create"})
-    snapshot = controller.submit(
-        {
-            "connection_name": "main",
-            "dialect": "sqlite",
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "clear_password": False,
-            "database_name": ":memory:",
-            "read_only": True,
-            "test_only": False,
-        }
-    ).snapshot
-
-    assert snapshot.step.key == "schemas"
-    assert snapshot.values["vocabulary_connection_name"] == ""

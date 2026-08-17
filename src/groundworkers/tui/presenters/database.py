@@ -96,10 +96,7 @@ class DatabasePresenter(SetupPresenterBase):
                 _target_row(target, result_by_key.get(target.key)) for target in targets
             ),
             status=_connection_status(results),
-            message=(
-                f"{snapshot.path}  |  profile {snapshot.profile or 'default'}  |  "
-                f"{snapshot.ownership.mode.value}"
-            ),
+            message=f"{snapshot.path}  |  {snapshot.ownership.mode.value}",
             actions=_database_actions(selected_target_key),
         )
 
@@ -114,7 +111,6 @@ class DatabasePresenter(SetupPresenterBase):
             title="Configuration source",
             rows=(
                 ("path", str(snapshot.path)),
-                ("profile", snapshot.profile or "default"),
                 ("ownership", snapshot.ownership.mode.value),
                 ("source", snapshot.ownership.source_label),
                 ("guidance", snapshot.ownership.guidance),
@@ -139,7 +135,7 @@ def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> Tabl
         key=target.key,
         cells=(
             target.label,
-            target.database_name,
+            target.connection_name,
             f"{target.cdm_schema} / {target.vocabulary_schema}",
             status,
             latency,

@@ -1,6 +1,6 @@
-from pathlib import Path
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -10,8 +10,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from groundworkers.app import build_adapters
 from groundworkers.bootstrap import build_app_config
-from groundworkers.server import build_adapters
 from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
 
@@ -22,13 +22,14 @@ def _load_graph_adapter():
     except ImportError:
         pytest.skip("omop_graph is not installed in this environment")
 
-    config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv("GROUNDWORKERS_CONFIG")
-    profile = os.getenv("GROUNDWORKERS_PROFILE")
+    config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv(
+        "GROUNDWORKERS_CONFIG"
+    )
     try:
-        config = build_app_config(config_path=config_path, profile=profile)
+        config = build_app_config(config_path=config_path)
     except (FileNotFoundError, ValueError) as exc:
         pytest.skip(f"shared stack config is unavailable: {exc}")
-    if config.omop_graph is None or config.cdm_engine is None:
+    if "omop_graph" not in config.stack.tools:
         pytest.skip("omop_graph is not configured in the selected stack config")
     adapter = build_adapters(config).omop_graph
     if adapter is None:
@@ -70,7 +71,9 @@ def _find_nonstandard_condition_term(adapter) -> str:
     with adapter.engine.connect() as conn:
         row = conn.execute(stmt).first()
     if row is None:
-        pytest.skip("no uniquely named non-standard Condition concept with a standard mapping was found")
+        pytest.skip(
+            "no uniquely named non-standard Condition concept with a standard mapping was found"
+        )
     return str(row[0])
 
 
@@ -170,7 +173,9 @@ def test_ground_exact_match():
     adapter = _load_graph_adapter()
     service = ConceptGroundingService(GraphService(adapter))
 
-    result = service.ground("Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None)
+    result = service.ground(
+        "Type 2 diabetes mellitus", limit=5, domain=None, vocabulary_id=None
+    )
 
     assert "results" in result
     assert "grounding_explanation" in result

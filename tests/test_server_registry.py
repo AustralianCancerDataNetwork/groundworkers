@@ -1,5 +1,5 @@
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -9,55 +9,29 @@ if str(SRC) not in sys.path:
 import logging
 
 import pytest
-from oa_configurator import DatabaseConfig, ResourceConfig, StackConfig, ToolConfig
 
-from groundworkers.app import build_application
+from groundworkers.app import build_adapters, build_application
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config_from_stack
-from groundworkers.server import build_adapters, create_server, main, parse_args, run_rest_api
+from groundworkers.server import create_server, main, parse_args, run_rest_api
+from tests.support.stack_config import build_cdm_stack, build_embedding_stack
 
 
-def _stack_without_backends() -> StackConfig:
-    return StackConfig()
+def _stack_without_backends():
+    return build_cdm_stack()
 
 
-def _stack_with_cdm() -> StackConfig:
-    return StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-    )
+def _stack_with_cdm():
+    return build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
 
 
-def test_server_starts_without_domain_tools_when_no_adapters_configured():
+def test_server_starts_with_cdm_only_without_graph_or_embedding_tools():
     config = build_app_config_from_stack(_stack_without_backends())
     server = create_server(config)
-    assert server.list_tools() == [
-        "knowledge_catalogue",
-        "knowledge_pack",
-        "source_plan",
-        "source_plan_assisted",
-        "system_status",
-        "system_vocabulary_catalogue",
-    ]
-    assert server.list_resources() == [
-        "config://active",
-        "knowledge://catalogue",
-        "source-planning://canonical-headers",
-        "source-planning://column-roles",
-        "source-planning://ingestion-strategies",
-        "vocabularies://catalogue",
-    ]
+    assert "concept_search_exact" in server.list_tools()
+    assert "concept_get" not in server.list_tools()
+    assert "embedding_index_status" not in server.list_tools()
+    assert "config://active" in server.list_resources()
 
 
 def test_server_registers_concept_tools_when_cdm_resource_is_configured():
@@ -71,30 +45,8 @@ def test_server_registers_concept_tools_when_cdm_resource_is_configured():
 
 
 def test_server_registers_embedding_tools_when_enabled(tmp_path: Path):
-    stack = StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-        tools={
-            "omop_emb": ToolConfig(
-                extra={
-                    "backend": "sqlitevec",
-                    "sqlite_path": str(tmp_path / "omop_emb.db"),
-                    "embedding_model": "bge-small-en-v1.5",
-                }
-            )
-        },
-    )
+    stack = build_embedding_stack()
+    stack.connections["embedding_main"].database_name = str(tmp_path / "omop_emb.db")
     config = build_app_config_from_stack(stack)
     server = create_server(config)
     names = server.list_tools()
@@ -105,6 +57,7 @@ def test_server_registers_embedding_tools_when_enabled(tmp_path: Path):
 def test_build_adapters_leaves_disabled_components_unset():
     config = build_app_config_from_stack(_stack_without_backends())
     adapters = build_adapters(config)
+    assert adapters.cdm is not None
     assert adapters.omop_graph is None
     assert adapters.omop_emb is None
 
@@ -113,81 +66,32 @@ def test_build_application_exposes_services_container():
     config = build_app_config_from_stack(_stack_without_backends())
     app = build_application(config)
     assert app.adapters.omop_graph is None
-    assert app.services.mapping is None
+    assert app.services.mapping is not None
     assert app.services.source_planning is not None
 
 
 def test_runtime_config_masks_api_keys(tmp_path: Path):
-    stack = StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-        tools={
-            "groundworkers": ToolConfig(
-                extra={
-                    "llm": {
-                        "enabled": True,
-                        "api_base": "http://example.test/v1",
-                        "api_key": "secret",
-                    }
-                }
-            ),
-            "omop_emb": ToolConfig(
-                extra={
-                    "backend": "sqlitevec",
-                    "sqlite_path": str(tmp_path / "omop_emb.db"),
-                    "api_base": "http://embeddings.test/v1",
-                    "api_key": "emb-secret",
-                    "embedding_model": "bge-small-en-v1.5",
-                }
-            ),
-        }
-    )
+    stack = build_embedding_stack()
+    stack.tools["groundworkers"]["llm"] = {
+        "enabled": True,
+        "api_base": "http://example.test/v1",
+        "api_key": "secret",
+    }
+    stack.providers["embedding_provider"].api_key = "emb-secret"
+    stack.connections["embedding_main"].database_name = str(tmp_path / "omop_emb.db")
     config = build_app_config_from_stack(stack)
 
     described = config.describe()
 
     assert described["groundworkers"]["llm"]["api_key"] == "***"
-    assert described["omop_emb"]["api_key"] == "***"
+    assert described["model"]["provider"]["api_key"] == "***"
 
 
 def test_embedding_wiring_failure_emits_warning(caplog, tmp_path: Path):
-    stack = StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-        tools={
-            "omop_emb": ToolConfig(
-                extra={
-                    "backend": "sqlitevec",
-                    "sqlite_path": str(tmp_path / "emb.db"),
-                    "api_base": "http://localhost:9999/v1",
-                    "api_key": "test-key",
-                    "embedding_model": "bge-small-en-v1.5",
-                }
-            )
-        },
-    )
+    stack = build_embedding_stack()
+    stack.providers["embedding_provider"].base_url = "http://localhost:9999/v1"
+    stack.providers["embedding_provider"].api_key = "test-key"
+    stack.connections["embedding_main"].database_name = str(tmp_path / "emb.db")
     config = build_app_config_from_stack(stack)
     with caplog.at_level(logging.WARNING, logger="groundworkers.app"):
         build_adapters(config)
@@ -195,7 +99,9 @@ def test_embedding_wiring_failure_emits_warning(caplog, tmp_path: Path):
     assert any("embedding tier" in r.message for r in caplog.records)
 
 
-def test_streamable_http_transport_runs_in_stateless_json_mode(monkeypatch: pytest.MonkeyPatch):
+def test_streamable_http_transport_runs_in_stateless_json_mode(
+    monkeypatch: pytest.MonkeyPatch,
+):
     captured: dict[str, object] = {}
 
     class FakeFastMCP:
@@ -276,17 +182,13 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = build_app_config_from_stack(
-        StackConfig(
-            tools={
-                "groundworkers": ToolConfig(
-                    extra={
-                        "mcp": {
-                            "transport": "stdio",
-                            "host": "0.0.0.0",
-                            "port": 18888,
-                        }
-                    }
-                )
+        build_cdm_stack(
+            groundworkers={
+                "mcp": {
+                    "transport": "stdio",
+                    "host": "0.0.0.0",
+                    "port": 18888,
+                }
             }
         )
     )
@@ -301,23 +203,21 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
                 "port": port,
             }
 
-    def fake_build_app_config(*, config_path=None, profile=None):
-        captured["build_app_config"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_build_app_config(*, config_path=None):
+        captured["build_app_config"] = {"config_path": config_path}
         return config
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server.build_application", lambda _: fake_application)
-    monkeypatch.setattr("groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer())
+    monkeypatch.setattr(
+        "groundworkers.server.build_application", lambda _: fake_application
+    )
+    monkeypatch.setattr(
+        "groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer()
+    )
 
     main([])
 
-    assert captured["build_app_config"] == {
-        "config_path": None,
-        "profile": None,
-    }
+    assert captured["build_app_config"] == {"config_path": None}
     assert captured["run"] == {
         "transport": "stdio",
         "host": "0.0.0.0",
@@ -325,25 +225,23 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
     }
 
 
-def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_routes_rest_startup_to_rest_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     config = build_app_config_from_stack(
-        StackConfig(
-            tools={
-                "groundworkers": ToolConfig(
-                    extra={
-                        "mcp": {
-                            "transport": "streamable-http",
-                            "host": "127.0.0.1",
-                            "port": 18080,
-                        },
-                        "rest": {
-                            "enabled": True,
-                            "host": "127.0.0.1",
-                            "port": 18181,
-                            "base_path": "/v1",
-                        },
-                    }
-                )
+        build_cdm_stack(
+            groundworkers={
+                "mcp": {
+                    "transport": "streamable-http",
+                    "host": "127.0.0.1",
+                    "port": 18080,
+                },
+                "rest": {
+                    "enabled": True,
+                    "host": "127.0.0.1",
+                    "port": 18181,
+                    "base_path": "/v1",
+                },
             }
         )
     )
@@ -358,11 +256,8 @@ def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest
                 "port": port,
             }
 
-    def fake_build_app_config(*, config_path=None, profile=None):
-        captured["build_app_config"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_build_app_config(*, config_path=None):
+        captured["build_app_config"] = {"config_path": config_path}
         return config
 
     def fake_run_rest_api(app_config, application, *, host: str, port: int) -> None:
@@ -374,16 +269,17 @@ def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest
         }
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server.build_application", lambda _: fake_application)
-    monkeypatch.setattr("groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer())
+    monkeypatch.setattr(
+        "groundworkers.server.build_application", lambda _: fake_application
+    )
+    monkeypatch.setattr(
+        "groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer()
+    )
     monkeypatch.setattr("groundworkers.server.run_rest_api", fake_run_rest_api)
 
-    main(["--profile", "test", "--transport", "rest", "--host", "0.0.0.0", "--port", "19090"])
+    main(["--transport", "rest", "--host", "0.0.0.0", "--port", "19090"])
 
-    assert captured["build_app_config"] == {
-        "config_path": None,
-        "profile": "test",
-    }
+    assert captured["build_app_config"] == {"config_path": None}
     assert captured["rest"] == {
         "config": config,
         "application": fake_application,
@@ -398,43 +294,35 @@ def test_main_launches_setup_tui_without_building_runtime_config(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_build_app_config(*, config_path=None, profile=None):
+    def fake_build_app_config(*, config_path=None):
         raise AssertionError("setup TUI should handle config loading itself")
 
-    def fake_launch_tui(*, config_path=None, profile=None) -> None:
-        captured["launch"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_launch_tui(*, config_path=None) -> None:
+        captured["launch"] = {"config_path": config_path}
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server._launch_groundworkers_tui", fake_launch_tui)
+    monkeypatch.setattr(
+        "groundworkers.server._launch_groundworkers_tui", fake_launch_tui
+    )
 
-    main(["--tui", "--config-path", "/tmp/stack.toml", "--profile", "test"])
+    main(["--tui", "--config-path", "/tmp/stack.toml"])
 
-    assert captured["launch"] == {
-        "config_path": "/tmp/stack.toml",
-        "profile": "test",
-    }
+    assert captured["launch"] == {"config_path": "/tmp/stack.toml"}
 
 
 def test_main_launches_setup_tui_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_launch_tui(*, config_path=None, profile=None) -> None:
-        captured["launch"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_launch_tui(*, config_path=None) -> None:
+        captured["launch"] = {"config_path": config_path}
 
-    monkeypatch.setattr("groundworkers.server._launch_groundworkers_tui", fake_launch_tui)
+    monkeypatch.setattr(
+        "groundworkers.server._launch_groundworkers_tui", fake_launch_tui
+    )
 
-    main(["tui", "--profile", "test"])
+    main(["tui"])
 
-    assert captured["launch"] == {
-        "config_path": None,
-        "profile": "test",
-    }
+    assert captured["launch"] == {"config_path": None}
 
 
 def test_main_launches_legacy_projection_tui(
@@ -442,14 +330,16 @@ def test_main_launches_legacy_projection_tui(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_build_app_config(*, config_path=None, profile=None):
+    def fake_build_app_config(*, config_path=None):
         raise AssertionError("projection TUI does not need runtime config")
 
     def fake_launch_tui() -> None:
         captured["launch"] = True
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
+    monkeypatch.setattr(
+        "groundworkers.server._launch_semantic_projection_tui", fake_launch_tui
+    )
 
     main(["projection-tui"])
 

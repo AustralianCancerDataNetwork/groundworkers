@@ -1,32 +1,26 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
+from collections.abc import Callable
 from typing import Any
-from urllib.request import urlopen
 from urllib.parse import urlsplit, urlunsplit
+from urllib.request import urlopen
 
-from oa_configurator import StackConfig
-from omop_graph.config import OmopGraphConfig
+from oa_configurator import StackConfig  # type: ignore[import-untyped]
+from omop_graph.config import OmopGraphConfig  # type: ignore[import-untyped]
 
 from groundworkers.application.setup.databases import classify_connection_error
-from groundworkers.application.setup.embedding_setup import safe_api_base
 from groundworkers.application.setup.models import (
     ChatConfiguration,
     ConfigurationSnapshot,
     DiagnosticSeverity,
     GraphConfiguration,
+    LlmModelMetadata,
     LlmProviderCheckResult,
     LlmProviderConfiguration,
-    LlmModelMetadata,
     ResourceDiagnostic,
 )
-from groundworkers.config import (
-    GroundworkersConfig,
-    LLMConfig,
-    has_tool_config,
-    resolve_cdm_resource_name,
-)
+from groundworkers.config import GroundworkersConfig, LLMConfig
 
 _LLM_STATUS_TIMEOUT_SECONDS = 2.0
 
@@ -38,12 +32,12 @@ def load_graph_configuration(
 
     if not snapshot.usable or snapshot.stack is None:
         return None
-    if not has_tool_config(snapshot.stack, OmopGraphConfig.tool_name):
+    if OmopGraphConfig.tool_name not in snapshot.stack.tools:
         return None
     try:
         tool = _effective_tool(snapshot.stack, OmopGraphConfig.tool_name)
-        config = OmopGraphConfig.model_validate(tool.extra if tool else {})
-        resource_name = resolve_cdm_resource_name(snapshot.stack)
+        config = OmopGraphConfig.model_validate(tool or {})
+        resource_name = GroundworkersConfig.validate_candidate(snapshot.stack).cdm_db
     except (KeyError, TypeError, ValueError):
         return None
     return GraphConfiguration(
@@ -60,18 +54,18 @@ def load_llm_provider_configuration(
 
     if not snapshot.usable or snapshot.stack is None:
         return None
-    if not has_tool_config(snapshot.stack, GroundworkersConfig.tool_name):
+    if GroundworkersConfig.tool_name not in snapshot.stack.tools:
         return None
     try:
         tool = _effective_tool(snapshot.stack, GroundworkersConfig.tool_name)
-        config = GroundworkersConfig.model_validate(tool.extra if tool else {})
+        config = GroundworkersConfig.model_validate(tool or {})
         llm = config.llm
     except (KeyError, TypeError, ValueError):
         return None
     return LlmProviderConfiguration(
         enabled=llm.enabled,
         provider=llm.provider,
-        api_base=safe_api_base(llm.api_base) if llm.api_base else None,
+        api_base=_safe_api_base(llm.api_base) if llm.api_base else None,
         credentials_configured=bool(llm.api_key),
         default_model_name=llm.default_model_name,
     )
@@ -110,7 +104,7 @@ def verify_llm_config(
     configuration = configuration or LlmProviderConfiguration(
         enabled=llm.enabled,
         provider=llm.provider,
-        api_base=safe_api_base(llm.api_base) if llm.api_base else None,
+        api_base=_safe_api_base(llm.api_base) if llm.api_base else None,
         credentials_configured=bool(llm.api_key),
         default_model_name=llm.default_model_name,
     )
@@ -239,11 +233,11 @@ def _load_llm_config(
 ) -> tuple[LlmProviderConfiguration, LLMConfig] | None:
     if not snapshot.usable or snapshot.stack is None:
         return None
-    if not has_tool_config(snapshot.stack, GroundworkersConfig.tool_name):
+    if GroundworkersConfig.tool_name not in snapshot.stack.tools:
         return None
     try:
         tool = _effective_tool(snapshot.stack, GroundworkersConfig.tool_name)
-        config = GroundworkersConfig.model_validate(tool.extra if tool else {})
+        config = GroundworkersConfig.model_validate(tool or {})
         llm = config.llm
     except (KeyError, TypeError, ValueError):
         return None
@@ -251,7 +245,7 @@ def _load_llm_config(
         LlmProviderConfiguration(
             enabled=llm.enabled,
             provider=llm.provider,
-            api_base=safe_api_base(llm.api_base) if llm.api_base else None,
+            api_base=_safe_api_base(llm.api_base) if llm.api_base else None,
             credentials_configured=bool(llm.api_key),
             default_model_name=llm.default_model_name,
         ),
@@ -285,7 +279,7 @@ def _uses_ollama_inventory(llm: LLMConfig) -> bool:
 
 def _ollama_model_metadata(llm: LLMConfig) -> tuple[LlmModelMetadata, ...]:
     base_url = _ollama_native_base_url(llm.api_base)
-    with urlopen(  # noqa: S310 - user-configured local provider URL
+    with urlopen(
         f"{base_url}/api/tags",
         timeout=_LLM_STATUS_TIMEOUT_SECONDS,
     ) as response:
@@ -301,8 +295,7 @@ def _ollama_native_base_url(api_base: str | None) -> str:
         return "http://localhost:11434"
     parts = urlsplit(api_base)
     path = parts.path.rstrip("/")
-    if path.endswith("/v1"):
-        path = path[: -len("/v1")]
+    path = path.removesuffix("/v1")
     return urlunsplit((parts.scheme, parts.netloc, path.rstrip("/"), "", ""))
 
 
@@ -340,7 +333,7 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
@@ -353,8 +346,21 @@ def _optional_str(value: object) -> str | None:
 
 
 def _effective_tool(stack: StackConfig, name: str):
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        profile_tool = stack.profiles[stack.active_profile].tools.get(name)
-        if profile_tool is not None:
-            return profile_tool
     return stack.tools.get(name)
+
+
+def _safe_api_base(api_base: str) -> str:
+    parts = urlsplit(api_base)
+    hostname = parts.hostname or ""
+    netloc = hostname if parts.port is None else f"{hostname}:{parts.port}"
+    pairs = []
+    for item in parts.query.split("&") if parts.query else ():
+        key, separator, value = item.partition("=")
+        if any(
+            token in key.lower() for token in ("key", "token", "secret", "password")
+        ):
+            value = "%2A%2A%2A"
+        pairs.append(f"{key}{separator}{value}")
+    return urlunsplit(
+        (parts.scheme, netloc, parts.path, "&".join(pairs), parts.fragment)
+    )

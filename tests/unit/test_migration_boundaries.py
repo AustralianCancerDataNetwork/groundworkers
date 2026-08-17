@@ -10,17 +10,8 @@ REPOSITORY = Path(__file__).resolve().parents[2]
 THIS_FILE = Path(__file__).resolve()
 
 LEGACY_API_DEBT: dict[str, dict[str, int]] = {
-    "ResourceConfig": {
-        "src/groundworkers/application/setup/database_configuration.py": 3,
-        "tests/test_bootstrap_config.py": 2,
-        "tests/test_server_registry.py": 5,
-    },
-    "ToolConfig": {
-        "src/groundworkers/application/setup/database_configuration.py": 3,
-        "src/groundworkers/application/setup/llm_configuration.py": 5,
-        "tests/test_bootstrap_config.py": 3,
-        "tests/test_server_registry.py": 7,
-    },
+    "ResourceConfig": {},
+    "ToolConfig": {},
     "EmbeddingClient": {
         "src/groundworkers/adapters/omop_emb.py": 5,
         "src/groundworkers/adapters/omop_graph.py": 6,
@@ -47,20 +38,13 @@ LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
     "resources section": (
         re.compile(r"\[resources\."),
         {
-            "tests/unit/test_database_configuration.py": 6,
-            "tests/unit/test_setup_databases.py": 1,
             "tests/unit/test_setup_embeddings.py": 4,
-            "tests/unit/test_setup_runtime.py": 3,
-            "tests/unit/test_tui_app.py": 9,
-            "tests/unit/test_tui_state.py": 4,
+            "tests/unit/test_tui_app.py": 2,
         },
     ),
     "resources argument": (
         re.compile(r"\bresources\s*="),
-        {
-            "tests/test_bootstrap_config.py": 1,
-            "tests/test_server_registry.py": 4,
-        },
+        {},
     ),
     "resource aliases": (
         re.compile(r"\[resource_aliases\]|\bresource_aliases\s*="),
@@ -68,10 +52,7 @@ LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
     ),
     "profiles section": (
         re.compile(r"\[profiles\."),
-        {
-            "tests/unit/test_database_configuration.py": 1,
-            "tests/unit/test_setup_runtime.py": 2,
-        },
+        {},
     ),
     "profiles argument": (
         re.compile(r"\bprofiles\s*="),
@@ -79,11 +60,7 @@ LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
     ),
     "active profile": (
         re.compile(r"\bactive_profile\b"),
-        {
-            "tests/test_bootstrap_config.py": 2,
-            "tests/unit/test_database_configuration.py": 1,
-            "tests/unit/test_setup_runtime.py": 1,
-        },
+        {},
     ),
     "default resource": (
         re.compile(r"\bdefault_resource\b"),
@@ -92,11 +69,8 @@ LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
     "tool extra section": (
         re.compile(r"\[(?:profiles\.[^]]+\.)?tools\.[^]]+\.extra"),
         {
-            "tests/test_bootstrap_config.py": 1,
             "tests/unit/test_setup_embeddings.py": 3,
-            "tests/unit/test_setup_runtime.py": 3,
-            "tests/unit/test_tui_app.py": 4,
-            "tests/unit/test_tui_state.py": 2,
+            "tests/unit/test_tui_app.py": 2,
         },
     ),
 }
@@ -136,9 +110,7 @@ def test_migration_dependencies_use_explicit_public_boundaries() -> None:
 
 def _python_files(root: Path) -> tuple[Path, ...]:
     return tuple(
-        path
-        for path in sorted(root.rglob("*.py"))
-        if path.resolve() != THIS_FILE
+        path for path in sorted(root.rglob("*.py")) if path.resolve() != THIS_FILE
     )
 
 

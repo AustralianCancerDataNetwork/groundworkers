@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from oa_configurator import StackConfig, ToolConfig
+from oa_configurator import StackConfig  # type: ignore[import-untyped]
 from pydantic import ValidationError
 
 from groundworkers.application.setup.configuration import save_configuration
@@ -68,7 +68,7 @@ def draft_from_snapshot(snapshot: ConfigurationSnapshot) -> LlmConfigurationDraf
         tool = _effective_groundworkers_tool(snapshot.stack)
         if tool is not None:
             try:
-                config = GroundworkersConfig.model_validate(tool.extra)
+                config = GroundworkersConfig.model_validate(tool)
                 return LlmConfigurationDraft(
                     provider=config.llm.provider,
                     api_base=config.llm.api_base
@@ -95,7 +95,7 @@ def update_draft(
     if "default_model_name" in coerced and coerced["default_model_name"] is not None:
         model_name = str(coerced["default_model_name"]).strip()
         coerced["default_model_name"] = model_name or None
-    return replace(draft, **coerced)
+    return replace(draft, **coerced)  # type: ignore[arg-type]
 
 
 def scan_llm_models(draft: LlmConfigurationDraft) -> LlmProviderCheckResult:
@@ -154,32 +154,25 @@ def _editable_stack(snapshot: ConfigurationSnapshot) -> StackConfig:
     return StackConfig.model_validate(snapshot.stack.model_dump(mode="python"))
 
 
-def _effective_groundworkers_tool(stack: StackConfig) -> ToolConfig | None:
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        profile_tool = stack.profiles[stack.active_profile].tools.get(
-            GroundworkersConfig.tool_name
-        )
-        if profile_tool is not None:
-            return profile_tool
+def _effective_groundworkers_tool(stack: StackConfig) -> dict[str, object] | None:
     return stack.tools.get(GroundworkersConfig.tool_name)
 
 
-def _set_effective_groundworkers_tool(stack: StackConfig, tool: ToolConfig) -> None:
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        profile = stack.profiles[stack.active_profile]
-        if GroundworkersConfig.tool_name in profile.tools:
-            profile.tools[GroundworkersConfig.tool_name] = tool
-            return
+def _set_effective_groundworkers_tool(
+    stack: StackConfig,
+    tool: dict[str, object],
+) -> None:
     stack.tools[GroundworkersConfig.tool_name] = tool
 
 
 def _groundworkers_tool_with_llm(
     stack: StackConfig,
     draft: LlmConfigurationDraft,
-) -> ToolConfig:
+) -> dict[str, object]:
     existing = _effective_groundworkers_tool(stack)
-    extra = dict(existing.extra) if existing is not None else {}
-    llm_extra = dict(extra.get("llm", {}))
+    tool = dict(existing) if existing is not None else {}
+    existing_llm = tool.get("llm", {})
+    llm_extra = dict(existing_llm) if isinstance(existing_llm, dict) else {}
     llm_extra.update(
         {
             "enabled": True,
@@ -190,11 +183,9 @@ def _groundworkers_tool_with_llm(
     )
     if draft.api_key is not None:
         llm_extra["api_key"] = draft.api_key
-    extra["llm"] = llm_extra
-    return ToolConfig(
-        default_resource=existing.default_resource if existing is not None else None,
-        extra=extra,
-    )
+    tool["llm"] = llm_extra
+    GroundworkersConfig.model_validate(tool)
+    return tool
 
 
 def _changed_top_level(
@@ -207,6 +198,6 @@ def _changed_top_level(
     after = reloaded.model_dump(mode="python")
     return tuple(
         key
-        for key in ("tools", "profiles")
+        for key in ("tools",)
         if before.get(key) != after.get(key) or (original is None and after.get(key))
     )

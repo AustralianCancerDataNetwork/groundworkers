@@ -8,7 +8,6 @@ from groundworkers.tui.state import SetupSession, load_tui_state
 def build_groundworkers_tui_spec(
     *,
     config_path: str | None = None,
-    profile: str | None = None,
 ):
     """Build the Groundworkers console with setup as its first registered page."""
 
@@ -23,7 +22,7 @@ def build_groundworkers_tui_spec(
     from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
     from groundworkers.tui.routes import SETUP_ROUTE
 
-    session = load_tui_state(config_path=config_path, profile=profile)
+    session = load_tui_state(config_path=config_path)
 
     def setup_factory(_context: Any):
         return SetupPage(
@@ -45,7 +44,6 @@ def build_groundworkers_tui_spec(
         workbench_labels=WorkbenchLabels(result_panel="Setup"),
         metadata={
             "config_path": str(session.configuration.path),
-            "profile": session.configuration.profile,
             "config_state": session.configuration.state.value,
         },
     )
@@ -54,13 +52,10 @@ def build_groundworkers_tui_spec(
 def run_groundworkers_tui(
     *,
     config_path: str | None = None,
-    profile: str | None = None,
 ) -> None:
     from groundskeeping.app import OperatorApp
 
-    OperatorApp(
-        build_groundworkers_tui_spec(config_path=config_path, profile=profile)
-    ).run()
+    OperatorApp(build_groundworkers_tui_spec(config_path=config_path)).run()
 
 
 __all__ = [

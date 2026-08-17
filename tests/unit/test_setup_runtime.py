@@ -4,37 +4,39 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from groundworkers.application.setup.configuration import load_configuration
+from groundworkers.application.setup.models import LlmModelMetadata
 from groundworkers.application.setup.runtime_setup import (
     load_chat_configuration,
     load_graph_configuration,
     load_llm_provider_configuration,
     verify_llm_provider,
 )
-from groundworkers.application.setup.models import LlmModelMetadata
 
 
-def test_runtime_sections_load_from_the_effective_profile_and_redact_secrets(
+def test_runtime_sections_load_from_plain_tool_mappings_and_redact_secrets(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "config.toml"
     path.write_text(
         """
-active_profile = "local"
-
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[profiles.local.tools.omop_graph.extra]
+[tools.omop_graph]
 max_depth = 4
 max_paths = 8
 
-[profiles.local.tools.groundworkers.extra.llm]
+[tools.groundworkers]
+cdm_db = "cdm_db"
+
+[tools.groundworkers.llm]
 enabled = true
 provider = "openai-compatible"
 api_base = "https://provider.example/v1?api_key=secret"
@@ -66,13 +68,14 @@ def test_runtime_sections_do_not_treat_package_defaults_as_configuration(
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 """,
         encoding="utf-8",
@@ -202,16 +205,20 @@ def _write_llm_config(
     path = tmp_path / "config.toml"
     path.write_text(
         f"""
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
+[tools.groundworkers]
+cdm_db = "cdm_db"
+
+[tools.groundworkers.llm]
 enabled = true
 provider = "{provider}"
 api_base = "{api_base}"

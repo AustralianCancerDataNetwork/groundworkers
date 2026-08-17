@@ -3,20 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from oa_configurator import (
+from oa_configurator import (  # type: ignore[import-untyped]
     CDMDatabaseConfig,
-    ConfigurationError,
     ModelConfig,
     PackageConfigBase,
     RefTo,
+    ResolvedCDMDatabase,
+    ResolvedModel,
+    ResolvedVectorStore,
     Resolver,
     StackConfig,
     VectorStoreConfig,
 )
-from omop_alchemy.config import OmopAlchemyConfig
-from omop_emb.config import OmopEmbConfig
-from omop_graph.config import OmopGraphConfig
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.engine import Engine
 
@@ -49,16 +49,17 @@ class GroundingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Minimum proportion of query tokens that must appear in the matched concept
-    # name for a fulltext (FTS) result to be accepted. FTS results below this
-    # threshold are silently dropped; if all FTS results are dropped the tier
-    # is treated as empty and grounding falls through to the embedding tier.
+    # name for a full-text result to be accepted. If every result falls below the
+    # threshold, grounding continues to the embedding tier.
     min_fulltext_overlap: float = 0.0
 
     @field_validator("min_fulltext_overlap")
     @classmethod
     def validate_overlap(cls, value: float) -> float:
         if not 0.0 <= value <= 1.0:
-            raise ValueError("grounding.min_fulltext_overlap must be between 0.0 and 1.0")
+            raise ValueError(
+                "grounding.min_fulltext_overlap must be between 0.0 and 1.0"
+            )
         return value
 
 
@@ -67,8 +68,8 @@ class LLMConfig(BaseModel):
 
     enabled: bool = False
     provider: str = "openai-compatible"
-    api_base: str | None = None
-    api_key: str | None = None
+    api_base: str | None = Field(default=None, repr=False)
+    api_key: str | None = Field(default=None, repr=False)
     default_model_name: str | None = None
 
     @model_validator(mode="after")
@@ -95,14 +96,13 @@ class KnowledgeConfig(BaseModel):
 class SemanticProjectionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Deterministic, no LLM/DB dependency — off by default per the rollout plan
-    # in agent-stack's SEMANTIC_INTEGRATION design notes: enable in local/test
-    # environments first, before review/export surfaces consume it downstream.
+    # Deterministic and dependency-free, but opt-in while downstream review and
+    # export surfaces adopt semantic projections.
     enabled: bool = False
 
 
 class GroundworkersConfig(PackageConfigBase):
-    """Package-level configuration owned by groundworkers."""
+    """Package-level configuration owned by Groundworkers."""
 
     tool_name: ClassVar[str] = "groundworkers"
     extra_logging_namespaces: ClassVar[tuple[str, ...]] = ("omop_graph", "omop_emb")
@@ -117,20 +117,23 @@ class GroundworkersConfig(PackageConfigBase):
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
     source_planning: SourcePlanningConfig = Field(default_factory=SourcePlanningConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
-    semantic_projection: SemanticProjectionConfig = Field(default_factory=SemanticProjectionConfig)
+    semantic_projection: SemanticProjectionConfig = Field(
+        default_factory=SemanticProjectionConfig
+    )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class AppConfig:
+    """Resolved runtime configuration owned and consumed by Groundworkers."""
+
     stack: StackConfig
     resolver: Resolver
     groundworkers: GroundworkersConfig
-    omop_graph: OmopGraphConfig | None
-    omop_emb: OmopEmbConfig | None
-    cdm_resource_name: str | None
-    cdm_engine: Engine | None
-    emb_resource_name: str | None
-    emb_engine: Engine | None
+    cdm_database: ResolvedCDMDatabase
+    cdm_engine: Engine
+    vocabulary_engine: Engine
+    embedding_model: ResolvedModel | None
+    vector_store: ResolvedVectorStore | None
     knowledge_root: Path | None
 
     @property
@@ -165,23 +168,59 @@ class AppConfig:
     def semantic_projection(self) -> SemanticProjectionConfig:
         return self.groundworkers.semantic_projection
 
+    @property
+    def effective_embedding_model_name(self) -> str | None:
+        return self.embedding_model.model if self.embedding_model is not None else None
+
     def describe(self) -> dict[str, Any]:
+        """Return an operator-safe description without credentials or raw URLs."""
+
         llm = self.llm.model_dump(exclude_none=True)
         if llm.get("api_key"):
             llm["api_key"] = "***"
+        if isinstance(llm.get("api_base"), str):
+            llm["api_base"] = _safe_endpoint(llm["api_base"])
 
-        omop_emb: dict[str, Any] | None = None
-        if self.omop_emb is not None:
-            omop_emb = self.omop_emb.model_dump(exclude_none=True)
-            if omop_emb.get("api_key"):
-                omop_emb["api_key"] = "***"
-            omop_emb["resource_name"] = self.emb_resource_name
+        model = None
+        if self.embedding_model is not None:
+            resolved = self.embedding_model
+            model = {
+                "name": resolved.name,
+                "provider": {
+                    "name": resolved.provider.name,
+                    "provider": resolved.provider.provider,
+                    "base_url": _safe_endpoint(resolved.provider.base_url),
+                    "api_key": "***" if resolved.provider.api_key else None,
+                },
+                "model": resolved.model,
+                "embedding_dim": resolved.embedding_dim,
+                "embeddings": resolved.embeddings,
+            }
 
+        vector_store = None
+        if self.vector_store is not None:
+            resolved_store = self.vector_store
+            vector_store = {
+                "name": resolved_store.name,
+                "backend_type": resolved_store.backend_type,
+                "database": {
+                    "name": resolved_store.database.name,
+                    "connection": resolved_store.database.connection.name,
+                    "safe_url": _safe_endpoint(
+                        resolved_store.database.connection.safe_url
+                    ),
+                    "schema_name": resolved_store.database.schema_name,
+                },
+                "faiss_cache_dir": resolved_store.faiss_cache_dir,
+            }
+
+        database = self.cdm_database
         return {
             "app_name": self.app_name,
             "stack": {
-                "config_path": str(self.stack.loaded_path) if self.stack.loaded_path is not None else None,
-                "active_profile": self.stack.active_profile,
+                "config_path": str(self.stack.loaded_path)
+                if self.stack.loaded_path is not None
+                else None,
             },
             "groundworkers": {
                 "mcp": self.mcp.model_dump(),
@@ -191,109 +230,52 @@ class AppConfig:
                 "source_planning": self.source_planning.model_dump(),
                 "knowledge": {
                     **self.knowledge.model_dump(exclude_none=True),
-                    "resolved_root": str(self.knowledge_root) if self.knowledge_root is not None else None,
+                    "resolved_root": str(self.knowledge_root)
+                    if self.knowledge_root is not None
+                    else None,
                 },
                 "semantic_projection": self.semantic_projection.model_dump(),
             },
-            "omop_graph": {
-                "configured": self.omop_graph is not None,
-                "resource_name": self.cdm_resource_name,
-                "vocab_schema": self._vocab_schema(),
-                "embedding_model_name": self.effective_embedding_model_name,
-                "min_fulltext_overlap": self.grounding.min_fulltext_overlap,
+            "database": {
+                "name": database.name,
+                "connection": database.connection.name,
+                "safe_url": _safe_endpoint(database.connection.safe_url),
+                "schema_name": database.schema_name,
+                "vocabulary_connection": database.vocab_connection.name,
+                "vocabulary_safe_url": _safe_endpoint(
+                    database.vocab_connection.safe_url
+                ),
+                "vocabulary_schema": database.vocab_schema,
+                "results_schema": database.results_schema,
             },
-            "omop_emb": omop_emb,
+            "model": model,
+            "vector_store": vector_store,
         }
 
-    @property
-    def effective_embedding_model_name(self) -> str | None:
-        return self.groundworkers.embedding_model_name
-
-    def _vocab_schema(self) -> str | None:
-        if self.cdm_resource_name is None:
-            return None
-        return self.resolver.resolve_resource(self.cdm_resource_name).vocab_schema
+    def __repr__(self) -> str:
+        return f"AppConfig({self.describe()!r})"
 
 
-def has_tool_config(stack: StackConfig, tool_name: str) -> bool:
-    if tool_name in stack.tools:
-        return True
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        return tool_name in stack.profiles[stack.active_profile].tools
-    return False
+_SENSITIVE_QUERY_PARTS = ("key", "token", "secret", "password", "credential")
 
 
-def resolve_cdm_resource_name(stack: StackConfig) -> str:
-    """Return the shared CDM resource name used by groundworkers."""
-
-    available: set[str] = set(stack.resource_names())
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        available |= set(stack.profiles[stack.active_profile].resources)
-
-    seen: set[str] = set()
-    candidates: list[str] = []
-    for tool_name in (GroundworkersConfig.tool_name, OmopGraphConfig.tool_name, OmopAlchemyConfig.tool_name):
-        tool = stack.tools.get(tool_name)
-        if tool is None and stack.active_profile and stack.active_profile in stack.profiles:
-            tool = stack.profiles[stack.active_profile].tools.get(tool_name)
-        if tool is not None and tool.default_resource:
-            candidates.append(tool.default_resource)
-
-    candidates.append(OmopAlchemyConfig.CDM_DB.semantic_name)
-
-    for resource_name in candidates:
-        if resource_name in seen:
-            continue
-        seen.add(resource_name)
-        resolved_name = stack.resource_aliases.get(resource_name, resource_name)
-        if resolved_name in available:
-            return resource_name
-
-    alias_hint = (
-        "\nTip: if you named your resource differently, add:\n"
-        '  [resource_aliases]\n  cdm_db = "your-resource-name"'
+def _safe_endpoint(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parts = urlsplit(value)
+    hostname = parts.hostname or ""
+    netloc = hostname
+    if parts.port is not None:
+        netloc = f"{netloc}:{parts.port}"
+    query = urlencode(
+        [
+            (
+                key,
+                "***"
+                if any(part in key.lower() for part in _SENSITIVE_QUERY_PARTS)
+                else item,
+            )
+            for key, item in parse_qsl(parts.query, keep_blank_values=True)
+        ]
     )
-    raise ConfigurationError(
-        "Groundworkers could not resolve a shared CDM resource. "
-        f"Tried: {candidates}\n"
-        f"Available: {sorted(available) or '(none)'}\n"
-        "Configure 'omop_alchemy' first, or set tools.groundworkers.default_resource "
-        "to the shared CDM resource name."
-        + alias_hint
-    )
-
-
-def resolve_embedding_resource_name(stack: StackConfig) -> str:
-    """Return the embedding resource name used by groundworkers."""
-
-    available: set[str] = set(stack.resource_names())
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        available |= set(stack.profiles[stack.active_profile].resources)
-
-    tool = stack.tools.get(OmopEmbConfig.tool_name)
-    if tool is None and stack.active_profile and stack.active_profile in stack.profiles:
-        tool = stack.profiles[stack.active_profile].tools.get(OmopEmbConfig.tool_name)
-
-    candidates = [
-        tool.default_resource if tool is not None else None,
-        OmopEmbConfig.EMB_DB.semantic_name,
-    ]
-
-    for resource_name in candidates:
-        if not resource_name:
-            continue
-        resolved_name = stack.resource_aliases.get(resource_name, resource_name)
-        if resolved_name in available:
-            return resource_name
-
-    alias_hint = (
-        "\nTip: if you named your resource differently, add:\n"
-        f'  [resource_aliases]\n  {OmopEmbConfig.EMB_DB.semantic_name} = "your-embedding-resource"'
-    )
-    raise ConfigurationError(
-        "Groundworkers could not resolve an embedding resource for omop-emb. "
-        f"Tried: {[c for c in candidates if c]}\n"
-        f"Available: {sorted(available) or '(none)'}\n"
-        "Run 'omop-config configure omop_emb' to provision the embedding store."
-        + alias_hint
-    )
+    return urlunsplit((parts.scheme, netloc, parts.path, query, ""))
