@@ -1,9 +1,19 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Annotated, Any, ClassVar
 
-from oa_configurator import ConfigurationError, PackageConfigBase, Resolver, StackConfig
+from oa_configurator import (
+    CDMDatabaseConfig,
+    ConfigurationError,
+    ModelConfig,
+    PackageConfigBase,
+    RefTo,
+    Resolver,
+    StackConfig,
+    VectorStoreConfig,
+)
 from omop_alchemy.config import OmopAlchemyConfig
 from omop_emb.config import OmopEmbConfig
 from omop_graph.config import OmopGraphConfig
@@ -38,7 +48,6 @@ class RestTransportConfig(BaseModel):
 class GroundingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    embedding_model_name: str | None = None
     # Minimum proportion of query tokens that must appear in the matched concept
     # name for a fulltext (FTS) result to be accepted. FTS results below this
     # threshold are silently dropped; if all FTS results are dropped the tier
@@ -63,7 +72,7 @@ class LLMConfig(BaseModel):
     default_model_name: str | None = None
 
     @model_validator(mode="after")
-    def validate_enabled_config(self) -> "LLMConfig":
+    def validate_enabled_config(self) -> LLMConfig:
         if not self.enabled:
             return self
         if self.api_key is not None and not self.api_key.strip():
@@ -98,6 +107,9 @@ class GroundworkersConfig(PackageConfigBase):
     tool_name: ClassVar[str] = "groundworkers"
     extra_logging_namespaces: ClassVar[tuple[str, ...]] = ("omop_graph", "omop_emb")
 
+    cdm_db: Annotated[str, RefTo(CDMDatabaseConfig)] = "cdm_db"
+    embedding_model_name: Annotated[str | None, RefTo(ModelConfig)] = None
+    vector_store_name: Annotated[str | None, RefTo(VectorStoreConfig)] = None
     app_name: str = "groundworkers"
     mcp: McpTransportConfig = Field(default_factory=McpTransportConfig)
     rest: RestTransportConfig = Field(default_factory=RestTransportConfig)
@@ -195,11 +207,7 @@ class AppConfig:
 
     @property
     def effective_embedding_model_name(self) -> str | None:
-        if self.grounding.embedding_model_name is not None:
-            return self.grounding.embedding_model_name
-        if self.omop_emb is not None:
-            return self.omop_emb.embedding_model
-        return None
+        return self.groundworkers.embedding_model_name
 
     def _vocab_schema(self) -> str | None:
         if self.cdm_resource_name is None:

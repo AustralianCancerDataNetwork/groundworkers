@@ -43,7 +43,6 @@ class SetupIssue:
 class ConfigurationSnapshot:
     state: ConfigurationState
     path: Path
-    profile: str | None
     ownership: ConfigurationOwnership
     stack: StackConfig | None = field(default=None, repr=False)
     revision: str | None = None
