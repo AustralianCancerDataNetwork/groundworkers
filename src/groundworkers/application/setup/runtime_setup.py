@@ -7,7 +7,6 @@ from urllib.parse import urlsplit, urlunsplit
 from urllib.request import urlopen
 
 from oa_configurator import StackConfig  # type: ignore[import-untyped]
-from omop_graph.config import OmopGraphConfig  # type: ignore[import-untyped]
 
 from groundworkers.application.setup.databases import classify_connection_error
 from groundworkers.application.setup.models import (
@@ -28,22 +27,30 @@ _LLM_STATUS_TIMEOUT_SECONDS = 2.0
 def load_graph_configuration(
     snapshot: ConfigurationSnapshot,
 ) -> GraphConfiguration | None:
-    """Resolve graph settings without constructing a graph adapter."""
+    """Resolve Groundworkers' graph and grounding policy without building an adapter.
+
+    Reads only Groundworkers-owned configuration. It previously validated
+    omop-graph's own package config to display that package's traversal limits;
+    those limits became per-call arguments in omop-graph 2.x, so the values were
+    inert and reading another package's internal config class is not permitted.
+    """
 
     if not snapshot.usable or snapshot.stack is None:
         return None
-    if OmopGraphConfig.tool_name not in snapshot.stack.tools:
+    # An absent package section means Groundworkers is not configured for this stack;
+    # its schema defaults are not an operator's configuration.
+    if GroundworkersConfig.tool_name not in snapshot.stack.tools:
         return None
     try:
-        tool = _effective_tool(snapshot.stack, OmopGraphConfig.tool_name)
-        config = OmopGraphConfig.model_validate(tool or {})
-        resource_name = GroundworkersConfig.validate_candidate(snapshot.stack).cdm_db
+        groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
+        database = snapshot.stack.databases.get(groundworkers.cdm_db)
     except (KeyError, TypeError, ValueError):
         return None
     return GraphConfiguration(
-        resource_name=resource_name,
-        max_depth=config.max_depth,
-        max_paths=config.max_paths,
+        cdm_database_name=groundworkers.cdm_db,
+        vocabulary_schema=getattr(database, "vocab_schema", None),
+        grounding_max_depth=groundworkers.grounding.max_depth,
+        min_fulltext_overlap=groundworkers.grounding.min_fulltext_overlap,
     )
 
 

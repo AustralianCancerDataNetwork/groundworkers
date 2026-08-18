@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
@@ -13,10 +13,12 @@ from omop_alchemy.cdm.model.vocabulary import (
 )
 from omop_graph.extensions.omop_alchemy import PredicateKind
 from omop_graph.graph.kg import KnowledgeGraph, KnowledgeGraphEmbeddingConfiguration
+from omop_graph.graph.nodes import LabelMatchKind
 from omop_graph.graph.paths import find_shortest_paths_batch
 from omop_graph.graph.traverse import traverse
 from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
 from omop_graph.reasoning.resolvers import ResolverPipeline
+from omop_graph.reasoning.resolvers.resolvers import EmbeddingResolver
 from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
@@ -24,10 +26,23 @@ from sqlalchemy.exc import NoResultFound
 from groundworkers.base.errors import GroundworkersError
 
 if TYPE_CHECKING:
+    import numpy as np
     from oa_configurator import ResolvedModel
     from omop_emb import EmbeddingBackend
+    from omop_llm import ModelBackend
 
 logger = logging.getLogger(__name__)
+
+
+class EmbeddingTierUnavailable(GroundworkersError):
+    """The embedding tier could not run; lexical tiers remain usable.
+
+    Raised instead of failing a whole grounding request so ``GraphService`` can skip
+    the embedding tier and continue down the tier plan.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__("BACKEND_UNAVAIL", message)
 
 
 class OmopGraphAdapter:
@@ -51,6 +66,7 @@ class OmopGraphAdapter:
         vocab_schema: str = "omop_vocab",
         embedding_backend_factory: Callable[[], EmbeddingBackend] | None = None,
         resolved_embedding_model: ResolvedModel | None = None,
+        model_backend_factory: Callable[[], ModelBackend] | None = None,
         embedding_metric: str = "cosine",
         faiss_cache_dir: str | None = None,
     ) -> None:
@@ -58,17 +74,28 @@ class OmopGraphAdapter:
         self.vocab_schema = vocab_schema
         self._embedding_backend_factory = embedding_backend_factory
         self._resolved_embedding_model = resolved_embedding_model
+        self._model_backend_factory = model_backend_factory
         self._embedding_metric = embedding_metric
         self._faiss_cache_dir = faiss_cache_dir
         self._embedding_configuration_error: str | None = None
-        self._embedding_resolver_active = False
+        self._embedding_configured = False
         self._kg: KnowledgeGraph | None = None
+        self._model_backend: ModelBackend | None = None
 
     @property
     def embedding_resolver_active(self) -> bool:
-        """Whether complete read-only embedding inputs were accepted."""
+        """Whether the embedding grounding tier can actually produce candidates.
 
-        return self._embedding_resolver_active
+        Requires all three inputs, not just a valid store configuration: the vector
+        store backend, the resolved model, and a callable model backend to encode the
+        query. The read-oriented server builds the graph with ``write=False``, and
+        omop-graph derives its on-demand query encoder from the *writer* interface —
+        so without a Groundworkers-supplied encoder the embedding resolver would run
+        and return nothing. Reporting active in that state is the silent-degradation
+        failure this property exists to prevent.
+        """
+
+        return self._embedding_configured and self._model_backend_factory is not None
 
     def is_available(self) -> bool:
         try:
@@ -112,6 +139,53 @@ class OmopGraphAdapter:
                 return []
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return [self._serialise_concept_view(concept_view)]
+
+    def raw_standard_flags(self, concept_ids: Sequence[int]) -> dict[int, str | None]:
+        """Batch-fetch the raw OMOP ``concept.standard_concept`` flag per concept_id.
+
+        This is Groundworkers behaviour, not a temporary shim. omop-graph 2.x
+        projects omop-alchemy's *combined* standardness expression
+        (``standard_concept in ('S', 'C')``) into ``ConceptView.standard_concept``
+        as a single boolean, and exposes no raw-flag or classification
+        discriminator. Groundworkers' public contract distinguishes standard
+        (``'S'``) from classification (``'C'``), so the raw flag is read directly
+        from the CDM through the adapter's own engine — the supported local query
+        sanctioned by the migration plan when the upstream discriminator is
+        unavailable.
+
+        Returns a mapping of concept_id to the normalized flag: ``'S'``, ``'C'``,
+        any other non-blank value as stored, or ``None`` when the flag is unset
+        (NULL, blank, or whitespace-only). Concept ids that are absent from the
+        result are unknown to the vocabulary.
+
+        Consumed by the grounding surface only. Hierarchy, neighbourhood, edge,
+        and standard-mapping payloads still report omop-graph's combined flag; see
+        the R4 notes in the stack 1.0 migration plan.
+
+        Runs against the adapter's own CDM engine rather than the graph session, so
+        it stays available for lexical grounding on a CDM that has no
+        relationship-classification sidecar.
+        """
+        if not concept_ids:
+            return {}
+        unique_ids = tuple(dict.fromkeys(int(cid) for cid in concept_ids))
+        stmt = select(Concept.concept_id, Concept.standard_concept).where(
+            Concept.concept_id.in_(unique_ids)
+        )
+        try:
+            with self.engine.connect() as conn:
+                rows = conn.execute(stmt).all()
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
+        return {int(row[0]): self._normalise_raw_flag(row[1]) for row in rows}
+
+    @staticmethod
+    def _normalise_raw_flag(value: str | None) -> str | None:
+        """Normalize a raw OMOP single-character flag, treating blanks as unset."""
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     def concept_views(self, concept_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
         """Batch-fetch normalized concept views keyed by concept_id.
@@ -176,7 +250,9 @@ class OmopGraphAdapter:
                 "object_id": int(edge.object_id),
                 "predicate_id": edge.predicate_id,
                 "predicate_kind": edge.predicate_kind.name,
-                "valid": edge.invalid_reason is None,
+                # EdgeView has no normalized activity property, so apply the same
+                # blank/whitespace-tolerant invalid-reason semantics locally.
+                "valid": self._normalise_raw_flag(edge.invalid_reason) is None,
             }
             for edge in raw
         ]
@@ -311,20 +387,70 @@ class OmopGraphAdapter:
 
         Returns ground hits without concept-view enrichment; ``GraphService`` adds
         vocabulary/domain/class fields and applies tier-selection policy.
+
+        Raises ``EmbeddingTierUnavailable`` when an embedding tier cannot be encoded,
+        so the caller can fall through to the remaining lexical tiers.
         """
         pipeline = ResolverPipeline(resolvers=resolvers)
+        query_embedding = (
+            self._encode_query(query) if self._is_embedding_tier(resolvers) else None
+        )
         try:
             raw = ground_term(
                 pipeline,
                 self._get_kg(),
                 query,
-                query_embedding=None,  # embedding is handled by the KG via its emb_config
+                query_embedding=query_embedding,
                 constraints=constraints,
                 max_candidates=limit,
             )
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return [self._serialise_ground_hit(r) for r in raw]
+
+    @staticmethod
+    def _is_embedding_tier(resolvers: tuple[Any, ...]) -> bool:
+        return any(isinstance(resolver, EmbeddingResolver) for resolver in resolvers)
+
+    def _encode_query(self, query: str) -> np.ndarray:
+        """Encode the query text with the one configured Groundworkers model.
+
+        The read-oriented graph is built with ``write=False``, and omop-graph's
+        on-demand query encoding runs only through a write-capable interface. The
+        query vector is therefore supplied explicitly here — a read-only operation
+        that never touches the embedding store — using the same ``ModelBackend`` and
+        ``EmbeddingRole.QUERY`` role as the embedding tools.
+        """
+        if self._model_backend_factory is None:
+            raise EmbeddingTierUnavailable(
+                "The embedding tier needs a configured embedding model to encode the "
+                "query. Configure groundworkers.embedding_model_name."
+            )
+        try:
+            from omop_emb import EmbeddingReaderInterface, EmbeddingRole
+
+            if self._model_backend is None:
+                self._model_backend = self._model_backend_factory()
+            embedding = EmbeddingReaderInterface.generate_embeddings(
+                self._model_backend,
+                query,
+                role=EmbeddingRole.QUERY,
+            )
+        except Exception as exc:
+            # Provider and store errors can carry endpoints or credentials, so report
+            # the type only and let the remaining lexical tiers run.
+            detail = (
+                "The configured embedding model could not encode the query "
+                f"({type(exc).__name__}); lexical tiers remain available."
+            )
+            logger.warning("%s", detail)
+            raise EmbeddingTierUnavailable(detail) from exc
+        if embedding.shape[0] != 1:
+            raise EmbeddingTierUnavailable(
+                "The configured embedding model returned an unexpected vector shape "
+                f"{tuple(embedding.shape)} for one query."
+            )
+        return embedding
 
     # ------------------------------------------------------------------
     # Vocabulary catalogue (raw backend query)
@@ -414,35 +540,58 @@ class OmopGraphAdapter:
         except Exception as exc:
             raise GroundworkersError("BACKEND_UNAVAIL", f"Cannot connect to database: {exc}") from exc
 
-        try:
-            emb_config: KnowledgeGraphEmbeddingConfiguration | None = None
-            if (
-                self._embedding_backend_factory is not None
-                and self._resolved_embedding_model is not None
-            ):
-                try:
-                    from omop_emb import MetricType
+        emb_config: KnowledgeGraphEmbeddingConfiguration | None = None
+        if (
+            self._embedding_backend_factory is not None
+            and self._resolved_embedding_model is not None
+        ):
+            try:
+                from omop_emb import MetricType
 
-                    emb_config = KnowledgeGraphEmbeddingConfiguration(
-                        metric_type=MetricType(self._embedding_metric),
-                        backend=self._embedding_backend_factory(),
-                        resolved_model=self._resolved_embedding_model,
-                        write=False,
-                        compute_missing_embeddings=False,
-                        faiss_cache_dir=self._faiss_cache_dir,
-                    )
-                    self._embedding_resolver_active = True
-                except Exception as exc:  # noqa: BLE001 - lexical fallback is intentional
-                    self._embedding_resolver_active = False
-                    self._embedding_configuration_error = (
-                        "Embedding configuration failed with "
-                        f"{type(exc).__name__}; lexical grounding remains available."
-                    )
-                    logger.warning("%s", self._embedding_configuration_error)
+                emb_config = KnowledgeGraphEmbeddingConfiguration(
+                    metric_type=MetricType(self._embedding_metric),
+                    backend=self._embedding_backend_factory(),
+                    resolved_model=self._resolved_embedding_model,
+                    write=False,
+                    compute_missing_embeddings=False,
+                    faiss_cache_dir=self._faiss_cache_dir,
+                )
+                self._embedding_configured = True
+            except Exception as exc:  # noqa: BLE001 - lexical fallback is intentional
+                emb_config = None
+                self._embedding_configured = False
+                self._embedding_configuration_error = self._embedding_failure_detail(exc)
+                logger.warning("%s", self._embedding_configuration_error)
+
+        try:
             self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=emb_config)
         except Exception as exc:
-            raise self._wrap_graph_error(exc, default_code="BACKEND_UNAVAIL")
+            if emb_config is None:
+                self._embedding_configured = False
+                raise self._wrap_graph_error(exc, default_code="BACKEND_UNAVAIL")
+            # The graph rejected the embedding configuration itself. Keep lexical
+            # grounding available rather than failing the whole backend, and report
+            # the reason as status detail instead of marking embeddings active.
+            self._embedding_configured = False
+            self._embedding_configuration_error = self._embedding_failure_detail(exc)
+            logger.warning("%s", self._embedding_configuration_error)
+            try:
+                self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=None)
+            except Exception as lexical_exc:
+                raise self._wrap_graph_error(lexical_exc, default_code="BACKEND_UNAVAIL")
         return self._kg
+
+    @staticmethod
+    def _embedding_failure_detail(exc: Exception) -> str:
+        """Safe status detail for an embedding-configuration failure.
+
+        Reports the exception type only: provider and database errors can carry
+        endpoints, credentials, or connection strings in their messages.
+        """
+        return (
+            "Embedding configuration failed with "
+            f"{type(exc).__name__}; lexical grounding remains available."
+        )
 
     def _serialise_concept_view(self, concept_view: object) -> dict[str, Any]:
         return {
@@ -456,6 +605,10 @@ class OmopGraphAdapter:
             "valid_start_date": self._date_to_iso(concept_view.valid_start_date),  # type: ignore[attr-defined]
             "valid_end_date": self._date_to_iso(concept_view.valid_end_date),  # type: ignore[attr-defined]
             "invalid_reason": concept_view.invalid_reason,  # type: ignore[attr-defined]
+            # omop-graph's own normalized activity field: invalid_reason unset, with
+            # blank and whitespace-only treated as active. Do not re-derive this from
+            # the raw invalid_reason string.
+            "is_active": bool(concept_view.is_active),  # type: ignore[attr-defined]
         }
 
     def _serialise_ground_hit(self, result: object) -> dict[str, Any]:
@@ -482,12 +635,20 @@ class OmopGraphAdapter:
             "standardized_from": standardized_from,
         }
 
-    @staticmethod
-    def _label_match_kind_name(match_kind: object) -> str:
-        _MAP = {0: "EXACT", 1: "FULLTEXT", 2: "PARTIAL", 3: "EMBEDDING_NEAREST"}
-        val = getattr(match_kind, "value", None)
-        if isinstance(val, int):
-            return _MAP.get(val, str(match_kind))
+    # omop-graph's LabelMatchKind member names mapped to Groundworkers' stable
+    # public match_kind strings. Keyed by enum member rather than by ordinal value
+    # so an upstream reordering cannot silently re-label a tier.
+    _MATCH_KIND_NAMES: ClassVar[dict[LabelMatchKind, str]] = {
+        LabelMatchKind.EXACT: "EXACT",
+        LabelMatchKind.FTS: "FULLTEXT",
+        LabelMatchKind.PARTIAL: "PARTIAL",
+        LabelMatchKind.EMBEDDING: "EMBEDDING_NEAREST",
+    }
+
+    @classmethod
+    def _label_match_kind_name(cls, match_kind: object) -> str:
+        if isinstance(match_kind, LabelMatchKind):
+            return cls._MATCH_KIND_NAMES.get(match_kind, match_kind.name)
         return str(match_kind)
 
     @staticmethod

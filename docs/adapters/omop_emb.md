@@ -23,7 +23,7 @@ required engines.
 | Backend | omop-emb config |
 |---|---|
 | `sqlitevec` | `backend = "sqlitevec"` plus `sqlite_path` |
-| `pgvector` | `backend = "pgvector"` plus a configured embedding resource |
+| `pgvector` | a `[vector_stores.*]` entry with `backend_type = "pgvector"` and a `database` reference |
 
 FAISS remains a sidecar acceleration layer rather than a standalone primary
 backend.

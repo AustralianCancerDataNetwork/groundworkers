@@ -24,7 +24,7 @@ class GraphPresenter(SetupPresenterBase):
         if configuration is None:
             return EmptyView(
                 title="Graph not configured",
-                message="Choose the shared CDM resource and graph traversal limits.",
+                message="Configure a CDM database to enable graph traversal.",
                 status=SemanticStatus.WARNING,
             )
         return TableView(
@@ -32,16 +32,36 @@ class GraphPresenter(SetupPresenterBase):
             columns=("Setting", "Value", "Status"),
             rows=(
                 TableRow(
-                    key="graph.resource",
-                    cells=("CDM resource", configuration.resource_name, "Configured"),
+                    key="graph.cdm_database",
+                    cells=(
+                        "CDM database",
+                        configuration.cdm_database_name,
+                        "Configured",
+                    ),
                 ),
                 TableRow(
-                    key="graph.max_depth",
-                    cells=("Maximum depth", str(configuration.max_depth), "Configured"),
+                    key="graph.vocabulary_schema",
+                    cells=(
+                        "Vocabulary schema",
+                        configuration.vocabulary_schema or "Same as CDM schema",
+                        "Configured",
+                    ),
                 ),
                 TableRow(
-                    key="graph.max_paths",
-                    cells=("Maximum paths", str(configuration.max_paths), "Configured"),
+                    key="graph.grounding_max_depth",
+                    cells=(
+                        "Grounding depth",
+                        str(configuration.grounding_max_depth),
+                        "Configured",
+                    ),
+                ),
+                TableRow(
+                    key="graph.min_fulltext_overlap",
+                    cells=(
+                        "Minimum full-text overlap",
+                        f"{configuration.min_fulltext_overlap:.2f}",
+                        "Configured",
+                    ),
                 ),
             ),
             status=SemanticStatus.WARNING,

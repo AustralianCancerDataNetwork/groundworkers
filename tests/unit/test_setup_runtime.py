@@ -29,12 +29,12 @@ connection = "main"
 schema_name = "main"
 vocab_schema = "main"
 
-[tools.omop_graph]
-max_depth = 4
-max_paths = 8
-
 [tools.groundworkers]
 cdm_db = "cdm_db"
+
+[tools.groundworkers.grounding]
+min_fulltext_overlap = 0.25
+max_depth = 4
 
 [tools.groundworkers.llm]
 enabled = true
@@ -52,8 +52,12 @@ default_model_name = "chat-model"
     chat = load_chat_configuration(provider)
 
     assert graph is not None
-    assert graph.max_depth == 4
-    assert graph.max_paths == 8
+    # Graph/grounding policy comes from Groundworkers' own configuration, not from
+    # omop-graph's internal package config.
+    assert graph.cdm_database_name == "cdm_db"
+    assert graph.vocabulary_schema == "main"
+    assert graph.grounding_max_depth == 4
+    assert graph.min_fulltext_overlap == 0.25
     assert provider is not None
     assert provider.api_base == "https://provider.example/v1?api_key=%2A%2A%2A"
     assert provider.credentials_configured is True

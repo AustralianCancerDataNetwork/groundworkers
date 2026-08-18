@@ -16,6 +16,17 @@ LEGACY_API_DEBT: dict[str, dict[str, int]] = {
     "ProviderType": {},
     "omop_emb.embeddings.embedding_client": {},
     "omop_emb.embeddings.embedding_providers": {},
+    "SearchConstraintConcept": {},
+    "omop_graph.graph.constraints": {},
+    "set_embedding_client": {},
+    # R5 deleted the duplicate ToolConfig-era LLM writer and its bespoke wizard;
+    # every setup write goal now runs through the generic Groundskeeping flow.
+    "setup.llm_configuration": {},
+    "wizards.llm_provider": {},
+    "apply_llm_configuration": {},
+    # R5 removed the last cross-package internal config import.
+    "OmopGraphConfig": {},
+    "OmopEmbConfig": {},
 }
 
 LEGACY_FIXTURE_DEBT: dict[str, tuple[re.Pattern[str], dict[str, int]]] = {
@@ -70,6 +81,24 @@ def test_legacy_stack_fixture_debt_does_not_grow() -> None:
     for name, (pattern, expected) in LEGACY_FIXTURE_DEBT.items():
         observed = _pattern_counts(test_files, pattern)
         assert observed == expected, _debt_message(name, expected, observed)
+
+
+def test_deleted_setup_write_modules_are_not_importable() -> None:
+    """The duplicate pre-1.0 write flow was deleted, not ported.
+
+    Lives here rather than with the write-flow tests so the module names can be
+    named literally without registering as migration debt.
+    """
+    for module in (
+        "groundworkers.tui.wizards.llm_provider",
+        "groundworkers.application.setup.llm_configuration",
+        "groundworkers.application.setup.database_configuration",
+    ):
+        try:
+            __import__(module)
+        except ModuleNotFoundError:
+            continue
+        raise AssertionError(f"{module} should have been deleted by the migration.")
 
 
 def test_migration_dependencies_use_explicit_public_boundaries() -> None:

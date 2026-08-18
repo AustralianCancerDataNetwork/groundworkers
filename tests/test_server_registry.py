@@ -20,21 +20,28 @@ def _stack_without_backends():
 
 
 def _stack_with_cdm():
-    stack = build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
-    stack.tools["omop_graph"] = {}
-    return stack
+    return build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
 
 
-def test_server_starts_with_cdm_only_without_graph_or_embedding_tools():
+def test_cdm_only_stack_serves_graph_tools_without_embedding_tools():
+    """A CDM-only 1.x stack gets vocabulary, graph, and lexical grounding.
+
+    Graph availability follows the resolved CDM database. It is not gated on an
+    [tools.omop_graph] section: omop-graph 2.x made that config internal, so
+    requiring it left a valid CDM stack with no graph tools at all.
+    """
     config = build_app_config_from_stack(_stack_without_backends())
     server = create_server(config)
-    assert "concept_search_exact" in server.list_tools()
-    assert "concept_get" not in server.list_tools()
-    assert "embedding_index_status" not in server.list_tools()
+    names = server.list_tools()
+    assert "concept_search_exact" in names
+    assert "concept_get" in names
+    assert "concept_ground" in names
+    # Embedding tools still require a vector store and model.
+    assert "embedding_index_status" not in names
     assert "config://active" in server.list_resources()
 
 
-def test_server_registers_concept_tools_when_cdm_resource_is_configured():
+def test_server_registers_concept_tools_for_a_resolved_cdm_database():
     config = build_app_config_from_stack(_stack_with_cdm())
     server = create_server(config)
     names = server.list_tools()
@@ -54,18 +61,22 @@ def test_server_registers_embedding_tools_when_enabled(tmp_path: Path):
     assert "embedding_neighbours" in names
 
 
-def test_build_adapters_leaves_disabled_components_unset():
+def test_build_adapters_leaves_only_embedding_components_unset():
     config = build_app_config_from_stack(_stack_without_backends())
     adapters = build_adapters(config)
     assert adapters.cdm is not None
-    assert adapters.omop_graph is None
+    # Graph follows the CDM database; embedding needs a vector store and model.
+    assert adapters.omop_graph is not None
+    assert adapters.omop_graph.embedding_resolver_active is False
     assert adapters.omop_emb is None
 
 
 def test_build_application_exposes_services_container():
     config = build_app_config_from_stack(_stack_without_backends())
     app = build_application(config)
-    assert app.adapters.omop_graph is None
+    assert app.adapters.omop_graph is not None
+    assert app.services.graph is not None
+    assert app.services.grounding is not None
     assert app.services.mapping is not None
     assert app.services.source_planning is not None
 

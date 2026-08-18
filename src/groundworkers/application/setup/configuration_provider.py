@@ -29,6 +29,7 @@ from groundskeeping.configurator import (
     EffectRef,
     MutationCapabilities,
     MutationOperation,
+    MutationOperationUnsupported,
     UnavailableMutationService,
     build_config_diff,
 )
@@ -66,6 +67,22 @@ MODEL_SETUP_TARGET: Final = ConfigTarget(
     "groundworkers.embedding-model",
     "Groundworkers embedding model",
 )
+# Chat stays in the Groundworkers-owned `llm` mapping for this release, so it is
+# mutated through this same provider boundary rather than a second writer. Moving
+# chat to a named `[models.*]` entry needs an explicit `llm_model_name` reference
+# field and is a separate reviewed migration; `embedding_model_name` is never
+# repurposed as the chat model.
+LLM_SETUP_TARGET: Final = ConfigTarget(
+    ConfigTargetKind.TOOL,
+    "groundworkers.llm",
+    "Groundworkers chat model",
+)
+
+# Targets whose first step discovers live models from a provider endpoint.
+_PROVIDER_DISCOVERY_STEPS: Final = {
+    MODEL_SETUP_TARGET: ("provider", "provider_kind", "base_url", "api_key", "model_choice"),
+    LLM_SETUP_TARGET: ("provider", "llm_provider", "llm_api_base", "llm_api_key", "llm_model_choice"),
+}
 
 ModelDiscoverer = Callable[[str, str | None, str | None], Sequence[str]]
 ApplyCallback = Callable[[], None]
@@ -136,8 +153,13 @@ class GroundworkersConfigMutationService:
             else operation is MutationOperation.CREATE
         ) and self._ownership.editable
         if not supported:
-            raise ValueError(
-                f"{operation.value.title()} is unavailable for {target.title}."
+            # Typed refusal, so a host can tell a legitimately unavailable operation
+            # from a provider defect. `capabilities()` normally answers this first, but
+            # that answer can go stale before this call.
+            raise MutationOperationUnsupported(
+                self._ownership.guidance
+                if not self._ownership.editable
+                else f"{operation.value.title()} is unavailable for {target.title}."
             )
         base = snapshot.stack.model_copy(deep=True) if snapshot.stack else StackConfig()
         if base.loaded_path is None:
@@ -194,25 +216,29 @@ class GroundworkersConfigMutationService:
             )
 
         future_fields: tuple[FieldSpec, ...] = ()
-        if session.target == MODEL_SETUP_TARGET and step_key == "provider":
+        discovery = _PROVIDER_DISCOVERY_STEPS.get(session.target)
+        if discovery is not None and step_key == discovery[0]:
+            _, kind_key, base_url_key, api_key_key, choice_key = discovery
             try:
                 models = tuple(
                     dict.fromkeys(
                         str(item).strip()
                         for item in self._model_discoverer(
-                            str(proposed["provider_kind"]),
-                            _optional_text(proposed.get("base_url")),
-                            _optional_text(proposed.get("api_key")),
+                            str(proposed[kind_key]),
+                            _optional_text(proposed.get(base_url_key)),
+                            _optional_text(proposed.get(api_key_key)),
                         )
                         if str(item).strip()
                     )
                 )
             except Exception:  # noqa: BLE001 - external discovery boundary
+                # The discoverer's own message is not forwarded: provider errors can
+                # carry endpoints and credentials.
                 return ConfigStepResult(
                     issues=(
                         ValidationIssue(
                             "Models could not be discovered from that provider endpoint.",
-                            field_key="base_url",
+                            field_key=base_url_key,
                         ),
                     ),
                     changed_fields=session.changed_fields,
@@ -222,14 +248,14 @@ class GroundworkersConfigMutationService:
                     issues=(
                         ValidationIssue(
                             "The provider endpoint returned no available models.",
-                            field_key="base_url",
+                            field_key=base_url_key,
                         ),
                     ),
                     changed_fields=session.changed_fields,
                 )
             future_fields = (
                 FieldSpec(
-                    key="model_choice",
+                    key=choice_key,
                     label="Model",
                     kind=FieldKind.CHOICE,
                     choices=tuple(ChoiceOption(name, name) for name in models),
@@ -264,8 +290,13 @@ class GroundworkersConfigMutationService:
                 expected_revision=session.expected_revision,
             )
 
-        original = _flatten_stack(session.base)
-        planned = _flatten_stack(candidate)
+        # Both sides must come from the same projection or the diff is misleading:
+        # `plan_configure` returns a validated candidate with every package default
+        # materialised, while a hand-written base carries only the keys an operator
+        # actually wrote. Comparing them directly reported each unset default as a
+        # change (`mcp.port: None -> 8000`), burying the fields the journey touched.
+        original = _flatten_stack(_normalise_for_diff(session.base))
+        planned = _flatten_stack(_normalise_for_diff(candidate))
         diff = build_config_diff(
             session.target,
             original,
@@ -330,7 +361,17 @@ class GroundworkersConfigMutationService:
                 "The configuration changed before this plan could be applied.",
                 "Reload the configuration, review the new state, and try again.",
             )
-        except (PermissionError, ConfigurationError, ValidationError):
+        except PermissionError:
+            # The write was attempted and the filesystem refused it. That is FAILED, not
+            # REJECTED: the request was acceptable, the operation errored.
+            return ConfigApplyResult(
+                ConfigApplyStatus.FAILED,
+                "The configuration could not be saved.",
+                "Grant write access to the configuration file and try again. "
+                "The previous configuration remains authoritative.",
+            )
+        except (ConfigurationError, ValidationError):
+            # The candidate itself was not acceptable, so nothing was written.
             return ConfigApplyResult(
                 ConfigApplyStatus.REJECTED,
                 "The configuration change was rejected.",
@@ -399,6 +440,8 @@ class GroundworkersConfigMutationService:
             return _cdm_fields(stack)
         if target == MODEL_SETUP_TARGET:
             return _model_fields(stack)
+        if target == LLM_SETUP_TARGET:
+            return _llm_fields(stack)
         raise ValueError("Groundworkers does not support this configuration target.")
 
     def _submission_issues(
@@ -443,6 +486,28 @@ class GroundworkersConfigMutationService:
                         issues.append(
                             ValidationIssue("A model is required.", field_key=key)
                         )
+        elif target == LLM_SETUP_TARGET:
+            if step_key == "provider":
+                if _optional_text(proposed.get("llm_provider")) not in _LLM_PROVIDERS:
+                    issues.append(
+                        ValidationIssue(
+                            "Choose a supported provider.", field_key="llm_provider"
+                        )
+                    )
+                if not _optional_text(proposed.get("llm_api_base")):
+                    issues.append(
+                        ValidationIssue(
+                            "A provider endpoint is required.", field_key="llm_api_base"
+                        )
+                    )
+            if step_key == "model" and not _optional_text(
+                proposed.get("llm_model_choice")
+            ):
+                issues.append(
+                    ValidationIssue(
+                        "A chat model is required.", field_key="llm_model_choice"
+                    )
+                )
         return tuple(issues)
 
     def _candidate(self, session: _MutationSession) -> StackConfig:
@@ -450,6 +515,8 @@ class GroundworkersConfigMutationService:
             set_dict = _cdm_set_dict(session.answers)
         elif session.target == MODEL_SETUP_TARGET:
             set_dict = _model_set_dict(session.answers)
+        elif session.target == LLM_SETUP_TARGET:
+            set_dict = _llm_set_dict(session.base, session.answers)
         else:
             raise ValueError("Unsupported Groundworkers configuration target.")
         candidate = plan_configure(GroundworkersConfig, session.base, set_dict)
@@ -527,6 +594,32 @@ def model_setup_workflow(
                 "model",
                 "Choose the model",
                 ("model_entry_name", "model_choice"),
+            ),
+        ),
+    )
+
+
+def llm_setup_workflow(
+    operation: MutationOperation,
+) -> ConfigWorkflowSpec:
+    """Describe chat provider discovery followed by a refreshed model choice."""
+
+    return ConfigWorkflowSpec(
+        key="groundworkers-llm",
+        target=LLM_SETUP_TARGET,
+        operation=operation,
+        title="Configure the Groundworkers chat model",
+        purpose="Connect to a provider, discover its models, and choose one for chat.",
+        steps=(
+            ConfigWorkflowStep(
+                "provider",
+                "Connect to the provider",
+                ("llm_provider", "llm_api_base", "llm_api_key"),
+            ),
+            ConfigWorkflowStep(
+                "model",
+                "Choose the chat model",
+                ("llm_model_choice",),
             ),
         ),
     )
@@ -649,6 +742,46 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     )
 
 
+def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
+    tool = stack.tools.get(GroundworkersConfig.tool_name, {})
+    llm = tool.get("llm") if isinstance(tool.get("llm"), Mapping) else {}
+    existing_model = _optional_text(llm.get("default_model_name"))
+    pending = existing_model or "pending"
+    return (
+        FieldSpec(
+            "llm_provider",
+            "Provider",
+            kind=FieldKind.CHOICE,
+            default=_optional_text(llm.get("provider")) or "ollama",
+            choices=tuple(
+                ChoiceOption(key, label) for key, label in _LLM_PROVIDERS.items()
+            ),
+        ),
+        FieldSpec(
+            "llm_api_base",
+            "Provider endpoint",
+            default=_optional_text(llm.get("api_base")) or _DEFAULT_LLM_ENDPOINT,
+        ),
+        FieldSpec(
+            "llm_api_key",
+            "API key",
+            kind=FieldKind.SECRET,
+            required=False,
+            sensitive=True,
+            help="Leave blank to preserve an existing key.",
+        ),
+        FieldSpec(
+            "llm_model_choice",
+            "Chat model",
+            kind=FieldKind.CHOICE,
+            choices=(ChoiceOption(pending, pending),),
+            default=existing_model,
+            disabled=existing_model is None,
+            help="Complete the provider step to discover available models.",
+        ),
+    )
+
+
 def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     connection: dict[str, object] = {
         "name": str(answers["connection_name"]),
@@ -690,6 +823,33 @@ def _model_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _llm_set_dict(
+    stack: StackConfig,
+    answers: Mapping[str, object],
+) -> dict[str, object]:
+    """Build the chat mapping, preserving unrelated llm settings and the stored key.
+
+    Only the fields this journey owns are replaced. A blank API key answer means
+    "keep the existing one" (the submit path already drops blank secrets), so the
+    stored value is carried forward rather than cleared.
+    """
+    tool = stack.tools.get(GroundworkersConfig.tool_name, {})
+    existing = tool.get("llm")
+    llm: dict[str, object] = dict(existing) if isinstance(existing, Mapping) else {}
+    llm.update(
+        {
+            "enabled": True,
+            "provider": str(answers["llm_provider"]),
+            "api_base": str(answers["llm_api_base"]),
+            "default_model_name": str(answers["llm_model_choice"]),
+        }
+    )
+    api_key = answers.get("llm_api_key")
+    if api_key not in (None, ""):
+        llm["api_key"] = api_key
+    return {"llm": llm}
+
+
 def _target_exists(stack: StackConfig | None, target: ConfigTarget) -> bool:
     if stack is None:
         return False
@@ -700,7 +860,36 @@ def _target_exists(stack: StackConfig | None, target: ConfigTarget) -> bool:
     if target == MODEL_SETUP_TARGET:
         name = tool.get("embedding_model_name")
         return isinstance(name, str) and name in stack.models
+    if target == LLM_SETUP_TARGET:
+        llm = tool.get("llm")
+        if not isinstance(llm, Mapping):
+            return False
+        # A chat entry exists once a model has actually been chosen; defaults alone
+        # are not a configured target.
+        return _optional_text(llm.get("default_model_name")) is not None
     raise ValueError("Groundworkers does not support this configuration target.")
+
+
+def _normalise_for_diff(stack: StackConfig) -> StackConfig:
+    """Materialise Groundworkers' package defaults so two stacks are comparable.
+
+    Only the Groundworkers tool mapping is normalised; other packages' sections are
+    left exactly as written, because this provider does not own their schemas and
+    must not invent values for them.
+    """
+    tool = stack.tools.get(GroundworkersConfig.tool_name)
+    if tool is None:
+        return stack
+    try:
+        materialised = GroundworkersConfig.model_validate(tool).model_dump(
+            mode="python"
+        )
+    except ValidationError:
+        # An invalid current section still has to be shown as-is rather than hidden.
+        return stack
+    normalised = stack.model_copy(deep=True)
+    normalised.tools[GroundworkersConfig.tool_name] = materialised
+    return normalised
 
 
 def _flatten_stack(stack: StackConfig) -> dict[str, object]:
@@ -749,6 +938,18 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
                 "databases",
             ),
         )
+    if session.target == LLM_SETUP_TARGET:
+        # Chat lives in the Groundworkers-owned tool mapping, so there is no separate
+        # named provider or model entry to point at.
+        return (
+            EffectRef(
+                session.operation.value,
+                session.target,
+                "chat provider and model",
+                session.target,
+                "tools",
+            ),
+        )
     provider_name = str(session.answers.get("provider_name", "embedding_provider"))
     model_name = str(session.answers.get("model_entry_name", "embedding_model"))
     return (
@@ -793,4 +994,10 @@ def _no_model_discovery(
     raise RuntimeError("No model discovery service is configured.")
 
 
-_SECRET_FIELDS = frozenset({"password", "api_key"})
+_SECRET_FIELDS = frozenset({"password", "api_key", "llm_api_key"})
+
+_LLM_PROVIDERS: Final = {
+    "ollama": "Ollama",
+    "openai-compatible": "OpenAI-compatible",
+}
+_DEFAULT_LLM_ENDPOINT: Final = "http://localhost:11434/v1"

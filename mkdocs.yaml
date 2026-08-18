@@ -32,10 +32,12 @@ nav:
   - Architecture: architecture.md
   - Getting Started:
       - Installation: usage/installation.md
+      - Setup journey: usage/setup_journey.md
       - Configuration: usage/configuration.md
       - Integrations: usage/integrations.md
       - Testing: usage/testing.md
   - Development:
+      - Integrating groundworkers: development/integration.md
       - Extending groundworkers: development/extending.md
   - Tools:
       - Overview: tools/overview.md

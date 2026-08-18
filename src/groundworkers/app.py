@@ -108,21 +108,28 @@ def build_adapters(config: AppConfig) -> Adapters:
             "Configure groundworkers.vector_store_name to enable embedding operations."
         )
 
-    if "omop_graph" in config.stack.tools:
-        complete_embedding = resolved_store is not None and resolved_model is not None
-        adapters.omop_graph = OmopGraphAdapter(
-            engine=config.cdm_engine,
-            vocab_schema=config.cdm_database.vocab_schema,
-            embedding_backend_factory=(
-                get_embedding_backend if complete_embedding else None
-            ),
-            resolved_embedding_model=(resolved_model if complete_embedding else None),
-            faiss_cache_dir=(
-                resolved_store.faiss_cache_dir
-                if resolved_store is not None and resolved_model is not None
-                else None
-            ),
-        )
+    # The graph runs off the resolved CDM database, so it is available whenever a CDM
+    # engine is. It is deliberately not gated on another package's [tools.omop_graph]
+    # section: omop-graph 2.x reshaped that config and marked it internal, so gating on
+    # it left a valid CDM-only 1.x stack with no graph and no lexical grounding unless
+    # the operator added an otherwise-meaningless empty section.
+    complete_embedding = resolved_store is not None and resolved_model is not None
+    adapters.omop_graph = OmopGraphAdapter(
+        engine=config.cdm_engine,
+        vocab_schema=config.cdm_database.vocab_schema,
+        embedding_backend_factory=(
+            get_embedding_backend if complete_embedding else None
+        ),
+        resolved_embedding_model=(resolved_model if complete_embedding else None),
+        # Supplies the read-only query encoder the write=False graph cannot build
+        # for itself. Shares the one ModelBackend with the embedding adapter.
+        model_backend_factory=(get_model_backend if complete_embedding else None),
+        faiss_cache_dir=(
+            resolved_store.faiss_cache_dir
+            if resolved_store is not None and resolved_model is not None
+            else None
+        ),
+    )
 
     llm_config = config.llm
     if llm_config.enabled:
@@ -170,7 +177,7 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
         services.grounding = ConceptGroundingService(
             services.graph,
             min_fulltext_overlap=config.grounding.min_fulltext_overlap,
-            max_depth=5,
+            max_depth=config.grounding.max_depth,
         )
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)

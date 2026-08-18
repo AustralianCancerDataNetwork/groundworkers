@@ -90,8 +90,8 @@ class DatabasePresenter(SetupPresenterBase):
 
         result_by_key = {item.target_key: item for item in results}
         return TableView(
-            title="Database resources",
-            columns=("Resource", "Database", "Schemas", "Status", "Latency"),
+            title="Databases",
+            columns=("Entry", "Connection", "Schemas", "Status", "Latency"),
             rows=tuple(
                 _target_row(target, result_by_key.get(target.key)) for target in targets
             ),

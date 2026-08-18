@@ -1100,12 +1100,14 @@ dependencies = [
 
 [[package]]
 name = "groundworkers"
-version = "0.3.4"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "mcp", extra = ["cli"] },
+    { name = "numpy" },
     { name = "oa-configurator" },
+    { name = "omop-alchemy" },
     { name = "omop-emb" },
     { name = "omop-graph" },
     { name = "omop-llm" },
@@ -1141,6 +1143,9 @@ dev = [
 docx = [
     { name = "python-docx" },
 ]
+embedding-artifacts = [
+    { name = "h5py" },
+]
 embedding-faiss = [
     { name = "omop-emb", extra = ["faiss-cpu"] },
 ]
@@ -1155,6 +1160,8 @@ pdf = [
 ]
 tui = [
     { name = "groundskeeping" },
+    { name = "rich" },
+    { name = "textual" },
 ]
 xlsx = [
     { name = "openpyxl" },
@@ -1164,6 +1171,7 @@ xlsx = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110,<1.0" },
     { name = "groundskeeping", marker = "extra == 'tui'", git = "https://github.com/AustralianCancerDataNetwork/groundskeeping.git?branch=generic_write" },
+    { name = "h5py", marker = "extra == 'embedding-artifacts'", specifier = ">=3.10,<4" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "mcp", extras = ["cli"], specifier = ">=1,<2" },
@@ -1172,7 +1180,9 @@ requires-dist = [
     { name = "mkdocs-mermaid2-plugin", marker = "extra == 'dev'" },
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
+    { name = "numpy", specifier = ">=1.26,<3" },
     { name = "oa-configurator", specifier = ">=1.1,<2" },
+    { name = "omop-alchemy", specifier = ">=1,<2" },
     { name = "omop-emb", specifier = ">=2,<3" },
     { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=2,<3" },
     { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=2,<3" },
@@ -1192,13 +1202,15 @@ requires-dist = [
     { name = "python-docx", marker = "extra == 'docx'", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "requests", marker = "extra == 'dev'", specifier = ">=2.33.0" },
+    { name = "rich", marker = "extra == 'tui'", specifier = ">=13,<15" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "sqlalchemy", specifier = ">=2,<3" },
     { name = "textual", marker = "extra == 'dev'", specifier = ">=0.60" },
+    { name = "textual", marker = "extra == 'tui'", specifier = ">=0.60" },
     { name = "tornado", marker = "extra == 'dev'", specifier = ">=6.5.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29,<1.0" },
 ]
-provides-extras = ["llm", "xlsx", "pdf", "tui", "docx", "all-source", "embedding-pgvector", "embedding-faiss", "dev"]
+provides-extras = ["llm", "xlsx", "pdf", "tui", "embedding-artifacts", "docx", "all-source", "embedding-pgvector", "embedding-faiss", "dev"]
 
 [[package]]
 name = "h11"

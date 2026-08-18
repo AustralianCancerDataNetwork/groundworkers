@@ -38,23 +38,29 @@ pip install "groundworkers[all_source]"
 `oa-configurator`. In a typical setup you configure:
 
 ```bash
-omop-config configure omop_alchemy
-omop-config configure omop_graph
 omop-config configure groundworkers
-# optional, only if you want embedding-backed capabilities
-omop-config configure omop_emb
 ```
 
-By default the runtime reads:
+That writes the `[tools.groundworkers]` section and the `[connections.*]` and
+`[databases.*]` entries it references. Embedding-backed capabilities need two
+further named entries — a `[models.*]` embedding model and a `[vector_stores.*]`
+store — which the setup console can create for you:
 
-- `~/.config/omop/config.toml`
-- the active profile declared in that file
+```bash
+groundworkers --tui
+```
 
-You can override those at startup with:
+Groundworkers reads only its own package section plus the named entries it
+references. It does not read `[tools.omop_graph]` or `[tools.omop_emb]`.
+
+By default the runtime reads `~/.config/omop/config.toml`.
+
+You can override that at startup with:
 
 - `OA_CONFIG_PATH`
-- `OA_ACTIVE_PROFILE`
-- `groundworkers --config-path ... --profile ...`
+- `groundworkers --config-path ...`
+
+There is no profile selection; use separate config files instead.
 
 ## Run as an MCP service
 

@@ -234,6 +234,8 @@ class StubGroundingService:
         domain: str | None,
         vocabulary_id: str | None,
         parent_ids: tuple[int, ...] | None = None,
+        standard_only: bool = False,
+        active_only: bool = False,
     ) -> dict:
         self.calls.append(("ground", {
             "query": query,
@@ -241,6 +243,8 @@ class StubGroundingService:
             "domain": domain,
             "vocabulary_id": vocabulary_id,
             "parent_ids": parent_ids,
+            "standard_only": standard_only,
+            "active_only": active_only,
         }))
         all_results = [
             _ground_result(100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"),
@@ -253,6 +257,8 @@ class StubGroundingService:
                 "used_embedding": False,
                 "effective_parent_ids": list(parent_ids) if parent_ids else [],
                 "parent_ids_source": "explicit" if parent_ids else "none",
+                "standard_only": standard_only,
+                "active_only": active_only,
             },
         }
 

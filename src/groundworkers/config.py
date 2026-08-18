@@ -53,6 +53,12 @@ class GroundingConfig(BaseModel):
     # threshold, grounding continues to the embedding tier.
     min_fulltext_overlap: float = 0.0
 
+    # Maximum hierarchy distance between a grounding candidate and a required
+    # parent concept, or maximum identity-hop count when grounding runs without
+    # parent_ids. Owned by Groundworkers: omop-graph's own traversal limits are
+    # per-call arguments, not shared configuration.
+    max_depth: int = Field(default=5, ge=1, le=10)
+
     @field_validator("min_fulltext_overlap")
     @classmethod
     def validate_overlap(cls, value: float) -> float:

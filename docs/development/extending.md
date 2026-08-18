@@ -97,7 +97,7 @@ concern.
 
 Use this rough split:
 
-- `omop-alchemy`: shared CDM resources
+- `omop-alchemy`: CDM and vocabulary models
 - `omop-graph`: graph traversal behavior
 - `omop-emb`: embedding store and embedding model settings
 - `groundworkers`: transport defaults, LLM worker behavior, source-planning behavior, knowledge-pack behavior

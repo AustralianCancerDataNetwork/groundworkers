@@ -14,7 +14,7 @@ from omop_graph.reasoning.resolvers.resolvers import FullTextResolver, FullTextS
 from sqlalchemy import Text, cast, column, select, table
 
 from groundworkers.adapters.cdm import CDMAdapter
-from groundworkers.adapters.omop_graph import OmopGraphAdapter
+from groundworkers.adapters.omop_graph import EmbeddingTierUnavailable, OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 
 __all__ = ["GraphService", "GroundingPlan"]
@@ -504,13 +504,24 @@ class GraphService:
         )
 
         results: list[dict[str, Any]] = []
+        embedding_tier_detail: str | None = None
         for tier in request.tiers:
             tier_started = time.perf_counter()
             tier_name = "+".join(type(r).__name__ for r in tier)
             is_fts_tier = any(isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier)
-            hits = self._adapter.run_ground_tier(
-                tier, request.query, constraints=request.constraints, limit=request.limit
-            )
+            try:
+                hits = self._adapter.run_ground_tier(
+                    tier, request.query, constraints=request.constraints, limit=request.limit
+                )
+            except EmbeddingTierUnavailable as exc:
+                # Skip this tier only. The remaining lexical tiers are still useful,
+                # and the reason is reported rather than silently dropped.
+                embedding_tier_detail = exc.message
+                logger.warning(
+                    "concept_ground tier skipped query=%r tier=%s detail=%s",
+                    _short_text(request.query), tier_name, exc.message,
+                )
+                continue
             # Drop FTS hits where fewer than min_fulltext_overlap of the query tokens
             # appear in the matched concept name, then fall through to a higher-quality tier.
             if hits and is_fts_tier and request.min_fulltext_overlap > 0.0:
@@ -531,13 +542,26 @@ class GraphService:
 
         concept_ids = tuple(dict.fromkeys(h["concept_id"] for h in results))
         views = self._adapter.concept_views(concept_ids)
+        # omop-graph anchors its identity walks on the combined standard-or-
+        # classification flag, so a grounded result can be a classification ('C')
+        # concept. Groundworkers' public contract keeps those distinct, so read the
+        # raw flag for exactly the concepts being returned.
+        raw_flags = self._adapter.raw_standard_flags(concept_ids)
 
         matched_tier = results[0]["match_kind"] if results else None
         used_embedding = any(h["embedding_score"] is not None for h in results)
         payload = {
-            "results": [self._merge_ground_view(h, views.get(h["concept_id"])) for h in results],
+            "results": [
+                self._merge_ground_view(
+                    h,
+                    views.get(h["concept_id"]),
+                    raw_flags.get(h["concept_id"]),
+                )
+                for h in results
+            ],
             "matched_tier": matched_tier,
             "used_embedding": used_embedding,
+            "embedding_tier_detail": embedding_tier_detail,
         }
         logger.info(
             "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r used_embedding=%s result_count=%d",
@@ -564,14 +588,28 @@ class GraphService:
         return len(query_tokens & label_tokens) / len(query_tokens)
 
     @staticmethod
-    def _merge_ground_view(hit: dict[str, Any], view: dict[str, Any] | None) -> dict[str, Any]:
+    def _merge_ground_view(
+        hit: dict[str, Any],
+        view: dict[str, Any] | None,
+        raw_standard_flag: str | None,
+    ) -> dict[str, Any]:
+        """Shape one grounded hit, reporting strict standard/classification flags.
+
+        ``standard_concept`` is true only for raw OMOP flag ``'S'`` and
+        ``classification_concept`` only for ``'C'``, per Groundworkers' public
+        concept contract. Both are false when the flag is unknown or unset — the
+        previous unconditional ``standard_concept: True`` was safe only while
+        omop-graph 1.x anchored standardization on ``'S'`` alone.
+        """
         return {
             "concept_id": hit["concept_id"],
             "concept_name": hit["concept_name"],
             "vocabulary_id": view["vocabulary_id"] if view else None,
             "domain_id": view["domain_id"] if view else None,
             "concept_class_id": view["concept_class_id"] if view else None,
-            "standard_concept": True,
+            "standard_concept": raw_standard_flag == "S",
+            "classification_concept": raw_standard_flag == "C",
+            "is_active": view["is_active"] if view else None,
             "match_kind": hit["match_kind"],
             "matched_label": hit["matched_label"],
             "total_score": hit["total_score"],

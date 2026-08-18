@@ -137,9 +137,17 @@ class ConnectionResult:
 
 @dataclass(frozen=True)
 class GraphConfiguration:
-    resource_name: str
-    max_depth: int
-    max_paths: int
+    """Groundworkers-owned graph and grounding policy shown in setup.
+
+    Every value here is owned by Groundworkers. omop-graph's own package config is
+    internal to that package, and its traversal limits are per-call arguments, so
+    they are neither read nor displayed.
+    """
+
+    cdm_database_name: str
+    vocabulary_schema: str | None
+    grounding_max_depth: int
+    min_fulltext_overlap: float
 
 
 @dataclass(frozen=True)

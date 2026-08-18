@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("groundskeeping")  # setup write flows live behind the `tui` extra
+
 from groundskeeping.contracts import TableView
 
-from groundworkers.application.setup.configuration import load_configuration
 from groundworkers.application.setup.models import (
     ClassifiedFailure,
     ConfigurationState,
@@ -23,16 +26,10 @@ from groundworkers.application.setup.models import (
     ResourceDiagnostic,
     VocabularyCoverage,
 )
-from groundworkers.application.setup.runtime_setup import (
-    load_llm_provider_configuration,
-)
 from groundworkers.tui.presenters.database import DatabasePresenter
 from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.state import SetupSession
-from groundworkers.tui.wizards.llm_provider import (
-    LlmProviderConfigurationWizardController,
-)
 
 
 def _embedding_configuration(**overrides) -> EmbeddingConfiguration:
@@ -305,8 +302,9 @@ def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
         "DROP INDEX IF EXISTS idx_emb_qwen3_cosine;",
         "Suggested",
     )
-    assert view.actions[1].label == "Populate"
-    assert view.actions[1].disabled is False
+    populate = next(a for a in view.actions if a.key == "embeddings.populate")
+    assert populate.label == "Populate"
+    assert populate.disabled is False
     assert isinstance(detail, TableView)
     assert detail.title == "Vocabulary coverage"
     assert detail.columns == (
@@ -472,145 +470,3 @@ def test_llm_provider_detail_reports_inventory_failure() -> None:
     assert "Check that Ollama is running." in detail.body
     assert "error: The provider endpoint did not respond." in detail.body
 
-
-def test_llm_provider_wizard_scans_then_saves_selected_model(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    path = tmp_path / "config.toml"
-    path.write_text(
-        """
-[connections.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[databases.cdm_db]
-kind = "cdm"
-connection = "main"
-schema_name = "main"
-vocab_schema = "main"
-
-[tools.groundworkers]
-cdm_db = "cdm_db"
-
-[tools.groundworkers.llm]
-enabled = true
-provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "old-model"
-""",
-        encoding="utf-8",
-    )
-
-    def fake_scan(draft):
-        assert draft.provider == "ollama"
-        assert draft.api_base == "http://localhost:11434/v1"
-        return LlmProviderCheckResult(
-            provider=draft.provider,
-            api_base=draft.api_base,
-            default_model_name=None,
-            reachable=True,
-            inventory=("chat-model", "other-model"),
-        )
-
-    monkeypatch.setattr(
-        "groundworkers.tui.wizards.llm_provider.scan_llm_models",
-        fake_scan,
-    )
-    session = SetupSession(config_path=path)
-    controller = LlmProviderConfigurationWizardController(session)
-
-    start = controller.start()
-    assert start.step.key == "endpoint"
-
-    model_step = controller.submit(
-        {
-            "provider": "ollama",
-            "api_base": "http://localhost:11434/v1",
-        }
-    ).snapshot
-
-    assert model_step.step.key == "model"
-    assert [choice.value for choice in model_step.step.fields[0].choices] == [
-        "chat-model",
-        "other-model",
-    ]
-    assert model_step.values["default_model_name"] == "chat-model"
-
-    review = controller.submit({"default_model_name": "other-model"}).snapshot
-
-    assert review.step.key == "review"
-    assert review.can_apply is True
-    result = controller.apply()
-    assert result.status.value == "applied"
-
-    saved = load_llm_provider_configuration(load_configuration(config_path=path))
-    assert saved is not None
-    assert saved.provider == "ollama"
-    assert saved.api_base == "http://localhost:11434/v1"
-    assert saved.default_model_name == "other-model"
-
-
-def test_llm_provider_wizard_model_choices_include_ollama_metadata(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    path = tmp_path / "config.toml"
-    path.write_text(
-        """
-[connections.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[databases.cdm_db]
-kind = "cdm"
-connection = "main"
-schema_name = "main"
-vocab_schema = "main"
-
-[tools.groundworkers]
-cdm_db = "cdm_db"
-
-[tools.groundworkers.llm]
-enabled = true
-provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "chat-model"
-""",
-        encoding="utf-8",
-    )
-
-    def fake_scan(draft):
-        return LlmProviderCheckResult(
-            provider=draft.provider,
-            api_base=draft.api_base,
-            default_model_name="chat-model",
-            reachable=True,
-            inventory=("chat-model", "other-model"),
-            model_metadata=(
-                LlmModelMetadata(name="chat-model"),
-                LlmModelMetadata(name="other-model"),
-            ),
-        )
-
-    monkeypatch.setattr(
-        "groundworkers.tui.wizards.llm_provider.scan_llm_models",
-        fake_scan,
-    )
-
-    model_step = (
-        LlmProviderConfigurationWizardController(SetupSession(config_path=path))
-        .submit(
-            {
-                "provider": "ollama",
-                "api_base": "http://localhost:11434/v1",
-            }
-        )
-        .snapshot
-    )
-
-    assert [choice.value for choice in model_step.step.fields[0].choices] == [
-        "chat-model",
-        "other-model",
-    ]
-    assert model_step.values["default_model_name"] == "chat-model"

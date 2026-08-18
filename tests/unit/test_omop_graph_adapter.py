@@ -48,6 +48,7 @@ def test_knowledge_graph_receives_complete_read_only_embedding_configuration(
         create_engine("sqlite:///:memory:"),
         embedding_backend_factory=lambda: embedding_backend,  # type: ignore[arg-type,return-value]
         resolved_embedding_model=resolved_model,  # type: ignore[arg-type]
+        model_backend_factory=lambda: object(),  # type: ignore[arg-type,return-value]
         faiss_cache_dir="faiss-cache",
     )
 
@@ -96,6 +97,99 @@ def test_invalid_embedding_configuration_falls_back_to_lexical_graph(monkeypatch
     assert available is True
     assert detail is not None
     assert "lexical grounding remains available" in detail
+
+
+def test_cdm_only_configuration_builds_a_lexical_graph(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeKnowledgeGraph:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
+    )
+    adapter = OmopGraphAdapter(create_engine("sqlite:///:memory:"))
+
+    assert isinstance(adapter._get_kg(), FakeKnowledgeGraph)
+    assert captured["emb_config"] is None
+    assert adapter.embedding_resolver_active is False
+    assert adapter.probe() == (True, None)
+
+
+def test_graph_rejecting_the_embedding_configuration_keeps_lexical_grounding(monkeypatch):
+    """The KG itself can reject an otherwise-constructible embedding configuration.
+
+    That must not fail the whole backend or leave embeddings reported as active.
+    """
+    attempts: list[object] = []
+
+    class FakeKnowledgeGraph:
+        def __init__(self, **kwargs):
+            attempts.append(kwargs["emb_config"])
+            if kwargs["emb_config"] is not None:
+                raise RuntimeError("embedding store has no vectors for demo-model")
+
+    monkeypatch.setattr(
+        "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
+    )
+    adapter = OmopGraphAdapter(
+        create_engine("sqlite:///:memory:"),
+        embedding_backend_factory=lambda: object(),  # type: ignore[arg-type,return-value]
+        resolved_embedding_model=SimpleNamespace(model="demo-model"),  # type: ignore[arg-type]
+    )
+
+    assert isinstance(adapter._get_kg(), FakeKnowledgeGraph)
+    assert len(attempts) == 2
+    assert attempts[1] is None
+    assert adapter.embedding_resolver_active is False
+    available, detail = adapter.probe()
+    assert available is True
+    assert detail is not None
+    assert "lexical grounding remains available" in detail
+
+
+def test_embedding_failure_detail_does_not_leak_provider_or_database_secrets():
+    detail = OmopGraphAdapter._embedding_failure_detail(
+        RuntimeError(
+            "connection to postgresql://airflow:sekrit@localhost:15432/db failed; "
+            "api_key=sk-abc123"
+        )
+    )
+
+    assert "sekrit" not in detail
+    assert "sk-abc123" not in detail
+    assert "RuntimeError" in detail
+
+
+def test_backend_failure_without_embedding_configuration_still_raises(monkeypatch):
+    class FakeKnowledgeGraph:
+        def __init__(self, **kwargs):
+            raise RuntimeError("graph unavailable")
+
+    monkeypatch.setattr(
+        "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
+    )
+    adapter = OmopGraphAdapter(create_engine("sqlite:///:memory:"))
+
+    available, detail = adapter.probe()
+    assert available is False
+    assert detail == "graph unavailable"
+    assert adapter.embedding_resolver_active is False
+
+
+def test_match_kind_names_are_keyed_off_the_upstream_enum():
+    from omop_graph.graph.nodes import LabelMatchKind
+
+    assert OmopGraphAdapter._label_match_kind_name(LabelMatchKind.EXACT) == "EXACT"
+    assert OmopGraphAdapter._label_match_kind_name(LabelMatchKind.FTS) == "FULLTEXT"
+    assert OmopGraphAdapter._label_match_kind_name(LabelMatchKind.PARTIAL) == "PARTIAL"
+    assert (
+        OmopGraphAdapter._label_match_kind_name(LabelMatchKind.EMBEDDING)
+        == "EMBEDDING_NEAREST"
+    )
+    # Every upstream member is mapped, so a new tier cannot silently stringify.
+    assert set(OmopGraphAdapter._MATCH_KIND_NAMES) == set(LabelMatchKind)
 
 
 def test_wrap_graph_error_does_not_special_case_parentless_not_implemented():

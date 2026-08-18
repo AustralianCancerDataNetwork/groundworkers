@@ -37,6 +37,8 @@ def register_resolver_tools(server: GroundcrewServer, grounding_service: Concept
         domain: str | None = None,
         vocabulary_id: str | None = None,
         parent_ids: list[int] | None = None,
+        standard_only: bool = False,
+        active_only: bool = False,
     ) -> dict[str, Any]:
         """Ground free text to matching OMOP standard concepts ranked by relevance.
 
@@ -54,8 +56,22 @@ def register_resolver_tools(server: GroundcrewServer, grounding_service: Concept
         broadness_bonus, separation, embedding_score) and standardized_from when the
         grounded concept was mapped from a non-standard source concept.
 
+        Each result also carries strict OMOP flags: standard_concept is true only for
+        raw standard_concept = 'S', and classification_concept only for 'C'. Grounding
+        can land on a classification concept, which is a valid hierarchy node but not a
+        valid mapping target for a CDM entity field — check the flags rather than
+        assuming every result is standard.
+
+        standard_only: when true, restrict candidate resolution to concepts carrying a
+          standardness flag ('S' or 'C'). Defaults to false, so non-standard concepts
+          are resolved and then standardized via "Maps to", which is usually what you
+          want. Note this narrows *candidates*, not results.
+        active_only: when true, exclude concepts with an invalid_reason (deprecated or
+          upgraded) from candidate resolution. Defaults to false.
+
         grounding_explanation summarises which resolver tier matched, whether embedding
-        scoring was active, and which parent_ids constrained the search space.
+        scoring was active, which parent_ids constrained the search space, and the
+        standard_only/active_only policy that was applied.
 
         parent_ids: optional list of OMOP concept_ids that act as required ancestors.
           Only concepts that are descendants of at least one of these will be returned.
@@ -86,12 +102,15 @@ def register_resolver_tools(server: GroundcrewServer, grounding_service: Concept
         resolved_parent_ids = tuple(parent_ids) if parent_ids else None
         started = time.perf_counter()
         logger.info(
-            "concept_ground tool start query=%r limit=%d domain=%r vocabulary_id=%r parent_ids=%s",
+            "concept_ground tool start query=%r limit=%d domain=%r vocabulary_id=%r "
+            "parent_ids=%s standard_only=%s active_only=%s",
             _short_text(stripped),
             safe_limit,
             domain,
             vocabulary_id,
             list(resolved_parent_ids) if resolved_parent_ids is not None else None,
+            standard_only,
+            active_only,
         )
         try:
             ground_result = grounding_service.ground(
@@ -100,6 +119,8 @@ def register_resolver_tools(server: GroundcrewServer, grounding_service: Concept
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
                 parent_ids=resolved_parent_ids,
+                standard_only=standard_only,
+                active_only=active_only,
             )
             duration_ms = (time.perf_counter() - started) * 1000.0
             logger.info(

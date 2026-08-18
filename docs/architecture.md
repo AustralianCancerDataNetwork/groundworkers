@@ -63,7 +63,7 @@ flowchart TD
 The source of truth is the shared OMOP stack configuration loaded through
 `oa-configurator`.
 
-- `omop-alchemy` owns the shared CDM resource
+- `omop-alchemy` owns the CDM and vocabulary models
 - `omop-graph` owns graph-specific package settings
 - `omop-emb` owns embedding-store and embedding-model settings
 - `groundworkers` owns transport defaults, LLM-backed worker behavior,
@@ -77,7 +77,7 @@ The source of truth is the shared OMOP stack configuration loaded through
 That includes:
 
 - selecting the active stack file and profile
-- resolving the shared CDM resource and engine
+- resolving the named CDM database and its engine
 - loading sibling package config (`omop_graph`, `omop_emb`)
 - loading `groundworkers` package-owned settings
 - resolving optional knowledge-pack roots

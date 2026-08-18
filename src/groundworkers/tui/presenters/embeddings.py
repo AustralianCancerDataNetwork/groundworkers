@@ -39,8 +39,18 @@ class EmbeddingsPresenter(SetupPresenterBase):
         if configuration is None:
             return EmptyView(
                 title="Embedding setup not configured",
-                message="Choose an embedding store, provider and model to continue.",
+                message=(
+                    "Configure an embedding model, then add a vector store entry to "
+                    "hold its vectors."
+                ),
                 status=SemanticStatus.WARNING,
+                actions=(
+                    ViewAction(
+                        "embeddings.configure_model",
+                        "Configure model",
+                        variant="primary",
+                    ),
+                ),
             )
         if coverage is not None:
             return _setup_view_with_coverage(
@@ -128,6 +138,7 @@ def _configuration_view(
         actions=(
             ViewAction("embeddings.refresh_coverage", "Refresh coverage"),
             ViewAction("embeddings.populate", "Populate", disabled=True),
+            ViewAction("embeddings.configure_model", "Configure model"),
         ),
     )
 
@@ -159,6 +170,7 @@ def _setup_view_with_coverage(
                     or (not selected_all and not selected_vocabularies)
                 ),
             ),
+            ViewAction("embeddings.configure_model", "Configure model"),
         ),
     )
 

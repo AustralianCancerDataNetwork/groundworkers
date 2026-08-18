@@ -230,16 +230,21 @@ cdm_db = "cdm_db"
     asyncio.run(run_check())
 
 
-def test_llm_provider_wizard_renders_model_inventory_choices(
+def test_chat_model_wizard_renders_discovered_model_choices(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    """The chat journey runs through the generic Groundskeeping wizard.
+
+    Dynamic discovery arrives as `future_fields` from the shared mutation provider,
+    so the model step's choices come from the injected inventory seam rather than a
+    Groundworkers-specific wizard controller.
+    """
     pytest.importorskip("groundskeeping")
 
     from groundskeeping.app import OperatorApp
     from textual.widgets import Select
 
-    from groundworkers.application.setup.models import LlmProviderCheckResult
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
     config_path = tmp_path / "config.toml"
@@ -267,18 +272,14 @@ default_model_name = "chat-model"
         encoding="utf-8",
     )
 
-    def fake_scan(draft):
-        return LlmProviderCheckResult(
-            provider=draft.provider,
-            api_base=draft.api_base,
-            default_model_name="chat-model",
-            reachable=True,
-            inventory=("chat-model", "other-model"),
-        )
+    def fake_discovery(provider_kind, base_url, api_key):
+        assert provider_kind == "ollama"
+        assert base_url == "http://localhost:11434/v1"
+        return ("chat-model", "other-model")
 
     monkeypatch.setattr(
-        "groundworkers.tui.wizards.llm_provider.scan_llm_models",
-        fake_scan,
+        "groundworkers.tui.pages.setup.discover_provider_models",
+        fake_discovery,
     )
 
     async def run_check() -> None:

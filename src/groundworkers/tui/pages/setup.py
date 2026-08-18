@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from groundskeeping.configurator import ConfigWizardController, MutationOperation
+from collections.abc import Callable
+
+from groundskeeping.configurator import (
+    ConfigTarget,
+    ConfigWizardController,
+    ConfigWorkflowSpec,
+    MutationOperation,
+    resolve_operation,
+)
 from groundskeeping.contracts import (
     NavigationItem,
     PageContext,
@@ -14,13 +22,18 @@ from groundskeeping.contracts import (
 
 from groundworkers.application.setup.configuration_provider import (
     CDM_SETUP_TARGET,
+    LLM_SETUP_TARGET,
+    MODEL_SETUP_TARGET,
     GroundworkersConfigMutationService,
     cdm_setup_workflow,
+    llm_setup_workflow,
+    model_setup_workflow,
 )
 from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
 )
+from groundworkers.application.setup.model_inventory import discover_provider_models
 from groundworkers.application.setup.runtime_setup import (
     load_chat_configuration,
     load_graph_configuration,
@@ -35,9 +48,6 @@ from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.state import SetupSession
-from groundworkers.tui.wizards.llm_provider import (
-    LlmProviderConfigurationWizardController,
-)
 
 DATABASE_SECTION = "setup.database"
 GRAPH_SECTION = "setup.graph"
@@ -209,25 +219,7 @@ class SetupPage(GroundworkersPage):
                     severity="warning",
                 )
                 return
-            service = GroundworkersConfigMutationService(
-                self._session.configuration.path,
-                ownership=self._session.ownership,
-                on_applied=self._session.refresh_configuration,
-            )
-            operation = (
-                MutationOperation.UPDATE
-                if service.capabilities(
-                    CDM_SETUP_TARGET,
-                    MutationOperation.UPDATE,
-                ).supported
-                else MutationOperation.CREATE
-            )
-            context.open_wizard(
-                ConfigWizardController(
-                    cdm_setup_workflow(operation),
-                    service,
-                )
-            )
+            self._open_config_wizard(context, CDM_SETUP_TARGET, cdm_setup_workflow)
             return
         if action_key == "database.refresh":
             self._session.refresh_configuration()
@@ -240,7 +232,10 @@ class SetupPage(GroundworkersPage):
             self._start_llm_provider_check(context)
             return
         if action_key == "llm_provider.configure":
-            context.open_wizard(LlmProviderConfigurationWizardController(self._session))
+            self._open_config_wizard(context, LLM_SETUP_TARGET, llm_setup_workflow)
+            return
+        if action_key == "embeddings.configure_model":
+            self._open_config_wizard(context, MODEL_SETUP_TARGET, model_setup_workflow)
             return
         if action_key == "embeddings.refresh_coverage":
             self._start_embedding_coverage_refresh(context)
@@ -276,6 +271,33 @@ class SetupPage(GroundworkersPage):
                 )
             )
             return
+
+    def _open_config_wizard(
+        self,
+        context: PageContext,
+        target: ConfigTarget,
+        workflow: Callable[[MutationOperation], ConfigWorkflowSpec],
+    ) -> None:
+        """Open a setup journey through the one generic write flow.
+
+        Every supported Groundworkers write goal — CDM database, embedding model,
+        chat model — goes through this path: the shared mutation provider decides
+        create-versus-update from the current configuration, and Groundskeeping's
+        reusable controller owns the wizard, preview, redaction, and apply
+        lifecycle. There is no second writer.
+        """
+        service = GroundworkersConfigMutationService(
+            self._session.configuration.path,
+            ownership=self._session.ownership,
+            model_discoverer=discover_provider_models,
+            on_applied=self._session.refresh_configuration,
+        )
+        context.open_wizard(
+            ConfigWizardController(
+                workflow(resolve_operation(service, target)),
+                service,
+            )
+        )
 
     def _start_connection_checks(self, context: PageContext) -> None:
         targets = resolve_database_targets(self._session.configuration)

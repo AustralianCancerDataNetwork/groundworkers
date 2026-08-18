@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from omop_graph.graph.constraints import SearchConstraintConcept
+from omop_alchemy.cdm.query import ConceptFilter
 from omop_graph.reasoning.grounding import GroundingConstraints
 from omop_graph.reasoning.resolvers.resolvers import (
     EmbeddingResolver,
@@ -45,13 +45,30 @@ class ConceptGroundingService:
         domain: str | None,
         vocabulary_id: str | None,
         parent_ids: tuple[int, ...] | None = None,
+        standard_only: bool = False,
+        active_only: bool = False,
     ) -> dict[str, Any]:
         stripped = query.strip()
         if not stripped:
             raise ValueError("query must be a non-empty string")
 
+        # ConceptFilter rejects a non-positive limit in __post_init__, and the
+        # candidate cap passed to omop-graph is meaningless at zero. Validate here
+        # so a direct Python caller gets a Groundworkers error rather than a
+        # ValueError raised from inside another package's dataclass.
+        if limit <= 0:
+            raise GroundworkersError(
+                "INVALID_INPUT",
+                f"limit must be a positive integer, got {limit}",
+            )
+
         canonical_domain = self._graph.canonicalize_domain(domain)
-        search_constraint = self._build_search_constraint(canonical_domain, vocabulary_id)
+        search_constraint = self._build_search_constraint(
+            canonical_domain,
+            vocabulary_id,
+            standard_only=standard_only,
+            active_only=active_only,
+        )
         if parent_ids is not None and not parent_ids:
             raise GroundworkersError(
                 "QUERY_ERROR",
@@ -69,7 +86,7 @@ class ConceptGroundingService:
                 ),
                 tiers=self._build_tier_plan(
                     query=stripped,
-                    search_constraint=search_constraint,
+                    search_space_narrowed=bool(canonical_domain or vocabulary_id),
                 ),
                 min_fulltext_overlap=self._min_fulltext_overlap,
             )
@@ -81,6 +98,11 @@ class ConceptGroundingService:
                 "used_embedding": result["used_embedding"],
                 "effective_parent_ids": list(parent_ids) if parent_ids is not None else [],
                 "parent_ids_source": "explicit" if parent_ids is not None else "none",
+                "standard_only": standard_only,
+                "active_only": active_only,
+                # Set when the embedding tier was planned but could not run, so a
+                # degraded lexical-only answer is never presented as a complete one.
+                "embedding_tier_detail": result.get("embedding_tier_detail"),
             },
         }
 
@@ -88,19 +110,44 @@ class ConceptGroundingService:
         self,
         domain: str | None,
         vocabulary_id: str | None,
-    ) -> SearchConstraintConcept | None:
-        if not domain and not vocabulary_id:
+        *,
+        standard_only: bool,
+        active_only: bool,
+    ) -> ConceptFilter | None:
+        """Translate Groundworkers' grounding policy into an omop-alchemy filter.
+
+        Every policy dimension is stated explicitly rather than left to the
+        filter's defaults:
+
+        * ``domains`` / ``vocabularies`` narrow the candidate search space.
+        * ``require_standard`` is omop-alchemy's combined standard-or-classification
+          flag (``standard_concept in ('S', 'C')``), not Groundworkers' strict ``'S'``
+          contract. It restricts *candidate resolution*; result-level strictness is
+          reported separately by ``GraphService`` from the raw flag.
+        * ``require_active`` drops concepts whose ``invalid_reason`` is set, using
+          normalized semantics that treat blank/whitespace as active.
+        * ``limit`` is deliberately never set. It would become the ANN ``k`` for the
+          embedding resolver and a SQL ``LIMIT`` for the lexical resolvers, changing
+          candidate recall and ordering. ``ground_term``'s ``max_candidates`` remains
+          the only cap, which is the pre-1.x behaviour.
+
+        Returns ``None`` when no dimension is constrained, so an unconstrained
+        request still passes no filter at all to omop-graph.
+        """
+        if not domain and not vocabulary_id and not standard_only and not active_only:
             return None
-        return SearchConstraintConcept(
+        return ConceptFilter(
             domains=(domain,) if domain else None,
             vocabularies=(vocabulary_id,) if vocabulary_id else None,
+            require_standard=standard_only,
+            require_active=active_only,
         )
 
     def _build_tier_plan(
         self,
         *,
         query: str,
-        search_constraint: SearchConstraintConcept | None,
+        search_space_narrowed: bool,
     ) -> tuple[tuple[Any, ...], ...]:
         tiers: list[tuple[Any, ...]] = [
             (ExactLabelResolver(), ExactSynonymResolver()),
@@ -111,8 +158,9 @@ class ConceptGroundingService:
 
         # Partial matching without a domain/vocabulary constraint runs ILIKE against
         # the full concept table. Only add this tier once the search space is narrowed
-        # and the query is short enough to be practical.
+        # and the query is short enough to be practical. Standard-only/active-only do
+        # not count as narrowing: they are non-selective over the concept table.
         max_partial_query_len = 60
-        if search_constraint is not None and len(query) <= max_partial_query_len:
+        if search_space_narrowed and len(query) <= max_partial_query_len:
             tiers.append((PartialLabelResolver(), PartialSynonymResolver()))
         return tuple(tiers)

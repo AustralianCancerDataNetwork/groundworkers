@@ -4,6 +4,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("groundskeeping")  # setup write flows live behind the `tui` extra
+
 from groundskeeping.configurator import (
     ConfigApplyIntent,
     ConfigApplyStatus,
@@ -339,9 +342,13 @@ def test_provider_rejects_invalid_and_unknown_submissions(tmp_path: Path) -> Non
 @pytest.mark.parametrize(
     ("error", "expected"),
     (
-        (PermissionError("rejected-secret"), WizardResultStatus.REJECTED),
+        # Groundskeeping's contract splits these by "was a write attempted": a write
+        # that was tried and errored is FAILED, even when the cause is permissions.
+        # REJECTED is reserved for a request that was never acceptable.
+        (PermissionError("failed-secret"), WizardResultStatus.FAILED),
         (OSError("failed-secret"), WizardResultStatus.FAILED),
         (RuntimeError("reload-secret"), WizardResultStatus.FAILED),
+        (ConfigurationError("rejected-secret"), WizardResultStatus.REJECTED),
     ),
 )
 def test_generic_controller_preserves_safe_rejected_and_failed_results(
