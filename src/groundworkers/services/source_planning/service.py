@@ -11,6 +11,7 @@ from groundworkers.services.source_planning.classifier import ColumnRoleClassifi
 from groundworkers.services.source_planning.decomposer import TableDecomposer
 from groundworkers.services.source_planning.detector import FormatDetector
 from groundworkers.services.source_planning.models import (
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
     AnnotatedTable,
     IngestionPlan,
     IngestionStrategy,
@@ -18,15 +19,20 @@ from groundworkers.services.source_planning.models import (
     PreIngestBundle,
     RawTable,
     SourceFormat,
-    UNCERTAIN_CONFIDENCE_THRESHOLD,
 )
 from groundworkers.services.source_planning.normalisation import (
     NormalisationPolicy,
     normalise_tables,
 )
 from groundworkers.services.source_planning.router import IngesterRouter
-from groundworkers.services.source_planning.source_profiles.registry import SourceProfileRegistry
-from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.source_profiles.registry import (
+    SourceProfileRegistry,
+)
+from groundworkers.services.source_planning.warnings import (
+    PlanningError,
+    PlanningWarning,
+)
+
 
 class SourcePlanningService:
     """Thin composition root for the stateless source-planning pipeline.

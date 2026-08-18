@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from groundworkers.services.source_planning.source_profiles.base import SourceSystemProfile
-from groundworkers.services.source_planning.source_profiles.redcap import REDCapSourceProfile
+from groundworkers.services.source_planning.source_profiles.base import (
+    SourceSystemProfile,
+)
+from groundworkers.services.source_planning.source_profiles.redcap import (
+    REDCapSourceProfile,
+)
 
 
 def _default_profiles() -> list[SourceSystemProfile]:

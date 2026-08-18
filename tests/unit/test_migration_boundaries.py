@@ -106,13 +106,11 @@ def test_migration_dependencies_use_explicit_public_boundaries() -> None:
         (REPOSITORY / "pyproject.toml").read_text(encoding="utf-8")
     )
     dependencies = metadata["project"]["dependencies"]
-    groundskeeping_source = metadata["tool"]["uv"]["sources"]["groundskeeping"]
 
     assert "omop-llm>=1,<2" in dependencies
-    assert groundskeeping_source == {
-        "git": "https://github.com/AustralianCancerDataNetwork/groundskeeping.git",
-        "branch": "generic_write",
-    }
+    # groundskeeping 0.4.0 is published, so the temporary git pin is gone. No
+    # source or editable override may survive into a publishable artifact.
+    assert not metadata.get("tool", {}).get("uv", {}).get("sources", {})
 
 
 def _python_files(root: Path) -> tuple[Path, ...]:

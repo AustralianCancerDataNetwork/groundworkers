@@ -67,11 +67,10 @@ MODEL_SETUP_TARGET: Final = ConfigTarget(
     "groundworkers.embedding-model",
     "Groundworkers embedding model",
 )
-# Chat stays in the Groundworkers-owned `llm` mapping for this release, so it is
-# mutated through this same provider boundary rather than a second writer. Moving
-# chat to a named `[models.*]` entry needs an explicit `llm_model_name` reference
-# field and is a separate reviewed migration; `embedding_model_name` is never
-# repurposed as the chat model.
+# Chat is a named `[models.*]` entry reached through `llm_model_name`, the same
+# shape as the embedding model above and written through this same provider
+# boundary. `embedding_model_name` is never repurposed as the chat model: the two
+# journeys write independent entries and may point at different providers.
 LLM_SETUP_TARGET: Final = ConfigTarget(
     ConfigTargetKind.TOOL,
     "groundworkers.llm",
@@ -81,7 +80,7 @@ LLM_SETUP_TARGET: Final = ConfigTarget(
 # Targets whose first step discovers live models from a provider endpoint.
 _PROVIDER_DISCOVERY_STEPS: Final = {
     MODEL_SETUP_TARGET: ("provider", "provider_kind", "base_url", "api_key", "model_choice"),
-    LLM_SETUP_TARGET: ("provider", "llm_provider", "llm_api_base", "llm_api_key", "llm_model_choice"),
+    LLM_SETUP_TARGET: ("provider", "llm_provider_kind", "llm_base_url", "llm_api_key", "llm_model_choice"),
 }
 
 ModelDiscoverer = Callable[[str, str | None, str | None], Sequence[str]]
@@ -231,7 +230,8 @@ class GroundworkersConfigMutationService:
                         if str(item).strip()
                     )
                 )
-            except Exception:  # noqa: BLE001 - external discovery boundary
+            except Exception:
+                # Broad except: external discovery boundary.
                 # The discoverer's own message is not forwarded: provider errors can
                 # carry endpoints and credentials.
                 return ConfigStepResult(
@@ -377,7 +377,8 @@ class GroundworkersConfigMutationService:
                 "The configuration change was rejected.",
                 "Review the current configuration and prepare a new plan.",
             )
-        except Exception:  # noqa: BLE001 - translated to a secret-safe provider result
+        except Exception:
+            # Broad except: translated to a secret-safe provider result.
             return ConfigApplyResult(
                 ConfigApplyStatus.FAILED,
                 "The configuration could not be saved.",
@@ -488,26 +489,30 @@ class GroundworkersConfigMutationService:
                         )
         elif target == LLM_SETUP_TARGET:
             if step_key == "provider":
-                if _optional_text(proposed.get("llm_provider")) not in _LLM_PROVIDERS:
+                if not _optional_text(proposed.get("llm_provider_name")):
                     issues.append(
                         ValidationIssue(
-                            "Choose a supported provider.", field_key="llm_provider"
+                            "A provider name is required.", field_key="llm_provider_name"
                         )
                     )
-                if not _optional_text(proposed.get("llm_api_base")):
+                if _optional_text(proposed.get("llm_provider_kind")) not in _LLM_PROVIDERS:
                     issues.append(
                         ValidationIssue(
-                            "A provider endpoint is required.", field_key="llm_api_base"
+                            "Choose a supported provider.", field_key="llm_provider_kind"
                         )
                     )
-            if step_key == "model" and not _optional_text(
-                proposed.get("llm_model_choice")
-            ):
-                issues.append(
-                    ValidationIssue(
-                        "A chat model is required.", field_key="llm_model_choice"
+                if not _optional_text(proposed.get("llm_base_url")):
+                    issues.append(
+                        ValidationIssue(
+                            "A provider endpoint is required.", field_key="llm_base_url"
+                        )
                     )
-                )
+            if step_key == "model":
+                for key in ("llm_model_entry_name", "llm_model_choice"):
+                    if not _optional_text(proposed.get(key)):
+                        issues.append(
+                            ValidationIssue("A chat model is required.", field_key=key)
+                        )
         return tuple(issues)
 
     def _candidate(self, session: _MutationSession) -> StackConfig:
@@ -516,7 +521,7 @@ class GroundworkersConfigMutationService:
         elif session.target == MODEL_SETUP_TARGET:
             set_dict = _model_set_dict(session.answers)
         elif session.target == LLM_SETUP_TARGET:
-            set_dict = _llm_set_dict(session.base, session.answers)
+            set_dict = _llm_set_dict(session.answers)
         else:
             raise ValueError("Unsupported Groundworkers configuration target.")
         candidate = plan_configure(GroundworkersConfig, session.base, set_dict)
@@ -614,12 +619,12 @@ def llm_setup_workflow(
             ConfigWorkflowStep(
                 "provider",
                 "Connect to the provider",
-                ("llm_provider", "llm_api_base", "llm_api_key"),
+                ("llm_provider_name", "llm_provider_kind", "llm_base_url", "llm_api_key"),
             ),
             ConfigWorkflowStep(
                 "model",
                 "Choose the chat model",
-                ("llm_model_choice",),
+                ("llm_model_entry_name", "llm_model_choice"),
             ),
         ),
     )
@@ -744,23 +749,27 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
 
 def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     tool = stack.tools.get(GroundworkersConfig.tool_name, {})
-    llm = tool.get("llm") if isinstance(tool.get("llm"), Mapping) else {}
-    existing_model = _optional_text(llm.get("default_model_name"))
+    model_name = _optional_text(tool.get("llm_model_name"))
+    model = stack.models.get(model_name) if model_name else None
+    provider_name = getattr(model, "provider", "chat_provider")
+    provider = stack.providers.get(provider_name)
+    existing_model = getattr(model, "model", None)
     pending = existing_model or "pending"
     return (
+        FieldSpec("llm_provider_name", "Provider entry", default=provider_name),
         FieldSpec(
-            "llm_provider",
+            "llm_provider_kind",
             "Provider",
             kind=FieldKind.CHOICE,
-            default=_optional_text(llm.get("provider")) or "ollama",
+            default=getattr(provider, "provider", "ollama"),
             choices=tuple(
                 ChoiceOption(key, label) for key, label in _LLM_PROVIDERS.items()
             ),
         ),
         FieldSpec(
-            "llm_api_base",
+            "llm_base_url",
             "Provider endpoint",
-            default=_optional_text(llm.get("api_base")) or _DEFAULT_LLM_ENDPOINT,
+            default=getattr(provider, "base_url", None) or _DEFAULT_LLM_ENDPOINT,
         ),
         FieldSpec(
             "llm_api_key",
@@ -769,6 +778,9 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             required=False,
             sensitive=True,
             help="Leave blank to preserve an existing key.",
+        ),
+        FieldSpec(
+            "llm_model_entry_name", "Model entry", default=model_name or "chat_model"
         ),
         FieldSpec(
             "llm_model_choice",
@@ -823,31 +835,33 @@ def _model_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _llm_set_dict(
-    stack: StackConfig,
-    answers: Mapping[str, object],
-) -> dict[str, object]:
-    """Build the chat mapping, preserving unrelated llm settings and the stored key.
+def _llm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
+    """Build the chat provider and model entries.
 
-    Only the fields this journey owns are replaced. A blank API key answer means
-    "keep the existing one" (the submit path already drops blank secrets), so the
-    stored value is carried forward rather than cleared.
+    Structurally identical to :func:`_model_set_dict`; the two differ only in
+    which reference field they populate and in declaring `structured_output`
+    rather than `embeddings`. A blank API key answer means "keep the existing
+    one" (the submit path already drops blank secrets), so it is simply omitted
+    and the stored provider value survives.
     """
-    tool = stack.tools.get(GroundworkersConfig.tool_name, {})
-    existing = tool.get("llm")
-    llm: dict[str, object] = dict(existing) if isinstance(existing, Mapping) else {}
-    llm.update(
-        {
-            "enabled": True,
-            "provider": str(answers["llm_provider"]),
-            "api_base": str(answers["llm_api_base"]),
-            "default_model_name": str(answers["llm_model_choice"]),
+    provider: dict[str, object] = {
+        "name": str(answers["llm_provider_name"]),
+        "provider": str(answers["llm_provider_kind"]),
+    }
+    for answer_key, provider_key in (("llm_base_url", "base_url"), ("llm_api_key", "api_key")):
+        value = answers.get(answer_key)
+        if value not in (None, ""):
+            provider[provider_key] = value
+    return {
+        "llm_model_name": {
+            "name": str(answers["llm_model_entry_name"]),
+            "provider": provider,
+            "model": str(answers["llm_model_choice"]),
+            # The structured tool path asks for JSON mode, so the entry declares
+            # it. omop-llm treats every capability as opt-in.
+            "structured_output": True,
         }
-    )
-    api_key = answers.get("llm_api_key")
-    if api_key not in (None, ""):
-        llm["api_key"] = api_key
-    return {"llm": llm}
+    }
 
 
 def _target_exists(stack: StackConfig | None, target: ConfigTarget) -> bool:
@@ -861,12 +875,8 @@ def _target_exists(stack: StackConfig | None, target: ConfigTarget) -> bool:
         name = tool.get("embedding_model_name")
         return isinstance(name, str) and name in stack.models
     if target == LLM_SETUP_TARGET:
-        llm = tool.get("llm")
-        if not isinstance(llm, Mapping):
-            return False
-        # A chat entry exists once a model has actually been chosen; defaults alone
-        # are not a configured target.
-        return _optional_text(llm.get("default_model_name")) is not None
+        name = tool.get("llm_model_name")
+        return isinstance(name, str) and name in stack.models
     raise ValueError("Groundworkers does not support this configuration target.")
 
 
@@ -939,19 +949,13 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
             ),
         )
     if session.target == LLM_SETUP_TARGET:
-        # Chat lives in the Groundworkers-owned tool mapping, so there is no separate
-        # named provider or model entry to point at.
-        return (
-            EffectRef(
-                session.operation.value,
-                session.target,
-                "chat provider and model",
-                session.target,
-                "tools",
-            ),
-        )
-    provider_name = str(session.answers.get("provider_name", "embedding_provider"))
-    model_name = str(session.answers.get("model_entry_name", "embedding_model"))
+        provider_name = str(session.answers.get("llm_provider_name", "chat_provider"))
+        model_name = str(session.answers.get("llm_model_entry_name", "chat_model"))
+        model_label = "chat model"
+    else:
+        provider_name = str(session.answers.get("provider_name", "embedding_provider"))
+        model_name = str(session.answers.get("model_entry_name", "embedding_model"))
+        model_label = "embedding model"
     return (
         EffectRef(
             session.operation.value,
@@ -963,7 +967,7 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
         EffectRef(
             session.operation.value,
             session.target,
-            "embedding model",
+            model_label,
             ConfigTarget(ConfigTargetKind.MODEL, model_name, model_name),
             "models",
         ),

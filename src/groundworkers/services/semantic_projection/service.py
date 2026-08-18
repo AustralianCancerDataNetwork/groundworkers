@@ -12,7 +12,8 @@ references when it is built.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from omop_semantics.runtime import (
     OmopSemanticEngine,
@@ -22,7 +23,10 @@ from omop_semantics.runtime import (
     derive_status,
 )
 
-from groundworkers.services.semantic_projection.definitions import BUILTIN_DEFINITIONS, DefinitionTrigger
+from groundworkers.services.semantic_projection.definitions import (
+    BUILTIN_DEFINITIONS,
+    DefinitionTrigger,
+)
 from groundworkers.services.semantic_projection.models import (
     ProjectedRowModel,
     ProjectionLinkModel,

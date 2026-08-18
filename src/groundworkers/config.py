@@ -17,7 +17,7 @@ from oa_configurator import (  # type: ignore[import-untyped]
     StackConfig,
     VectorStoreConfig,
 )
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.engine import Engine
 
 
@@ -69,24 +69,6 @@ class GroundingConfig(BaseModel):
         return value
 
 
-class LLMConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    provider: str = "openai-compatible"
-    api_base: str | None = Field(default=None, repr=False)
-    api_key: str | None = Field(default=None, repr=False)
-    default_model_name: str | None = None
-
-    @model_validator(mode="after")
-    def validate_enabled_config(self) -> LLMConfig:
-        if not self.enabled:
-            return self
-        if self.api_key is not None and not self.api_key.strip():
-            raise ValueError("llm.api_key must be a non-empty string when provided")
-        return self
-
-
 class SourcePlanningConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -115,11 +97,14 @@ class GroundworkersConfig(PackageConfigBase):
 
     cdm_db: Annotated[str, RefTo(CDMDatabaseConfig)] = "cdm_db"
     embedding_model_name: Annotated[str | None, RefTo(ModelConfig)] = None
+    # The chat model is a named [models.*] entry, exactly like the embedding
+    # model. It is never the same entry: `embedding_model_name` is not reused as
+    # the chat model, and a stack may configure either, both, or neither.
+    llm_model_name: Annotated[str | None, RefTo(ModelConfig)] = None
     vector_store_name: Annotated[str | None, RefTo(VectorStoreConfig)] = None
     app_name: str = "groundworkers"
     mcp: McpTransportConfig = Field(default_factory=McpTransportConfig)
     rest: RestTransportConfig = Field(default_factory=RestTransportConfig)
-    llm: LLMConfig = Field(default_factory=LLMConfig)
     grounding: GroundingConfig = Field(default_factory=GroundingConfig)
     source_planning: SourcePlanningConfig = Field(default_factory=SourcePlanningConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
@@ -139,6 +124,7 @@ class AppConfig:
     cdm_engine: Engine
     vocabulary_engine: Engine
     embedding_model: ResolvedModel | None
+    llm_model: ResolvedModel | None
     vector_store: ResolvedVectorStore | None
     knowledge_root: Path | None
 
@@ -147,8 +133,9 @@ class AppConfig:
         return self.groundworkers.app_name
 
     @property
-    def llm(self) -> LLMConfig:
-        return self.groundworkers.llm
+    def llm_enabled(self) -> bool:
+        """Whether a chat model is configured. There is no separate on/off flag."""
+        return self.llm_model is not None
 
     @property
     def mcp(self) -> McpTransportConfig:
@@ -181,27 +168,8 @@ class AppConfig:
     def describe(self) -> dict[str, Any]:
         """Return an operator-safe description without credentials or raw URLs."""
 
-        llm = self.llm.model_dump(exclude_none=True)
-        if llm.get("api_key"):
-            llm["api_key"] = "***"
-        if isinstance(llm.get("api_base"), str):
-            llm["api_base"] = _safe_endpoint(llm["api_base"])
-
-        model = None
-        if self.embedding_model is not None:
-            resolved = self.embedding_model
-            model = {
-                "name": resolved.name,
-                "provider": {
-                    "name": resolved.provider.name,
-                    "provider": resolved.provider.provider,
-                    "base_url": _safe_endpoint(resolved.provider.base_url),
-                    "api_key": "***" if resolved.provider.api_key else None,
-                },
-                "model": resolved.model,
-                "embedding_dim": resolved.embedding_dim,
-                "embeddings": resolved.embeddings,
-            }
+        model = _describe_model(self.embedding_model)
+        llm_model = _describe_model(self.llm_model)
 
         vector_store = None
         if self.vector_store is not None:
@@ -231,7 +199,7 @@ class AppConfig:
             "groundworkers": {
                 "mcp": self.mcp.model_dump(),
                 "rest": self.rest.model_dump(),
-                "llm": llm,
+                "llm_model_name": self.groundworkers.llm_model_name,
                 "grounding": self.grounding.model_dump(exclude_none=True),
                 "source_planning": self.source_planning.model_dump(),
                 "knowledge": {
@@ -255,11 +223,36 @@ class AppConfig:
                 "results_schema": database.results_schema,
             },
             "model": model,
+            "llm_model": llm_model,
             "vector_store": vector_store,
         }
 
     def __repr__(self) -> str:
         return f"AppConfig({self.describe()!r})"
+
+
+def _describe_model(resolved: ResolvedModel | None) -> dict[str, Any] | None:
+    """Operator-safe view of a resolved [models.*] entry.
+
+    Used for both the embedding and chat models: they are the same kind of
+    entry, so they get the same redacted shape.
+    """
+    if resolved is None:
+        return None
+    return {
+        "name": resolved.name,
+        "provider": {
+            "name": resolved.provider.name,
+            "provider": resolved.provider.provider,
+            "base_url": _safe_endpoint(resolved.provider.base_url),
+            "api_key": "***" if resolved.provider.api_key else None,
+        },
+        "model": resolved.model,
+        "embedding_dim": resolved.embedding_dim,
+        "embeddings": resolved.embeddings,
+        "structured_output": resolved.structured_output,
+        "tool_use": resolved.tool_use,
+    }
 
 
 _SENSITIVE_QUERY_PARTS = ("key", "token", "secret", "password", "credential")

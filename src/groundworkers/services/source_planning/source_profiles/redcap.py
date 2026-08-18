@@ -14,7 +14,9 @@ Only radio, checkbox, and dropdown rows have meaningful content there.
 
 from __future__ import annotations
 
-from groundworkers.services.source_planning.source_profiles.base import SourceSystemProfile
+from groundworkers.services.source_planning.source_profiles.base import (
+    SourceSystemProfile,
+)
 
 _FINGERPRINT: frozenset[str] = frozenset({
     "field type",

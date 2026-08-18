@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from omop_emb import EmbeddingRole, MetricType
-
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError

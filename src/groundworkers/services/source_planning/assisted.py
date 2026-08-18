@@ -14,12 +14,12 @@ from pydantic import BaseModel, Field, ValidationError
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.services.source_planning.models import (
-    AnnotatedTable,
+    _GROUNDABLE_ROLES,
     COLUMN_ROLE_DESCRIPTIONS,
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
+    AnnotatedTable,
     ColumnAnnotation,
     ColumnRole,
-    UNCERTAIN_CONFIDENCE_THRESHOLD,
-    _GROUNDABLE_ROLES,
 )
 
 _SYSTEM_PROMPT = """\

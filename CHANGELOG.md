@@ -4,9 +4,62 @@ Stack 1.0 cutover: oa-configurator 1.x, omop-alchemy 1.x, omop-graph 2.x,
 omop-emb 2.x, omop-llm 1.x. No compatibility shims are provided for the removed
 0.x shapes.
 
-**Release blocker:** the `tui` extra requires `groundskeeping>=1,<2`, which is not
-published. `uv.lock` still resolves groundskeeping from a git branch. Both must be
-replaced with a released artifact before publication.
+The `tui` extra now resolves `groundskeeping>=0.4,<1` from PyPI. The temporary
+`[tool.uv.sources]` git pin and its lock entry are gone, so no source or editable
+dependency remains that would block publication.
+
+### Changed — chat model configuration
+
+- The chat model is now a named `[models.*]` entry reached through
+  `groundworkers.llm_model_name`, exactly like `embedding_model_name`. The
+  `[tools.groundworkers.llm]` mapping (`enabled`, `provider`, `api_base`,
+  `api_key`, `default_model_name`) is **removed**: its endpoint and credentials
+  belong on the `[providers.*]` entry the model references, where
+  oa-configurator already marks the key `Sensitive()` and redacts it.
+- There is no separate `llm.enabled` flag. Chat is available exactly when
+  `llm_model_name` resolves, matching how embeddings are already gated by
+  `embedding_model_name` + `vector_store_name`.
+- `LLMAdapter` runs on omop-llm's provider-neutral `ModelBackend` instead of
+  constructing an OpenAI client. It keeps its `complete_text` /
+  `complete_structured` / `status` contract and its `GroundworkersError` codes;
+  what it no longer owns is a provider transport. `status()` now reports the
+  model's declared `structured_output` capability rather than assuming `True`.
+- Setup-time model inventory reads the provider's OpenAI-compatible `/models`
+  endpoint over plain HTTP, matching the Ollama tag listing beside it. omop-llm
+  can say *whether* a provider is reachable but discards the model list, so
+  inventory still comes from the provider's own surface.
+- The `llm` extra is **removed**. Nothing imports the OpenAI SDK any more;
+  omop-llm is a core dependency.
+- The chat setup journey writes a `[providers.*]` and a `[models.*]` entry
+  through the same provider boundary as the embedding journey, and its review
+  now names the real entries it will create.
+
+### Fixed
+
+- `config/groundworkers.example.toml` was still in 0.x shape (`[resources.*]`,
+  `[resource_aliases]`, `[tools.*.extra]`, `[tools.omop_emb.extra]`) and could
+  not be loaded at all under 1.0. Rewritten, and a test now parses it so it
+  cannot rot again silently.
+- `make setup` referenced a non-existent `embedding-tools` extra, and `make
+  describe` a `config/groundworkers.example.yaml` that has never existed.
+
+### Changed — build and CI/CD
+
+- Adopted the shared cava-devops pipeline. `ci.yml` (label gate + build/test),
+  `merge.yml` (release drafter), `publish.yml`, and `docs.yml` now call the
+  reusable workflows; the hand-rolled `pypi.yml` is deleted and `docs.yml` no
+  longer pins its own MkDocs install.
+- Versioning moved to `hatch-vcs`: the build backend is `hatchling`, and the
+  version is derived from the git tag rather than a static `version` field. A
+  release is now cut by publishing a tag, and `pyproject.toml` no longer has to
+  be kept in step with it.
+- Releases are gated on a `breaking` / `feature` / `fix` / `dependencies` label,
+  which also determines the version bump. `chore` bypasses the gate.
+- `ruff` and `ty` run on every pull request, and both are clean. The ruff rule
+  set is pinned explicitly so a ruff release cannot widen it and break CI
+  without a code change.
+- `.githooks/pre-commit` keeps `uv.lock` in step with `pyproject.toml`. Run
+  `git config core.hooksPath .githooks` once per clone to enable it.
 
 ### Removed
 
@@ -30,7 +83,7 @@ replaced with a released artifact before publication.
 
 - `[tools.groundworkers]` takes `cdm_db`, optional `embedding_model_name`, and
   optional `vector_store_name` as references to named stack entries.
-- `grounding.max_depth` (1–10, default 5) is now configurable; it was hardcoded.
+- `grounding.max_depth` (1-10, default 5) is now configurable; it was hardcoded.
 - `grounding` no longer carries `embedding_model_name`; it is a top-level reference.
 - `describe()` is keyed by `database`, `model`, and `vector_store`. Passwords and
   API keys are masked and safe URLs carry no credentials.

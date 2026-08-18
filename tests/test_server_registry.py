@@ -1,10 +1,4 @@
-import sys
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 import pytest
 
@@ -12,7 +6,11 @@ from groundworkers.app import build_adapters, build_application
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.server import create_server, main, parse_args, run_rest_api
-from tests.support.stack_config import build_cdm_stack, build_embedding_stack
+from tests.support.stack_config import (
+    add_chat_model,
+    build_cdm_stack,
+    build_embedding_stack,
+)
 
 
 def _stack_without_backends():
@@ -83,19 +81,18 @@ def test_build_application_exposes_services_container():
 
 def test_runtime_config_masks_api_keys(tmp_path: Path):
     stack = build_embedding_stack()
-    stack.tools["groundworkers"]["llm"] = {
-        "enabled": True,
-        "api_base": "http://example.test/v1",
-        "api_key": "secret",
-    }
+    add_chat_model(stack, api_key="chat-secret")
     stack.providers["embedding_provider"].api_key = "emb-secret"
     stack.connections["embedding_main"].database_name = str(tmp_path / "omop_emb.db")
     config = build_app_config_from_stack(stack)
 
     described = config.describe()
 
-    assert described["groundworkers"]["llm"]["api_key"] == "***"
+    # Chat and embedding models are the same kind of entry and redact identically.
     assert described["model"]["provider"]["api_key"] == "***"
+    assert described["llm_model"]["provider"]["api_key"] == "***"
+    assert "chat-secret" not in repr(described)
+    assert "emb-secret" not in repr(described)
 
 
 def test_embedding_store_is_resolved_lazily_and_shared(monkeypatch, tmp_path: Path):

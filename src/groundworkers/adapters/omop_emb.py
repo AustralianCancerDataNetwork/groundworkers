@@ -102,7 +102,8 @@ class OmopEmbAdapter:
             return status
         except GroundworkersError as exc:
             detail = exc.message
-        except Exception as exc:  # noqa: BLE001 - converted to a safe status category
+        except Exception as exc:
+            # Broad except: converted to a safe status category.
             detail = f"Embedding store inspection failed with {type(exc).__name__}."
         return {
             "available": False,

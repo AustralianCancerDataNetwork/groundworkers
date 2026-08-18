@@ -195,9 +195,9 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
           Valid values: HIERARCHY, IDENTITY, ATTRIBUTE, COMPOSITION, ASSOCIATION.
           When omitted, all relationship types are traversed.
 
-        max_depth: maximum hops from the seed (1–4, server-enforced).
+        max_depth: maximum hops from the seed (1-4, server-enforced).
 
-        max_nodes: stop after visiting this many distinct concepts (10–500,
+        max_nodes: stop after visiting this many distinct concepts (10-500,
           server-enforced).  terminated_early=true and terminated_reason="max_nodes"
           in the response indicate the traversal was cut short.
 
@@ -246,7 +246,7 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
         direction: "out" (default; edges where this concept is the subject), "in", or "both".
         predicate_subkinds: optional filter on the classification subkind, e.g. ["Therapeutic"].
         active_only: when true (default) exclude invalid/deprecated relationships.
-        limit: max edges returned per direction (1–200, server-enforced).
+        limit: max edges returned per direction (1-200, server-enforced).
         """
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
@@ -295,9 +295,9 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
         graph (e.g. classification memberships, cross-vocabulary hierarchy links).
 
         direction: "out" (default; edges where this concept is the subject), "in", or "both".
-        predicate_subkinds: optional filter, e.g. ["Taxonomic – up"], ["Categorical – up"].
+        predicate_subkinds: optional filter, e.g. ["Taxonomic - up"], ["Categorical - up"].
         active_only: when true (default) exclude invalid/deprecated relationships.
-        limit: max edges returned per direction (1–200, server-enforced).
+        limit: max edges returned per direction (1-200, server-enforced).
         """
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}

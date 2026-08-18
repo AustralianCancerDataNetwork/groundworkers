@@ -15,7 +15,6 @@ SourceItems for those rows.
 from __future__ import annotations
 
 from groundworkers.adapters.llm import LLMAdapter
-from groundworkers.base.errors import GroundworkersError
 
 _VALID_DOMAINS = frozenset(
     {

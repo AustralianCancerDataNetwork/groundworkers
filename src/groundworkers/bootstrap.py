@@ -78,6 +78,11 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
         if groundworkers.embedding_model_name is not None
         else None
     )
+    llm_model = (
+        resolver.resolve_model(groundworkers.llm_model_name)
+        if groundworkers.llm_model_name is not None
+        else None
+    )
     vector_store = (
         resolver.resolve_vector_store(groundworkers.vector_store_name)
         if groundworkers.vector_store_name is not None
@@ -99,6 +104,7 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
         cdm_engine=cdm_engine,
         vocabulary_engine=vocabulary_engine,
         embedding_model=embedding_model,
+        llm_model=llm_model,
         vector_store=vector_store,
         knowledge_root=knowledge_root,
     )

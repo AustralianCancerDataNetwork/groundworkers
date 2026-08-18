@@ -1,6 +1,5 @@
 from groundskeeping.contracts import PageRoute
 
-
 SETUP_ROUTE = PageRoute(
     key="setup",
     label="Setup",

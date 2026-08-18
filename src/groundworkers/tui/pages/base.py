@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from textual.widget import Widget
-
 from groundskeeping.contracts import (
     EmptyView,
     NavigationItem,
@@ -11,6 +9,7 @@ from groundskeeping.contracts import (
     SectionNavigation,
     SurfaceView,
 )
+from textual.widget import Widget
 
 
 class GroundworkersPage(Widget):

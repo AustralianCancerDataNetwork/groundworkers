@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from groundworkers.services.semantic_projection.definitions import BUILTIN_DEFINITIONS, DefinitionTrigger
+from groundworkers.services.semantic_projection.definitions import (
+    BUILTIN_DEFINITIONS,
+    DefinitionTrigger,
+)
 from groundworkers.services.semantic_projection.models import (
     ProjectedRowModel,
     ProjectionLinkModel,
@@ -17,6 +20,6 @@ __all__ = [
     "ProjectionLinkModel",
     "SemanticProjectionRequest",
     "SemanticProjectionResult",
-    "SuppressedRowModel",
     "SemanticProjectionService",
+    "SuppressedRowModel",
 ]

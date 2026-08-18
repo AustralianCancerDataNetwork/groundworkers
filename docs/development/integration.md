@@ -39,8 +39,8 @@ services.vocab          # always, with a CDM database
 services.graph          # always, with a CDM database
 services.grounding      # always, with a CDM database
 services.mapping        # always, with a CDM database
-services.text           # only when groundworkers.llm.enabled
-services.domain         # only when groundworkers.llm.enabled
+services.text           # only when groundworkers.llm_model_name resolves
+services.domain         # only when groundworkers.llm_model_name resolves
 services.source_planning
 ```
 

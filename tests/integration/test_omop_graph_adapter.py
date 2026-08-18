@@ -1,14 +1,7 @@
 import os
-import sys
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
-
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.app import build_adapters
 from groundworkers.bootstrap import build_app_config
@@ -91,7 +84,8 @@ def _skip_if_parent_lookup_is_unindexed(adapter) -> None:
     try:
         with adapter.engine.connect() as conn:
             rows = conn.execute(stmt, {"schema": adapter.vocab_schema}).scalars().all()
-    except Exception as exc:  # noqa: BLE001 - integration environment preflight
+    except Exception as exc:
+        # Broad except: integration environment preflight.
         pytest.skip(f"could not inspect concept_ancestor indexes: {exc}")
 
     if not any("(descendant_concept_id" in indexdef.lower() for indexdef in rows):

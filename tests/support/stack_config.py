@@ -115,6 +115,36 @@ def build_embedding_stack(
     return stack
 
 
+def add_chat_model(
+    stack: StackConfig,
+    *,
+    provider_name: str = "chat_provider",
+    model_entry_name: str = "chat_model",
+    model_name: str = "qwen3:8b",
+    provider_kind: str = "ollama",
+    base_url: str | None = "http://llm.example.test/v1",
+    api_key: str | None = None,
+) -> StackConfig:
+    """Point ``groundworkers.llm_model_name`` at a named provider/model pair.
+
+    The chat model is an ordinary ``[models.*]`` entry, so this mirrors what
+    :func:`build_embedding_stack` does for embeddings. Mutates and returns
+    *stack* so it can be layered onto either builder.
+    """
+    stack.providers[provider_name] = ProviderConfig(
+        provider=provider_kind,
+        base_url=base_url,
+        api_key=api_key,
+    )
+    stack.models[model_entry_name] = ModelConfig(
+        provider=provider_name,
+        model=model_name,
+        structured_output=True,
+    )
+    stack.tools["groundworkers"]["llm_model_name"] = model_entry_name
+    return stack
+
+
 def build_invalid_reference_stack(issue: InvalidReference) -> StackConfig:
     """Build a structurally valid stack with one deliberate reference error."""
 

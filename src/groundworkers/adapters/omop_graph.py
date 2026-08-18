@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from datetime import date
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
@@ -227,7 +227,7 @@ class OmopGraphAdapter:
         self,
         concept_id: int,
         *,
-        direction: str,
+        direction: Literal["in", "out"],
         predicate_kinds: frozenset[PredicateKind] | None = None,
         active_only: bool,
     ) -> list[dict[str, Any]]:
@@ -311,7 +311,9 @@ class OmopGraphAdapter:
     # ------------------------------------------------------------------
 
     # Valid predicate kind names accepted by traverse_neighborhood (case-insensitive).
-    _PREDICATE_KIND_NAMES: dict[str, PredicateKind] = {pk.name.upper(): pk for pk in PredicateKind}
+    _PREDICATE_KIND_NAMES: ClassVar[dict[str, PredicateKind]] = {
+        pk.name.upper(): pk for pk in PredicateKind
+    }
 
     def traverse_neighborhood(
         self,
@@ -557,7 +559,8 @@ class OmopGraphAdapter:
                     faiss_cache_dir=self._faiss_cache_dir,
                 )
                 self._embedding_configured = True
-            except Exception as exc:  # noqa: BLE001 - lexical fallback is intentional
+            except Exception as exc:
+                # Broad except: lexical fallback is intentional.
                 emb_config = None
                 self._embedding_configured = False
                 self._embedding_configuration_error = self._embedding_failure_detail(exc)
@@ -593,26 +596,28 @@ class OmopGraphAdapter:
             f"{type(exc).__name__}; lexical grounding remains available."
         )
 
-    def _serialise_concept_view(self, concept_view: object) -> dict[str, Any]:
+    # `Any`, not `object`: these are omop-graph view/result objects whose types
+    # are not exported, so their attributes cannot be checked statically.
+    def _serialise_concept_view(self, concept_view: Any) -> dict[str, Any]:
         return {
-            "concept_id": int(concept_view.concept_id),  # type: ignore[attr-defined]
-            "concept_name": concept_view.concept_name,  # type: ignore[attr-defined]
-            "concept_code": concept_view.concept_code,  # type: ignore[attr-defined]
-            "vocabulary_id": concept_view.vocabulary_id,  # type: ignore[attr-defined]
-            "domain_id": concept_view.domain_id,  # type: ignore[attr-defined]
-            "concept_class_id": concept_view.concept_class_id,  # type: ignore[attr-defined]
-            "standard_concept": bool(concept_view.standard_concept),  # type: ignore[attr-defined]
-            "valid_start_date": self._date_to_iso(concept_view.valid_start_date),  # type: ignore[attr-defined]
-            "valid_end_date": self._date_to_iso(concept_view.valid_end_date),  # type: ignore[attr-defined]
-            "invalid_reason": concept_view.invalid_reason,  # type: ignore[attr-defined]
+            "concept_id": int(concept_view.concept_id),
+            "concept_name": concept_view.concept_name,
+            "concept_code": concept_view.concept_code,
+            "vocabulary_id": concept_view.vocabulary_id,
+            "domain_id": concept_view.domain_id,
+            "concept_class_id": concept_view.concept_class_id,
+            "standard_concept": bool(concept_view.standard_concept),
+            "valid_start_date": self._date_to_iso(concept_view.valid_start_date),
+            "valid_end_date": self._date_to_iso(concept_view.valid_end_date),
+            "invalid_reason": concept_view.invalid_reason,
             # omop-graph's own normalized activity field: invalid_reason unset, with
             # blank and whitespace-only treated as active. Do not re-derive this from
             # the raw invalid_reason string.
-            "is_active": bool(concept_view.is_active),  # type: ignore[attr-defined]
+            "is_active": bool(concept_view.is_active),
         }
 
-    def _serialise_ground_hit(self, result: object) -> dict[str, Any]:
-        concept_id = int(result.concept_id)  # type: ignore[attr-defined]
+    def _serialise_ground_hit(self, result: Any) -> dict[str, Any]:
+        concept_id = int(result.concept_id)
         original_id = getattr(result, "original_id", None)
         standardized_from = None
         if original_id is not None and int(original_id) != concept_id:
@@ -623,10 +628,10 @@ class OmopGraphAdapter:
         emb_score = getattr(result, "embedding_score", None)
         return {
             "concept_id": concept_id,
-            "concept_name": result.concept_name,  # type: ignore[attr-defined]
-            "match_kind": self._label_match_kind_name(result.match_kind),  # type: ignore[attr-defined]
+            "concept_name": result.concept_name,
+            "match_kind": self._label_match_kind_name(result.match_kind),
             "matched_label": getattr(result, "matched_concept_label", None),
-            "total_score": round(float(result.total_score), 4),  # type: ignore[attr-defined]
+            "total_score": round(float(result.total_score), 4),
             "relevance": round(float(getattr(result, "relevance", 0.0)), 4),
             "parsimony_penalty": round(float(getattr(result, "parsimony_penalty", 0.0)), 4),
             "broadness_bonus": round(float(getattr(result, "broadness_bonus", 0.0)), 4),

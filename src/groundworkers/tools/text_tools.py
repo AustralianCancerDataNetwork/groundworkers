@@ -82,7 +82,7 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         concept_candidate_bundle.
 
         domain_hint optionally scopes extraction to a specific OMOP domain.
-        max_terms controls the upper bound on terms returned (clamped 1–20).
+        max_terms controls the upper bound on terms returned (clamped 1-20).
 
         Returns: terms (list of {term, domain_hint}), original.
         """
@@ -111,7 +111,7 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         from context — returning the ranked list to the caller to resolve.
 
         domain_hint optionally scopes disambiguation to a specific OMOP domain.
-        max_interpretations controls the upper bound on candidates returned (clamped 1–10).
+        max_interpretations controls the upper bound on candidates returned (clamped 1-10).
 
         Returns: interpretations (list of {interpretation, domain_hint, context_clues}),
         original, is_ambiguous.

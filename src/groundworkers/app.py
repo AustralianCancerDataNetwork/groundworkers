@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.llm import LLMAdapter
@@ -131,35 +131,22 @@ def build_adapters(config: AppConfig) -> Adapters:
         ),
     )
 
-    llm_config = config.llm
-    if llm_config.enabled:
-        api_key = llm_config.api_key
-        api_base = llm_config.api_base
+    resolved_llm_model = config.llm_model
+    if resolved_llm_model is not None:
+        chat_backend: ModelBackend | None = None
 
-        def build_llm_client() -> Any:
-            try:
-                from openai import OpenAI
-            except ImportError as exc:
-                raise RuntimeError(
-                    "The 'openai' package is required for LLM features. "
-                    "Install it with: pip install openai"
-                ) from exc
-            # Pass only what was explicitly configured; when api_key is None the
-            # OpenAI SDK falls back to the OPENAI_API_KEY environment variable.
-            kwargs: dict[str, Any] = {}
-            if api_key is not None:
-                kwargs["api_key"] = api_key
-            if api_base is not None:
-                kwargs["base_url"] = api_base
-            kwargs["max_retries"] = 0
-            kwargs["timeout"] = 30.0
-            return OpenAI(**kwargs)
+        def get_chat_backend() -> ModelBackend:
+            # Built lazily and separately from the embedding backend above: chat
+            # and embeddings are distinct [models.*] entries and may resolve to
+            # different providers entirely.
+            nonlocal chat_backend
+            if chat_backend is None:
+                from omop_llm import build_model_backend_from_resolved
 
-        adapters.llm = LLMAdapter(
-            provider=llm_config.provider,
-            default_model_name=llm_config.default_model_name,
-            client_factory=build_llm_client,
-        )
+                chat_backend = build_model_backend_from_resolved(resolved_llm_model)
+            return chat_backend
+
+        adapters.llm = LLMAdapter(backend_factory=get_chat_backend)
 
     return adapters
 

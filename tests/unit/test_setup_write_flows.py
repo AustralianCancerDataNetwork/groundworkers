@@ -64,12 +64,13 @@ def _drive_llm_to_review(controller, *, api_key: str | None = "provider-secret")
     controller.start()
     controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": api_key,
         }
     )
-    return controller.submit({"llm_model_choice": "second-model"})
+    return controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"})
 
 
 # ---------------------------------------------------------------------------
@@ -110,10 +111,11 @@ def test_chat_setup_creates_then_updates_the_same_target(tmp_path: Path) -> None
     _drive_llm_to_review(controller)
     assert controller.apply().status.value == "applied"
 
-    saved = GroundworkersConfig.validate_candidate(load_stack_config_from_path(path))
-    assert saved.llm.enabled is True
-    assert saved.llm.provider == "ollama"
-    assert saved.llm.default_model_name == "second-model"
+    stack = load_stack_config_from_path(path)
+    saved = GroundworkersConfig.validate_candidate(stack)
+    assert saved.llm_model_name == "chat_model"
+    assert stack.models["chat_model"].model == "second-model"
+    assert stack.providers["chat_provider"].provider == "ollama"
 
     # A second pass over an existing entry is an update, not a duplicate create.
     controller, operation = _controller(path, LLM_SETUP_TARGET, llm_setup_workflow)
@@ -121,16 +123,19 @@ def test_chat_setup_creates_then_updates_the_same_target(tmp_path: Path) -> None
     controller.start()
     controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": None,
         }
     )
-    controller.submit({"llm_model_choice": "first-model"})
+    controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model"})
     assert controller.apply().status.value == "applied"
 
-    updated = GroundworkersConfig.validate_candidate(load_stack_config_from_path(path))
-    assert updated.llm.default_model_name == "first-model"
+    updated_stack = load_stack_config_from_path(path)
+    updated = GroundworkersConfig.validate_candidate(updated_stack)
+    assert updated.llm_model_name == "chat_model"
+    assert updated_stack.models["chat_model"].model == "first-model"
 
 
 def test_blank_api_key_on_update_preserves_the_stored_credential(
@@ -145,16 +150,17 @@ def test_blank_api_key_on_update_preserves_the_stored_credential(
     controller.start()
     controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": "",
         }
     )
-    controller.submit({"llm_model_choice": "first-model"})
+    controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model"})
     controller.apply()
 
-    saved = GroundworkersConfig.validate_candidate(load_stack_config_from_path(path))
-    assert saved.llm.api_key == "original-secret"
+    stack = load_stack_config_from_path(path)
+    assert stack.providers["chat_provider"].api_key == "original-secret"
 
 
 def test_cdm_setup_creates_connection_and_database_entries(tmp_path: Path) -> None:
@@ -203,8 +209,9 @@ def test_model_choices_come_from_live_discovery(tmp_path: Path) -> None:
     controller.start()
     transition = controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": "k",
         }
     )
@@ -235,8 +242,9 @@ def test_unreachable_provider_reports_an_issue_without_leaking_detail(
     controller.start()
     transition = controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": "sk-secret",
         }
     )
@@ -258,8 +266,9 @@ def test_provider_returning_no_models_is_reported(tmp_path: Path) -> None:
     controller.start()
     transition = controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": None,
         }
     )
@@ -280,8 +289,9 @@ def test_back_navigation_returns_to_the_provider_step(tmp_path: Path) -> None:
     start = controller.start()
     controller.submit(
         {
-            "llm_provider": "ollama",
-            "llm_api_base": "http://localhost:11434/v1",
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
             "llm_api_key": None,
         }
     )
@@ -305,18 +315,32 @@ def test_review_shows_only_the_fields_the_journey_changed(tmp_path: Path) -> Non
     service.submit(
         draft,
         "provider",
-        {"llm_provider": "ollama", "llm_api_base": "http://localhost:11434/v1"},
+        {
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
+        },
     )
-    service.submit(draft, "model", {"llm_model_choice": "second-model"})
+    service.submit(draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"})
 
     entries = service.plan(draft).diff.entries
 
-    assert {entry.field for entry in entries} == {
-        "tools.groundworkers.llm.api_base",
-        "tools.groundworkers.llm.default_model_name",
-        "tools.groundworkers.llm.enabled",
-        "tools.groundworkers.llm.provider",
+    changed = {entry.field for entry in entries}
+    # Creating the chat journey creates two new named entries plus the reference
+    # to them, so every field of those entries is genuinely new.
+    assert changed == {
+        "providers.chat_provider.provider",
+        "providers.chat_provider.base_url",
+        "models.chat_model.provider",
+        "models.chat_model.model",
+        "models.chat_model.embeddings",
+        "models.chat_model.extended_thinking",
+        "models.chat_model.structured_output",
+        "models.chat_model.tool_use",
+        "tools.groundworkers.llm_model_name",
     }
+    # The point of the test: untouched package defaults stay out of the diff.
+    assert not {field for field in changed if field.startswith("tools.groundworkers.mcp")}
 
 
 def test_staging_the_current_values_produces_an_empty_diff(tmp_path: Path) -> None:
@@ -331,9 +355,13 @@ def test_staging_the_current_values_produces_an_empty_diff(tmp_path: Path) -> No
     service.submit(
         draft,
         "provider",
-        {"llm_provider": "ollama", "llm_api_base": "http://localhost:11434/v1"},
+        {
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
+        },
     )
-    service.submit(draft, "model", {"llm_model_choice": "second-model"})
+    service.submit(draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"})
 
     assert service.plan(draft).diff.entries == ()
 
@@ -428,6 +456,8 @@ def test_embedding_model_name_is_never_reused_as_the_chat_model(
     _drive_llm_to_review(controller)
     controller.apply()
 
-    saved = GroundworkersConfig.validate_candidate(load_stack_config_from_path(path))
-    assert saved.llm.default_model_name == "second-model"
+    stack = load_stack_config_from_path(path)
+    saved = GroundworkersConfig.validate_candidate(stack)
+    assert saved.llm_model_name == "chat_model"
+    assert stack.models["chat_model"].model == "second-model"
     assert saved.embedding_model_name is None

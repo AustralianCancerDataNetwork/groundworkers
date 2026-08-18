@@ -12,6 +12,7 @@ from groundworkers.bootstrap import (
 )
 from groundworkers.config import GroundworkersConfig
 from tests.support.stack_config import (
+    add_chat_model,
     build_cdm_stack,
     build_embedding_stack,
     build_invalid_reference_stack,
@@ -33,12 +34,6 @@ def test_groundworkers_config_reads_plain_package_mapping() -> None:
                 "port": 18181,
                 "base_path": "/api/",
             },
-            "llm": {
-                "enabled": True,
-                "provider": "openai-compatible",
-                "api_base": "http://llm.example.test/v1",
-                "default_model_name": "gpt-test",
-            },
             "grounding": {"min_fulltext_overlap": 0.25},
             "source_planning": {"llm_assisted_enabled": False},
             "knowledge": {"packs_root": "knowledge/packs"},
@@ -53,8 +48,7 @@ def test_groundworkers_config_reads_plain_package_mapping() -> None:
     assert config.mcp.port == 18080
     assert config.rest.enabled is True
     assert config.rest.base_path == "/api"
-    assert config.llm.enabled is True
-    assert config.llm.default_model_name == "gpt-test"
+    assert config.llm_model_name is None
     assert config.grounding.min_fulltext_overlap == 0.25
     assert config.source_planning.llm_assisted_enabled is False
     assert config.knowledge.packs_root == "knowledge/packs"
@@ -158,11 +152,11 @@ def test_invalid_cdm_reference_is_rejected_at_bootstrap(issue: str) -> None:
 
 def test_describe_masks_connection_and_provider_secrets() -> None:
     stack = build_embedding_stack()
-    stack.tools["groundworkers"]["llm"] = {
-        "enabled": True,
-        "api_base": "https://chat.example.test/v1?api_key=llm-query-secret",
-        "api_key": "llm-secret",
-    }
+    add_chat_model(
+        stack,
+        base_url="https://chat.example.test/v1?api_key=llm-query-secret",
+        api_key="llm-secret",
+    )
     stack.connections["cdm_main"] = ConnectionConfig(
         dialect="postgresql+psycopg",
         host="database.example.test",
@@ -186,6 +180,22 @@ def test_describe_masks_connection_and_provider_secrets() -> None:
     assert "query-secret" not in rendered + runtime_repr
     assert "fragment-secret" not in rendered + runtime_repr
     assert "user:pass" not in rendered + runtime_repr
-    assert "llm-secret" not in package_repr
-    assert "llm-query-secret" not in package_repr
+    assert "llm-secret" not in rendered + runtime_repr + package_repr
+    assert "llm-query-secret" not in rendered + runtime_repr + package_repr
     assert "***" in rendered
+
+
+def test_the_shipped_example_config_loads() -> None:
+    """The example is the first thing a new operator copies.
+
+    It silently rotted through the 1.0 cutover, keeping section shapes that 1.0
+    rejects outright, so it is parsed here rather than trusted to be reviewed by
+    hand.
+    """
+    example = Path(__file__).resolve().parents[1] / "config" / "groundworkers.example.toml"
+
+    config = GroundworkersConfig.validate_candidate(load_stack_config_from_path(example))
+
+    assert config.cdm_db == "cdm_db"
+    assert config.embedding_model_name == "embedding_model"
+    assert config.vector_store_name == "embeddings"

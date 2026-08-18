@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 ERROR_CODES = {
     "NOT_FOUND",
     "INVALID_INPUT",

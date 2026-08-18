@@ -105,7 +105,8 @@ def load_embedding_coverage_report(
                 for key, value in embedded.items()
             },
         )
-    except Exception as exc:  # noqa: BLE001 - rendered as secret-safe setup state
+    except Exception as exc:
+        # Broad except: rendered as secret-safe setup state.
         coverage = CoverageSnapshot(
             scope=scope,
             available=False,

@@ -1,10 +1,4 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
@@ -149,7 +143,7 @@ class StubGraphAdapter:
         result = {"concept_id": concept_id, "predicate_kind": "Hierarchy"}
         if direction in ("out", "both"):
             result["outbound"] = [{
-                "relationship_id": "Is a", "predicate_subkind": "Taxonomic – up",
+                "relationship_id": "Is a", "predicate_subkind": "Taxonomic - up",
                 "target_concept_id": 200, "target_concept_name": "Diabetes mellitus",
                 "vocabulary_id": "SNOMED", "domain_id": "Condition", "concept_class_id": "Clinical Finding",
                 "standard_concept": True, "valid": True,
@@ -721,7 +715,7 @@ def test_concept_extended_inheritance_uses_its_own_method_not_ancestors():
     result = server.call("concept_extended_inheritance", concept_id=1)
 
     assert result["predicate_kind"] == "Hierarchy"
-    assert result["outbound"][0]["predicate_subkind"] == "Taxonomic – up"
+    assert result["outbound"][0]["predicate_subkind"] == "Taxonomic - up"
     called = [c[0] for c in adapter.calls]
     assert "get_extended_inheritance" in called
     # It must NOT fall back to the concept_ancestor closure.

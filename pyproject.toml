@@ -1,6 +1,6 @@
 [project]
 name = "groundworkers"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Groundworkers MCP server — read-only agentive access to OMOP vocabularies, concept graphs, and embeddings."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,9 +22,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-llm = [
-  "openai>=1.0",
-]
+# No `llm` extra: chat runs through omop-llm's provider-neutral ModelBackend,
+# which is a core dependency. Nothing imports the OpenAI SDK any more.
 xlsx = [
   "openpyxl>=3.1,<4",
 ]
@@ -61,6 +60,7 @@ dev = [
   "pytest>=9.0.3",
   "pytest-cov>=4.0",
   "mypy>=1.8",
+  "ty>=0.0.59",
   "ruff>=0.4",
   "textual>=0.60",
   "mkdocs-material>=9.7.1",
@@ -77,22 +77,27 @@ groundworkers = "groundworkers.server:main"
 groundworkers = "groundworkers.config:GroundworkersConfig"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
+[tool.hatch.version]
+source = "vcs"
+raw-options = { tag_regex = '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$' }
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/groundworkers"]
 
-[tool.setuptools.package-data]
-groundworkers = [
-  "knowledge/packs/*/*/*.md",
-  "knowledge/packs/*/*/*.yaml",
-]
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
-[tool.uv.sources]
+[tool.ruff]
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Pinned explicitly: ruff's implicit default rule set widens between releases
+# (0.16 pulled in flake8-bandit, flake8-blind-except and friends), which would
+# otherwise break CI on a ruff upgrade rather than on a code change.
+select = ["E4", "E7", "E9", "F", "I", "UP", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

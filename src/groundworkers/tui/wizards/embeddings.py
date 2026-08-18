@@ -111,7 +111,8 @@ class EmbeddingPopulationWizardController:
         try:
             command = self._command()
             launch = self._launcher(command)
-        except Exception as exc:  # noqa: BLE001 - rendered as setup failure
+        except Exception as exc:
+            # Broad except: rendered as setup failure.
             return WizardResult(
                 status=WizardResultStatus.FAILED,
                 summary="Embedding population was not started.",

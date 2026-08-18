@@ -74,7 +74,7 @@ searchable terms.
 }
 ```
 
-`text` is required. `domain_hint`, `max_terms` (integer, default 10, clamped 1–20),
+`text` is required. `domain_hint`, `max_terms` (integer, default 10, clamped 1-20),
 and `model_name` are optional.
 
 `domain_hint` provides context for the whole phrase. `max_terms` sets an upper bound
@@ -125,7 +125,7 @@ Returns ranked candidate interpretations of an ambiguous clinical term.
 ```
 
 `text` is required. `domain_hint`, `max_interpretations` (integer, default 5, clamped
-1–10), and `model_name` are optional.
+1-10), and `model_name` are optional.
 
 `domain_hint` narrows the interpretation space to a specific OMOP domain.
 `max_interpretations` sets an upper bound on the number of interpretations returned.

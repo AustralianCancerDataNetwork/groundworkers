@@ -15,7 +15,10 @@ from enum import StrEnum
 from typing import Any, Literal
 
 from groundworkers.services.source_planning.provenance import HeaderProvenance
-from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.warnings import (
+    PlanningError,
+    PlanningWarning,
+)
 
 
 class SourceFormat(StrEnum):
@@ -106,12 +109,17 @@ class IngestionStrategy(StrEnum):
     UNSUPPORTED = "UNSUPPORTED"
 
 
+# Column-level detection tiers, ordered weakest to strongest. `quick_reject` is a
+# table-level outcome and deliberately not part of this alias.
+DetectionTier = Literal["A", "B", "C", "D", "LLM"]
+
+
 @dataclass(kw_only=True)
 class ColumnAnnotation:
     """Semantic annotation for one normalized column."""
 
     role: ColumnRole
-    detection_tier: Literal["A", "B", "C", "D", "LLM"]
+    detection_tier: DetectionTier
     confidence: float
     inferred_vocab: str | None = None
     packed_value: bool = False
@@ -212,7 +220,9 @@ class AnnotatedTable(NormalisedTable):
     def from_normalised(cls, table: NormalisedTable, **kwargs: Any) -> AnnotatedTable:
         """Build semantic annotation output from a normalized table."""
 
-        payload = dict(
+        # Annotated: without it the inferred value type is the union of every
+        # field, and `cls(**payload)` fails to type-check against each parameter.
+        payload: dict[str, Any] = dict(
             name=table.name,
             headers=list(table.headers),
             rows=list(table.rows),

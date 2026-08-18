@@ -45,11 +45,13 @@ def _decode(content: bytes) -> tuple[str, str]:
     return content.decode("latin-1", errors="replace"), "latin-1"
 
 
-def _sniff_dialect(text: str) -> csv.Dialect:
+def _sniff_dialect(text: str) -> type[csv.Dialect]:
+    """Dialect *class*, which is what ``Sniffer.sniff`` returns and what the
+    ``csv`` readers accept alongside an instance."""
     try:
         return csv.Sniffer().sniff(text[:8_192], delimiters=",\t|;")
     except csv.Error:
-        return csv.excel  # type: ignore[return-value]
+        return csv.excel
 
 
 def _table_name(filename: str | None) -> str:

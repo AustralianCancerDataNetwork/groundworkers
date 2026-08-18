@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
+
+
+def _callable_name(func: Callable[..., Any]) -> str:
+    """Registration name for a decorated callable.
+
+    Decorators are applied to plain functions, which always carry ``__name__``.
+    The fallback keeps partials and other ``__name__``-less callables registrable
+    rather than raising at import time.
+    """
+    return getattr(func, "__name__", None) or repr(func)
 
 
 class GroundcrewServer:
@@ -13,7 +24,7 @@ class GroundcrewServer:
 
     def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            tool_name = name or func.__name__
+            tool_name = name or _callable_name(func)
             self._tools[tool_name] = func
             return func
 
@@ -25,7 +36,7 @@ class GroundcrewServer:
         description: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            prompt_name = name or func.__name__
+            prompt_name = name or _callable_name(func)
             self._prompts[prompt_name] = (func, description)
             return func
 

@@ -7,7 +7,6 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.services.source_planning import (
     COLUMN_ROLE_DESCRIPTIONS,
-    ColumnRole,
     IngestionStrategy,
     SourcePlanningService,
 )

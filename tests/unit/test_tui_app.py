@@ -262,12 +262,16 @@ vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
+llm_model_name = "chat_model"
 
-[tools.groundworkers.llm]
-enabled = true
+[providers.chat_provider]
 provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "chat-model"
+base_url = "http://localhost:11434/v1"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "chat-model"
+structured_output = true
 """,
         encoding="utf-8",
     )
@@ -297,7 +301,7 @@ default_model_name = "chat-model"
             await pilot.click("#wizard-next")
             await pilot.pause()
 
-            choices = app.screen.query_one("#wizard-field-0", Select)
+            choices = app.screen.query_one("#wizard-field-1", Select)
             assert choices.value == "chat-model"
             assert [value for _label, value in choices._options] == [
                 "chat-model",
@@ -336,12 +340,16 @@ vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
+llm_model_name = "chat_model"
 
-[tools.groundworkers.llm]
-enabled = true
+[providers.chat_provider]
 provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "chat-model"
+base_url = "http://localhost:11434/v1"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "chat-model"
+structured_output = true
 """,
         encoding="utf-8",
     )

@@ -1,12 +1,10 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
-from omop_semantics.runtime import ContextFieldRef, OutputDefinition, OutputRowProjection
+from omop_semantics.runtime import (
+    ContextFieldRef,
+    OutputDefinition,
+    OutputRowProjection,
+)
 
 from groundworkers.services.semantic_projection.definitions import DefinitionTrigger
 from groundworkers.services.semantic_projection.models import SemanticProjectionRequest

@@ -211,6 +211,7 @@ def print_neighbours(results: list) -> None:
 
 def build_graph_adapter():
     from sqlalchemy import create_engine
+
     from groundworkers.adapters.omop_graph import OmopGraphAdapter
 
     engine = create_engine(DB_URL)
@@ -226,8 +227,8 @@ def build_emb_adapter(graph_engine):
     from groundworkers.adapters.omop_emb import OmopEmbAdapter
 
     def backend_factory():
-        from sqlalchemy import create_engine as _ce
         from omop_emb.backends.pgvector import PGVectorEmbeddingBackend
+        from sqlalchemy import create_engine as _ce
         return PGVectorEmbeddingBackend(emb_engine=_ce(DB_URL))
 
     return OmopEmbAdapter(

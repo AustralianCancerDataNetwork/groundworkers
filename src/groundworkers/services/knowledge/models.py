@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-
 KnowledgeLayer = Literal["core", "specialisation", "source", "localisation"]
 KnowledgeMechanism = Literal["pre-compute", "context-inject", "post-filter", "convention-check"]
 Shareability = Literal["public", "shareable", "private"]

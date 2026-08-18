@@ -151,6 +151,22 @@ class GraphConfiguration:
 
 
 @dataclass(frozen=True)
+class LlmProviderDraft:
+    """An unsaved chat-provider answer set, as the setup wizard has it so far.
+
+    Deliberately not part of the persisted schema: once applied, these values
+    become a named ``[providers.*]`` entry plus a ``[models.*]`` entry that
+    ``groundworkers.llm_model_name`` points at. This type exists only so the
+    provider can be verified before any of that is written.
+    """
+
+    provider: str
+    api_base: str | None = None
+    api_key: str | None = None
+    default_model_name: str | None = None
+
+
+@dataclass(frozen=True)
 class LlmProviderConfiguration:
     enabled: bool
     provider: str

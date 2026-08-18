@@ -53,7 +53,7 @@ package ownership explicit:
 | Model provider endpoints and credentials | `[providers.*]` |
 | Model identity and capabilities | `[models.*]` |
 | Vector-store backend and its database | `[vector_stores.*]` |
-| Which of those entries Groundworkers uses, plus MCP/REST defaults, chat settings, grounding policy, source-planning, knowledge-pack, and semantic-projection settings | `[tools.groundworkers]` |
+| Which of those entries Groundworkers uses, plus MCP/REST defaults, grounding policy, source-planning, knowledge-pack, and semantic-projection settings | `[tools.groundworkers]` |
 
 Groundworkers references stack entries **by name** and resolves them through
 `oa-configurator`. It does not read any other package's configuration section.
@@ -87,6 +87,11 @@ model = "qwen3-embedding:0.6b"
 embedding_dim = 1024
 embeddings = true
 
+[models.chat_model]
+provider = "local_ollama"
+model = "qwen3:8b"
+structured_output = true
+
 [vector_stores.embeddings]
 backend_type = "pgvector"
 database = "vector_db"
@@ -94,6 +99,7 @@ database = "vector_db"
 [tools.groundworkers]
 cdm_db = "cdm_db"
 embedding_model_name = "embedding_model"
+llm_model_name = "chat_model"
 vector_store_name = "embeddings"
 app_name = "groundworkers"
 
@@ -107,13 +113,6 @@ enabled = true
 host = "127.0.0.1"
 port = 8080
 base_path = "/v1"
-
-[tools.groundworkers.llm]
-enabled = true
-provider = "ollama"
-api_base = "http://localhost:11434/v1"
-api_key = "ollama"
-default_model_name = "qwen3:8b"
 
 [tools.groundworkers.grounding]
 min_fulltext_overlap = 0.5
@@ -133,10 +132,14 @@ and every lexical feature still works. See
 |---|---|---|
 | `cdm_db` | a `[databases.*]` entry with `kind = "cdm"` | yes |
 | `embedding_model_name` | a `[models.*]` entry | no |
+| `llm_model_name` | a `[models.*]` entry | no |
 | `vector_store_name` | a `[vector_stores.*]` entry | no |
 
-`embedding_model_name` is the **embedding** model. The chat model is
-`llm.default_model_name`; the two are never interchanged.
+`embedding_model_name` is the **embedding** model and `llm_model_name` is the
+**chat** model. Both name `[models.*]` entries and the two are never
+interchanged; they may point at different providers, or one may be unset.
+There is no separate on/off flag: chat is available exactly when
+`llm_model_name` resolves.
 
 ## groundworkers-owned fields
 
@@ -173,25 +176,35 @@ Default REST startup settings.
 
 `base_path` is validated to begin with `/`.
 
-### `llm`
+### `llm_model_name` and chat
 
-Worker-owned LLM settings used by `TextService`, `DomainService`, and LLM-assisted
-source planning.
+The chat model used by `TextService`, `DomainService`, and LLM-assisted source
+planning is a named `[models.*]` entry, exactly like the embedding model. Its
+endpoint and credentials live on the `[providers.*]` entry that model
+references, so they are stored, redacted, and reused the same way as every other
+provider in the stack:
 
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | `bool` | `false` |
-| `provider` | `str` | `openai-compatible` |
-| `api_base` | `str \| null` | `null` |
-| `api_key` | `str \| null` | `null` |
-| `default_model_name` | `str \| null` | `null` |
+```toml
+[providers.local_ollama]
+provider = "ollama"
+base_url = "http://localhost:11434/v1"
+api_key = "…"
 
-### `llm` and provider terminology
+[models.chat_model]
+provider = "local_ollama"
+model = "qwen3:8b"
+structured_output = true
 
-`llm` is the **chat** provider used by `TextService`, `DomainService`, and
-LLM-assisted source planning. It is configured through the setup console's Chat
-section, which writes this mapping through the same configuration provider as
-every other setup journey.
+[tools.groundworkers]
+llm_model_name = "chat_model"
+```
+
+`structured_output = true` declares that the model can honour the JSON-mode
+request `complete_structured` makes; omop-llm treats every capability as opt-in.
+
+Chat is configured through the setup console's Chat section, which writes the
+provider and model entries through the same configuration provider as every
+other setup journey.
 
 ### `grounding`
 
@@ -201,7 +214,7 @@ arguments, not shared configuration, so they do not appear here.
 | Field | Type | Default |
 |---|---|---|
 | `min_fulltext_overlap` | `float` | `0.0` |
-| `max_depth` | `int` (1–10) | `5` |
+| `max_depth` | `int` (1-10) | `5` |
 
 `min_fulltext_overlap` must be between `0.0` and `1.0`. It is the minimum
 proportion of query tokens that must appear in a matched concept name for a
@@ -314,7 +327,7 @@ never starts implicitly at query time. The server holds the graph read-only
 (`write=False`), so it never writes vectors — Groundworkers encodes the query
 text itself for the embedding tier.
 
-### With `groundworkers.llm.enabled = true`
+### With `groundworkers.llm_model_name` configured
 
 You additionally get:
 

@@ -130,7 +130,8 @@ def probe_embedding_store(
                     concept_count=0 if not has_embeddings else None,
                 )
             )
-    except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
+    except Exception as exc:
+        # Broad except: converted to a safe setup state.
         return EmbeddingStoreSnapshot(
             state=EmbeddingStoreState.UNREACHABLE,
             backend=backend_type,
@@ -164,12 +165,14 @@ def probe_provider(
                 canonical_model_name(resolved_model.provider.provider, model_name)
                 for model_name in inventory_discoverer(resolved_model)
             )
-        except Exception:  # noqa: BLE001 - encode is the decisive probe
+        except Exception:
+            # Broad except: encode is the decisive probe.
             inventory = None
 
     try:
         backend = backend_factory(resolved_model)
-    except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
+    except Exception as exc:
+        # Broad except: converted to a safe setup state.
         return ProviderSnapshot(
             provider_name=resolved_model.provider.name,
             provider_kind=resolved_model.provider.provider,
@@ -233,7 +236,8 @@ def probe_provider(
 
     try:
         dimensions = backend.dimensions()
-    except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
+    except Exception as exc:
+        # Broad except: converted to a safe setup state.
         return ProviderSnapshot(
             provider_name=resolved_model.provider.name,
             provider_kind=backend.provider,

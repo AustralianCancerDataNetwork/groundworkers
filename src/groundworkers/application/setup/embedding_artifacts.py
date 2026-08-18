@@ -22,7 +22,8 @@ def discover_embedding_artifacts(paths: Iterable[str | Path]) -> ArtifactDiscove
     for path in _candidate_paths(paths):
         try:
             artifacts.append(_inspect_bundle(path))
-        except Exception:  # noqa: BLE001 - corrupt files become typed discovery issues
+        except Exception:
+            # Broad except: corrupt files become typed discovery issues.
             issues.append(
                 SetupIssue(
                     code="artifact_unreadable",

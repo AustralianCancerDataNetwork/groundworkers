@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-from pathlib import Path
-import sys
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
 from fastapi.testclient import TestClient
 
 from groundworkers.app import Adapters, GroundworkersApp, Services
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config_from_stack
-from groundworkers.transports.rest import create_rest_app
-from groundworkers.services.source_planning.models import IngestionPlan, PreIngestBundle, SourceFormat
+from groundworkers.services.source_planning.models import (
+    IngestionPlan,
+    PreIngestBundle,
+    SourceFormat,
+)
 from groundworkers.services.source_planning.warnings import PlanningWarning
+from groundworkers.transports.rest import create_rest_app
 from tests.support.stack_config import build_cdm_stack
 
 

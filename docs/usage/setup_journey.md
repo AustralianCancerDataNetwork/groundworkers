@@ -84,7 +84,7 @@ The vector store is a `[vector_stores.*]` entry with `backend_type` of
 `vector_store_name` reference.
 
 !!! note "The embedding model is not the chat model"
-    `embedding_model_name` and `llm.default_model_name` are separate references
+    `embedding_model_name` and `llm_model_name` are separate references
     and are never substituted for one another. Configuring one does not configure
     the other.
 

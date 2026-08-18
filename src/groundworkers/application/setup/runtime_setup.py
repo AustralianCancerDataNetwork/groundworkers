@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from oa_configurator import StackConfig  # type: ignore[import-untyped]
 
@@ -17,9 +17,10 @@ from groundworkers.application.setup.models import (
     LlmModelMetadata,
     LlmProviderCheckResult,
     LlmProviderConfiguration,
+    LlmProviderDraft,
     ResourceDiagnostic,
 )
-from groundworkers.config import GroundworkersConfig, LLMConfig
+from groundworkers.config import GroundworkersConfig
 
 _LLM_STATUS_TIMEOUT_SECONDS = 2.0
 
@@ -66,23 +67,25 @@ def load_llm_provider_configuration(
     try:
         tool = _effective_tool(snapshot.stack, GroundworkersConfig.tool_name)
         config = GroundworkersConfig.model_validate(tool or {})
-        llm = config.llm
+        draft = _draft_from_stack(snapshot.stack, config.llm_model_name)
     except (KeyError, TypeError, ValueError):
         return None
-    return LlmProviderConfiguration(
-        enabled=llm.enabled,
-        provider=llm.provider,
-        api_base=_safe_api_base(llm.api_base) if llm.api_base else None,
-        credentials_configured=bool(llm.api_key),
-        default_model_name=llm.default_model_name,
-    )
+    if draft is None:
+        return LlmProviderConfiguration(
+            enabled=False,
+            provider="",
+            api_base=None,
+            credentials_configured=False,
+            default_model_name=None,
+        )
+    return _configuration_from_draft(draft, enabled=True)
 
 
 def verify_llm_provider(
     snapshot: ConfigurationSnapshot,
     *,
-    client_factory: Callable[[LLMConfig], Any] | None = None,
-    metadata_factory: Callable[[LLMConfig], tuple[LlmModelMetadata, ...]] | None = None,
+    inventory_factory: Callable[[LlmProviderDraft], Sequence[str]] | None = None,
+    metadata_factory: Callable[[LlmProviderDraft], tuple[LlmModelMetadata, ...]] | None = None,
 ) -> LlmProviderCheckResult | None:
     """Check the configured LLM endpoint and selected model without completing text."""
 
@@ -93,28 +96,24 @@ def verify_llm_provider(
     return verify_llm_config(
         llm,
         configuration=configuration,
-        client_factory=client_factory,
+        inventory_factory=inventory_factory,
         metadata_factory=metadata_factory,
     )
 
 
 def verify_llm_config(
-    llm: LLMConfig,
+    llm: LlmProviderDraft,
     *,
     configuration: LlmProviderConfiguration | None = None,
-    client_factory: Callable[[LLMConfig], Any] | None = None,
-    metadata_factory: Callable[[LLMConfig], tuple[LlmModelMetadata, ...]] | None = None,
+    inventory_factory: Callable[[LlmProviderDraft], Sequence[str]] | None = None,
+    metadata_factory: Callable[[LlmProviderDraft], tuple[LlmModelMetadata, ...]] | None = None,
     require_default_model: bool = True,
 ) -> LlmProviderCheckResult:
     """Check a concrete LLM config, including unsaved setup wizard drafts."""
 
-    configuration = configuration or LlmProviderConfiguration(
-        enabled=llm.enabled,
-        provider=llm.provider,
-        api_base=_safe_api_base(llm.api_base) if llm.api_base else None,
-        credentials_configured=bool(llm.api_key),
-        default_model_name=llm.default_model_name,
-    )
+    # A draft supplied directly is by definition one the operator is configuring
+    # right now, so it verifies as enabled.
+    configuration = configuration or _configuration_from_draft(llm, enabled=True)
     if not configuration.enabled:
         return LlmProviderCheckResult(
             provider=configuration.provider,
@@ -141,10 +140,11 @@ def verify_llm_config(
         )
 
     try:
-        client = (client_factory or _openai_client)(llm)
-        response = client.models.list(timeout=_LLM_STATUS_TIMEOUT_SECONDS)
-        inventory = tuple(str(item.id) for item in response.data)
-    except Exception as exc:  # noqa: BLE001 - converted to redacted setup state
+        inventory = tuple(
+            (inventory_factory or _openai_compatible_inventory)(llm)
+        )
+    except Exception as exc:
+        # Broad except: converted to redacted setup state.
         failure = classify_connection_error(exc)
         return LlmProviderCheckResult(
             provider=configuration.provider,
@@ -182,7 +182,8 @@ def verify_llm_config(
                     "Ollama model metadata is available.",
                 )
             )
-        except Exception as exc:  # noqa: BLE001 - enrichment must not block readiness
+        except Exception as exc:
+            # Broad except: enrichment must not block readiness.
             diagnostics.append(
                 ResourceDiagnostic(
                     "llm_ollama_metadata_unavailable",
@@ -237,7 +238,7 @@ def load_chat_configuration(
 
 def _load_llm_config(
     snapshot: ConfigurationSnapshot,
-) -> tuple[LlmProviderConfiguration, LLMConfig] | None:
+) -> tuple[LlmProviderConfiguration, LlmProviderDraft] | None:
     if not snapshot.usable or snapshot.stack is None:
         return None
     if GroundworkersConfig.tool_name not in snapshot.stack.tools:
@@ -245,38 +246,77 @@ def _load_llm_config(
     try:
         tool = _effective_tool(snapshot.stack, GroundworkersConfig.tool_name)
         config = GroundworkersConfig.model_validate(tool or {})
-        llm = config.llm
+        draft = _draft_from_stack(snapshot.stack, config.llm_model_name)
     except (KeyError, TypeError, ValueError):
         return None
-    return (
-        LlmProviderConfiguration(
-            enabled=llm.enabled,
-            provider=llm.provider,
-            api_base=_safe_api_base(llm.api_base) if llm.api_base else None,
-            credentials_configured=bool(llm.api_key),
-            default_model_name=llm.default_model_name,
-        ),
-        llm,
+    if draft is None:
+        return None
+    return (_configuration_from_draft(draft, enabled=True), draft)
+
+
+def _draft_from_stack(
+    stack: StackConfig,
+    model_name: str | None,
+) -> LlmProviderDraft | None:
+    """Flatten the referenced [models.*] entry and its provider into one draft.
+
+    Returns ``None`` when no chat model is configured, which is what "the LLM is
+    off" now means: there is no separate enabled flag.
+    """
+    if model_name is None:
+        return None
+    model = stack.models.get(model_name)
+    if model is None:
+        return None
+    provider = stack.providers.get(model.provider)
+    if provider is None:
+        return None
+    return LlmProviderDraft(
+        provider=provider.provider,
+        api_base=provider.base_url,
+        api_key=provider.api_key,
+        default_model_name=model.model,
     )
 
 
-def _openai_client(llm: LLMConfig) -> Any:
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError(
-            "The 'openai' package is required for LLM provider checks. "
-            "Install it with: pip install openai"
-        ) from exc
-    kwargs: dict[str, Any] = {"max_retries": 0}
-    if llm.api_key is not None:
-        kwargs["api_key"] = llm.api_key
-    if llm.api_base is not None:
-        kwargs["base_url"] = llm.api_base
-    return OpenAI(**kwargs)
+def _configuration_from_draft(
+    draft: LlmProviderDraft,
+    *,
+    enabled: bool,
+) -> LlmProviderConfiguration:
+    return LlmProviderConfiguration(
+        enabled=enabled,
+        provider=draft.provider,
+        api_base=_safe_api_base(draft.api_base) if draft.api_base else None,
+        credentials_configured=bool(draft.api_key),
+        default_model_name=draft.default_model_name,
+    )
 
 
-def _uses_ollama_inventory(llm: LLMConfig) -> bool:
+def _openai_compatible_inventory(llm: LlmProviderDraft) -> tuple[str, ...]:
+    """List models from the provider's OpenAI-compatible ``/models`` endpoint.
+
+    A plain HTTP GET rather than the OpenAI SDK, matching
+    :func:`_ollama_model_metadata` right below. omop-llm's ``ModelBackend`` can
+    answer *whether* a provider is reachable but discards the model list, so
+    inventory still has to come from the provider's own public surface (see
+    ``model_inventory`` for the upstream request).
+    """
+    base = (llm.api_base or "https://api.openai.com/v1").rstrip("/")
+    request = Request(f"{base}/models", method="GET")
+    if llm.api_key:
+        request.add_header("Authorization", f"Bearer {llm.api_key}")
+    with urlopen(request, timeout=_LLM_STATUS_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    data = payload.get("data")
+    if not isinstance(data, list):
+        raise ValueError("Provider did not return a model list.")
+    return tuple(
+        str(item["id"]) for item in data if isinstance(item, dict) and "id" in item
+    )
+
+
+def _uses_ollama_inventory(llm: LlmProviderDraft) -> bool:
     provider = llm.provider.lower()
     if provider == "ollama":
         return True
@@ -284,7 +324,7 @@ def _uses_ollama_inventory(llm: LLMConfig) -> bool:
     return "localhost:11434" in api_base or "127.0.0.1:11434" in api_base
 
 
-def _ollama_model_metadata(llm: LLMConfig) -> tuple[LlmModelMetadata, ...]:
+def _ollama_model_metadata(llm: LlmProviderDraft) -> tuple[LlmModelMetadata, ...]:
     base_url = _ollama_native_base_url(llm.api_base)
     with urlopen(
         f"{base_url}/api/tags",

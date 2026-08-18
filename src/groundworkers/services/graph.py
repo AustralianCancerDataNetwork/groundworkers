@@ -10,7 +10,10 @@ from typing import Any
 from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Relationship
 from omop_graph.extensions.omop_alchemy import PredicateKind
 from omop_graph.reasoning.grounding import GroundingConstraints
-from omop_graph.reasoning.resolvers.resolvers import FullTextResolver, FullTextSynonymResolver
+from omop_graph.reasoning.resolvers.resolvers import (
+    FullTextResolver,
+    FullTextSynonymResolver,
+)
 from sqlalchemy import Text, cast, column, select, table
 
 from groundworkers.adapters.cdm import CDMAdapter

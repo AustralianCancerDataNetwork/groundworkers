@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
@@ -142,7 +142,7 @@ def register_knowledge_tools(
                         "source, localisation"
                     ),
                 }
-            resolved_layer = cast(KnowledgeLayer, layer)
+            resolved_layer = layer
         try:
             results = catalogue.query(
                 source_system=source_system,

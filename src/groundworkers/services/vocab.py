@@ -10,11 +10,11 @@ from omop_alchemy.cdm.model.vocabulary import (
     Concept_Synonym,
 )
 from sqlalchemy import column as sa_col
-from sqlalchemy import func, inspect as sa_inspect, select
+from sqlalchemy import func, select
+from sqlalchemy import inspect as sa_inspect
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.base.errors import GroundworkersError
-
 
 # note that this service should only contain logic related to querying the vocabulary; no higher-level business logic or heuristics
 # belong here - a lot of queries already exist on omop-graph and can be reused, so verify both locations before adding new methods here, 

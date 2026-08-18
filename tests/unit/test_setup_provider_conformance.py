@@ -78,12 +78,13 @@ CASES = {
             (
                 "provider",
                 {
-                    "llm_provider": "ollama",
-                    "llm_api_base": "http://localhost:11434/v1",
+                    "llm_provider_name": "chat_provider",
+                    "llm_provider_kind": "ollama",
+                    "llm_base_url": "http://localhost:11434/v1",
                     "llm_api_key": CANARY,
                 },
             ),
-            ("model", {"llm_model_choice": "m1"}),
+            ("model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "m1"}),
         ),
     ),
 }
@@ -131,8 +132,13 @@ def test_provider_satisfies_the_hooked_contract(tmp_path: Path, name: str) -> No
     invalid_values = {
         "embedding_model": ({"provider_name": ""}, frozenset({"provider_name"})),
         "chat": (
-            {"llm_provider": "unsupported", "llm_api_base": ""},
-            frozenset({"llm_provider", "llm_api_base"}),
+            # Valid entry name, so only the two genuinely invalid fields report.
+            {
+                "llm_provider_name": "chat_provider",
+                "llm_provider_kind": "unsupported",
+                "llm_base_url": "",
+            },
+            frozenset({"llm_provider_kind", "llm_base_url"}),
         ),
     }
     values, expected_fields = invalid_values[name]

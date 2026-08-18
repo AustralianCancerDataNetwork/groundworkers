@@ -20,9 +20,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from groundworkers.application.setup.models import DiagnosticSeverity
+from groundworkers.application.setup.models import DiagnosticSeverity, LlmProviderDraft
 from groundworkers.application.setup.runtime_setup import verify_llm_config
-from groundworkers.config import LLMConfig
 
 __all__ = ["InventoryUnavailable", "discover_provider_models"]
 
@@ -58,12 +57,10 @@ def discover_provider_models(
         models. The message is safe to show an operator.
     """
     result = verify_llm_config(
-        LLMConfig(
-            enabled=True,
+        LlmProviderDraft(
             provider=provider_kind,
             api_base=base_url,
             api_key=api_key,
-            default_model_name=None,
         ),
         require_default_model=False,
     )

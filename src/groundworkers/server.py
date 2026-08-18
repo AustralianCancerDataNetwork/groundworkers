@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from typing import Literal, cast, get_args
 
 from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.server import GroundcrewServer
@@ -31,6 +32,12 @@ from groundworkers.tools.system_tools import (
 )
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 from groundworkers.transports.rest import create_rest_app
+
+# Mirrors GroundcrewServer.run; `rest` is handled before this point and is not
+# an MCP transport. config.mcp.transport is a free-form string, so a value that
+# never passed through argparse still has to be validated here.
+MCPTransport = Literal["stdio", "sse", "streamable-http"]
+_MCP_TRANSPORTS: tuple[str, ...] = get_args(MCPTransport)
 
 
 def create_server(
@@ -143,9 +150,14 @@ def main(argv: list[str] | None = None) -> None:
             port=args.port or config.rest.port,
         )
         return
+    if transport not in _MCP_TRANSPORTS:
+        raise SystemExit(
+            f"Unsupported MCP transport {transport!r}; expected one of "
+            f"{', '.join(_MCP_TRANSPORTS)} or 'rest'."
+        )
     host = args.host or config.mcp.host
     port = args.port or config.mcp.port
-    server.run(transport=transport, host=host, port=port)
+    server.run(transport=cast(MCPTransport, transport), host=host, port=port)
 
 
 def _launch_semantic_projection_tui() -> None:

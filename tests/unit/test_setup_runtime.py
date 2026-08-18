@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 
 from groundworkers.application.setup.configuration import load_configuration
 from groundworkers.application.setup.models import LlmModelMetadata
@@ -31,17 +30,21 @@ vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
+llm_model_name = "chat_model"
 
 [tools.groundworkers.grounding]
 min_fulltext_overlap = 0.25
 max_depth = 4
 
-[tools.groundworkers.llm]
-enabled = true
-provider = "openai-compatible"
-api_base = "https://provider.example/v1?api_key=secret"
+[providers.chat_provider]
+provider = "openai"
+base_url = "https://provider.example/v1?api_key=secret"
 api_key = "also-secret"
-default_model_name = "chat-model"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "chat-model"
+structured_output = true
 """,
         encoding="utf-8",
     )
@@ -97,7 +100,7 @@ def test_llm_provider_check_reports_available_configured_model(tmp_path: Path) -
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model", "other-model")),
+        inventory_factory=lambda _llm: ("chat-model", "other-model"),
     )
 
     assert result is not None
@@ -116,7 +119,7 @@ def test_llm_provider_check_reports_missing_configured_model(tmp_path: Path) -> 
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model",)),
+        inventory_factory=lambda _llm: ("chat-model",),
     )
 
     assert result is not None
@@ -137,7 +140,7 @@ def test_llm_provider_check_enriches_ollama_model_metadata(tmp_path: Path) -> No
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model",)),
+        inventory_factory=lambda _llm: ("chat-model",),
         metadata_factory=lambda _llm: (
             LlmModelMetadata(
                 name="chat-model",
@@ -171,7 +174,7 @@ def test_llm_provider_check_merges_ollama_metadata_into_inventory(
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model",)),
+        inventory_factory=lambda _llm: ("chat-model",),
         metadata_factory=lambda _llm: (
             LlmModelMetadata(name="chat-model"),
             LlmModelMetadata(name="other-model"),
@@ -183,27 +186,11 @@ def test_llm_provider_check_merges_ollama_metadata_into_inventory(
     assert result.model_available is True
 
 
-class _FakeModels:
-    def __init__(self, model_ids: tuple[str, ...]) -> None:
-        self._model_ids = model_ids
-
-    def list(self, *, timeout: float):
-        assert timeout > 0
-        return SimpleNamespace(
-            data=tuple(SimpleNamespace(id=model_id) for model_id in self._model_ids)
-        )
-
-
-class _FakeLlmClient:
-    def __init__(self, model_ids: tuple[str, ...]) -> None:
-        self.models = _FakeModels(model_ids)
-
-
 def _write_llm_config(
     tmp_path: Path,
     *,
     model: str,
-    provider: str = "openai-compatible",
+    provider: str = "openai",
     api_base: str = "https://provider.example/v1?api_key=secret",
 ) -> Path:
     path = tmp_path / "config.toml"
@@ -221,13 +208,17 @@ vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
+llm_model_name = "chat_model"
 
-[tools.groundworkers.llm]
-enabled = true
+[providers.chat_provider]
 provider = "{provider}"
-api_base = "{api_base}"
+base_url = "{api_base}"
 api_key = "also-secret"
-default_model_name = "{model}"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "{model}"
+structured_output = true
 """,
         encoding="utf-8",
     )

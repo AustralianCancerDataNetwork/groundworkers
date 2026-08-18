@@ -209,7 +209,8 @@ def verify_database_target(
                 target,
                 engine_factory=engine_factory,
             )
-    except Exception as exc:  # noqa: BLE001 - returned as a redacted category
+    except Exception as exc:
+        # Broad except: returned as a redacted category.
         return ConnectionResult(
             target_key=target.key,
             connected=False,
@@ -468,7 +469,8 @@ def _groundworkers_embedding_model_diagnostics(
                     ),
                 )
             rows = _embedding_registry_rows(connection)
-    except Exception as exc:  # noqa: BLE001 - reported as a redacted warning
+    except Exception as exc:
+        # Broad except: reported as a redacted warning.
         failure = classify_connection_error(exc)
         return (
             _warning(
@@ -701,7 +703,8 @@ def _index_exists(inspector: Any, schema: str | None, index_name: str) -> bool:
     for table_name in CDM_TABLES + GRAPH_TABLES:
         try:
             indexes = inspector.get_indexes(table_name, schema=schema)
-        except Exception:  # noqa: BLE001, S112 - absence is reported as a warning
+        except Exception:
+            # Broad except: absence is reported as a warning.
             continue
         if any(index.get("name") == index_name for index in indexes):
             return True
@@ -725,7 +728,8 @@ def _functional_lower_index_exists(
         return True
     try:
         indexes = inspector.get_indexes(table_name, schema=schema)
-    except Exception:  # noqa: BLE001 - absence is reported as a warning
+    except Exception:
+        # Broad except: absence is reported as a warning.
         return False
     return any(index.get("name") in aliases for index in indexes)
 
@@ -748,7 +752,8 @@ def _trigram_lower_index_exists(
         return True
     try:
         indexes = inspector.get_indexes(table_name, schema=schema)
-    except Exception:  # noqa: BLE001 - absence is optional here
+    except Exception:
+        # Broad except: absence is optional here.
         return False
     return any(index.get("name") in aliases for index in indexes)
 
@@ -773,7 +778,8 @@ def _postgres_lower_index_exists(
             ),
             {"schema": schema or "public", "table_name": table_name},
         )
-    except Exception:  # noqa: BLE001 - fall back to reflected index names
+    except Exception:
+        # Broad except: fall back to reflected index names.
         return False
     return any(
         _index_defines_lower_expression(

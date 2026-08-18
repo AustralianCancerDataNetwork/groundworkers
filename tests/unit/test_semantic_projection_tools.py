@@ -1,10 +1,4 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundcrewServer
@@ -13,7 +7,9 @@ from groundworkers.services.semantic_projection.models import (
     SemanticProjectionRequest,
     SemanticProjectionResult,
 )
-from groundworkers.tools.semantic_projection_tools import register_semantic_projection_tools
+from groundworkers.tools.semantic_projection_tools import (
+    register_semantic_projection_tools,
+)
 
 
 class StubSemanticProjectionService:
