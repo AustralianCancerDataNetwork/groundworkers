@@ -32,9 +32,8 @@ vocab_schema = "main"
 cdm_db = "cdm_db"
 llm_model_name = "chat_model"
 
-[tools.groundworkers.grounding]
-min_fulltext_overlap = 0.25
-max_depth = 4
+grounding_min_fulltext_overlap = 0.25
+grounding_max_depth = 4
 
 [providers.chat_provider]
 provider = "openai"
@@ -62,7 +61,7 @@ structured_output = true
     assert graph.grounding_max_depth == 4
     assert graph.min_fulltext_overlap == 0.25
     assert provider is not None
-    assert provider.api_base == "https://provider.example/v1?api_key=%2A%2A%2A"
+    assert provider.api_base == "https://provider.example/v1?api_key=***"
     assert provider.credentials_configured is True
     assert "secret" not in repr(provider)
     assert chat is not None

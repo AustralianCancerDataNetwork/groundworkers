@@ -6,7 +6,10 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
-from oa_configurator import StackConfig  # type: ignore[import-untyped]
+from oa_configurator import (
+    StackConfig,  # type: ignore[import-untyped]
+    safe_endpoint,  # type: ignore[import-untyped]
+)
 
 from groundworkers.application.setup.databases import classify_connection_error
 from groundworkers.application.setup.models import (
@@ -50,8 +53,8 @@ def load_graph_configuration(
     return GraphConfiguration(
         cdm_database_name=groundworkers.cdm_db,
         vocabulary_schema=getattr(database, "vocab_schema", None),
-        grounding_max_depth=groundworkers.grounding.max_depth,
-        min_fulltext_overlap=groundworkers.grounding.min_fulltext_overlap,
+        grounding_max_depth=groundworkers.grounding_max_depth,
+        min_fulltext_overlap=groundworkers.grounding_min_fulltext_overlap,
     )
 
 
@@ -287,7 +290,7 @@ def _configuration_from_draft(
     return LlmProviderConfiguration(
         enabled=enabled,
         provider=draft.provider,
-        api_base=_safe_api_base(draft.api_base) if draft.api_base else None,
+        api_base=safe_endpoint(draft.api_base) if draft.api_base else None,
         credentials_configured=bool(draft.api_key),
         default_model_name=draft.default_model_name,
     )
@@ -396,18 +399,3 @@ def _effective_tool(stack: StackConfig, name: str):
     return stack.tools.get(name)
 
 
-def _safe_api_base(api_base: str) -> str:
-    parts = urlsplit(api_base)
-    hostname = parts.hostname or ""
-    netloc = hostname if parts.port is None else f"{hostname}:{parts.port}"
-    pairs = []
-    for item in parts.query.split("&") if parts.query else ():
-        key, separator, value = item.partition("=")
-        if any(
-            token in key.lower() for token in ("key", "token", "secret", "password")
-        ):
-            value = "%2A%2A%2A"
-        pairs.append(f"{key}{separator}{value}")
-    return urlunsplit(
-        (parts.scheme, netloc, parts.path, "&".join(pairs), parts.fragment)
-    )

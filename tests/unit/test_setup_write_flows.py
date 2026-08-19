@@ -18,7 +18,7 @@ from groundskeeping.configurator import (
     ConfigWizardController,
     MutationOperation,
 )
-from oa_configurator import save_stack_config
+from oa_configurator import load_stack_config_from_path, save_stack_config
 
 from groundworkers.application.setup.configuration_provider import (
     CDM_SETUP_TARGET,
@@ -29,7 +29,6 @@ from groundworkers.application.setup.configuration_provider import (
     llm_setup_workflow,
     model_setup_workflow,
 )
-from groundworkers.bootstrap import load_stack_config_from_path
 from groundworkers.config import GroundworkersConfig
 from tests.support.stack_config import build_cdm_stack
 
@@ -461,3 +460,37 @@ def test_embedding_model_name_is_never_reused_as_the_chat_model(
     assert saved.llm_model_name == "chat_model"
     assert stack.models["chat_model"].model == "second-model"
     assert saved.embedding_model_name is None
+
+
+def test_review_diff_masks_secrets_by_declaration_not_by_field_name(
+    tmp_path: Path,
+) -> None:
+    """The apply review is where a credential would surface to an operator.
+
+    Masking is driven by oa-configurator's `Sensitive()` marker on the schema,
+    not by a local list of secret-looking field names, so this asserts the
+    secret is absent from the rendered diff rather than asserting which fields
+    were classified.
+    """
+    path = _stack_path(tmp_path)
+    service = _service(path)
+    draft = service.begin(LLM_SETUP_TARGET, MutationOperation.CREATE)
+    service.submit(
+        draft,
+        "provider",
+        {
+            "llm_provider_name": "chat_provider",
+            "llm_provider_kind": "ollama",
+            "llm_base_url": "http://localhost:11434/v1",
+            "llm_api_key": "super-secret-key",
+        },
+    )
+    service.submit(
+        draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"}
+    )
+
+    diff = service.plan(draft).diff
+
+    assert "super-secret-key" not in repr(diff)
+    # The field is still shown as changed -- masked, not hidden.
+    assert "providers.chat_provider.api_key" in {entry.field for entry in diff.entries}

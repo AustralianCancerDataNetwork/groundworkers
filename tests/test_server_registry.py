@@ -89,8 +89,8 @@ def test_runtime_config_masks_api_keys(tmp_path: Path):
     described = config.describe()
 
     # Chat and embedding models are the same kind of entry and redact identically.
-    assert described["model"]["provider"]["api_key"] == "***"
-    assert described["llm_model"]["provider"]["api_key"] == "***"
+    assert described["model"]["provider"]["api_key_configured"] is True
+    assert described["llm_model"]["provider"]["api_key_configured"] is True
     assert "chat-secret" not in repr(described)
     assert "emb-secret" not in repr(described)
 
@@ -204,11 +204,9 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
     config = build_app_config_from_stack(
         build_cdm_stack(
             groundworkers={
-                "mcp": {
-                    "transport": "stdio",
-                    "host": "0.0.0.0",
-                    "port": 18888,
-                }
+                "mcp_transport": "stdio",
+                "mcp_host": "0.0.0.0",
+                "mcp_port": 18888,
             }
         )
     )
@@ -251,17 +249,13 @@ def test_main_routes_rest_startup_to_rest_transport(
     config = build_app_config_from_stack(
         build_cdm_stack(
             groundworkers={
-                "mcp": {
-                    "transport": "streamable-http",
-                    "host": "127.0.0.1",
-                    "port": 18080,
-                },
-                "rest": {
-                    "enabled": True,
-                    "host": "127.0.0.1",
-                    "port": 18181,
-                    "base_path": "/v1",
-                },
+                "mcp_transport": "streamable-http",
+                "mcp_host": "127.0.0.1",
+                "mcp_port": 18080,
+                "rest_enabled": True,
+                "rest_host": "127.0.0.1",
+                "rest_port": 18181,
+                "rest_base_path": "/v1",
             }
         )
     )
@@ -345,27 +339,6 @@ def test_main_launches_setup_tui_subcommand(monkeypatch: pytest.MonkeyPatch) -> 
     assert captured["launch"] == {"config_path": None}
 
 
-def test_main_launches_legacy_projection_tui(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_build_app_config(*, config_path=None):
-        raise AssertionError("projection TUI does not need runtime config")
-
-    def fake_launch_tui() -> None:
-        captured["launch"] = True
-
-    monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr(
-        "groundworkers.server._launch_semantic_projection_tui", fake_launch_tui
-    )
-
-    main(["projection-tui"])
-
-    assert captured["launch"] is True
-
-
 def test_run_rest_api_uses_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
     config = build_app_config_from_stack(_stack_without_backends())
     app = build_application(config)
@@ -387,6 +360,71 @@ def test_run_rest_api_uses_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
     run_rest_api(config, app, host="0.0.0.0", port=18181)
 
     assert captured["application"] is app
-    assert captured["base_path"] == config.rest.base_path
+    assert captured["base_path"] == config.groundworkers.rest_base_path
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 18181
+
+
+def test_verbosity_flag_is_counted() -> None:
+    assert parse_args([]).verbose == 0
+    assert parse_args(["-vv"]).verbose == 2
+
+
+def test_logging_is_configured_before_the_stack_is_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordering matters: oa-configurator warns during load.
+
+    Its loose-file-permissions warning is emitted while reading config.toml, so
+    configuring logging afterwards would let it fall through to Python's bare
+    last-resort handler, unformatted.
+    """
+    configured: list[int] = []
+
+    def fake_configure_logging(config=None, *, verbosity=0, **_):
+        configured.append(verbosity)
+
+    def fail_to_load(*, config_path=None):
+        raise FileNotFoundError("config missing")
+
+    monkeypatch.setattr(
+        "groundworkers.config.GroundworkersConfig.configure_logging",
+        classmethod(lambda cls, config=None, *, verbosity=0, **kw: configured.append(verbosity)),
+    )
+    monkeypatch.setattr("groundworkers.server.build_app_config", fail_to_load)
+
+    with pytest.raises(FileNotFoundError):
+        main(["-vv"])
+
+    assert configured == [2]
+
+
+def test_logging_reapplies_with_the_stack_once_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second call is what makes the [logging] section take effect."""
+    calls: list[object] = []
+    config = build_app_config_from_stack(_stack_without_backends())
+
+    monkeypatch.setattr(
+        "groundworkers.config.GroundworkersConfig.configure_logging",
+        classmethod(lambda cls, cfg=None, *, verbosity=0, **kw: calls.append(cfg)),
+    )
+    monkeypatch.setattr("groundworkers.server.build_app_config", lambda *, config_path=None: config)
+    monkeypatch.setattr("groundworkers.server.build_application", lambda cfg: object())
+    monkeypatch.setattr("groundworkers.server.create_server", lambda cfg, app: _DescribeStub())
+
+    main(["--describe"])
+
+    assert calls == [None, config.stack]
+
+
+class _DescribeStub:
+    def describe_tools(self):
+        return []
+
+    def describe_prompts(self):
+        return []
+
+    def describe_resources(self):
+        return []

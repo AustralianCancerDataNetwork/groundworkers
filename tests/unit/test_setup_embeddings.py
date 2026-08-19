@@ -17,7 +17,6 @@ from groundworkers.application.setup.embedding_setup import (
     probe_embedding_store,
     probe_provider,
     reconcile_models,
-    safe_api_base,
 )
 from groundworkers.application.setup.models import (
     ConfigurationOwnership,
@@ -169,9 +168,8 @@ def test_embedding_configuration_resolves_named_model_provider_and_store(
     assert result.model_entry_name == "embedding_model"
     assert result.model_name == "qwen3-embedding:0.6b"
     assert result.embeddings_supported is True
-    assert result.api_base == (
-        "https://provider.example/v1?api-key=%2A%2A%2A&region=au"
-    )
+    # Every query value is masked, and "***" is no longer percent-encoded.
+    assert result.api_base == "https://provider.example/v1?api-key=***&region=***"
     assert "super-secret" not in repr(result)
     assert "another-secret" not in repr(result)
 
@@ -194,10 +192,14 @@ def test_pgvector_configuration_uses_resolved_database_without_exposing_password
 
 
 def test_queryless_and_ipv6_provider_urls_are_safe_to_display() -> None:
-    assert safe_api_base("http://localhost:11434/v1") == "http://localhost:11434/v1"
+    from oa_configurator import safe_endpoint
+
+    assert safe_endpoint("http://localhost:11434/v1") == "http://localhost:11434/v1"
+    # Every query value is masked, not just the ones a word list recognises, so
+    # `region` is masked alongside `api_key`. IPv6 brackets survive.
     assert (
-        safe_api_base("http://[::1]:11434/v1?api_key=secret&region=local")
-        == "http://[::1]:11434/v1?api_key=%2A%2A%2A&region=local"
+        safe_endpoint("http://[::1]:11434/v1?api_key=secret&region=local")
+        == "http://[::1]:11434/v1?api_key=***&region=***"
     )
 
 

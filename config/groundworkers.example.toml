@@ -3,10 +3,10 @@
 # Copy to groundworkers.local.toml and fill in your values.
 # Full reference: https://oa-configurator.readthedocs.io (or run omop-config --help)
 #
-# The shape is: physical [connections.*] and [providers.*] carry credentials,
-# logical [databases.*], [models.*], and [vector_stores.*] give them names and
-# roles, and [tools.groundworkers] references those names. Groundworkers reads
-# only its own section plus the entries it names.
+# The shape is: physical connections and providers carry credentials, logical
+# databases, models, and vector stores give them names and roles, and the
+# groundworkers tool section references those names. Groundworkers reads only
+# its own section plus the entries it names.
 
 # ---------------------------------------------------------------------------
 # Connections — physical servers and credentials
@@ -43,9 +43,9 @@ vocab_schema = "public"
 
 # The embedding store's database. kind = "generic": no CDM role-splitting.
 [databases.emb_db]
-kind          = "generic"
-connection    = "cdm_main"
-schema_name   = "public"
+kind        = "generic"
+connection  = "cdm_main"
+schema_name = "public"
 
 # ---------------------------------------------------------------------------
 # Providers and models — endpoints, then the named models served through them
@@ -84,12 +84,16 @@ faiss_cache_dir = "/absolute/path/to/omop_emb-cache"
 
 # ---------------------------------------------------------------------------
 # Groundworkers — which of the above entries to use, plus its own settings
+#
+# Settings are flat and grouped by name prefix, matching every other package in
+# the stack. Each is settable with `omop-config configure groundworkers
+# --<field-name>`, which updates that field and leaves its neighbours alone.
 # ---------------------------------------------------------------------------
 
 [tools.groundworkers]
 app_name             = "groundworkers"
 cdm_db               = "cdm_db"
-# A CDM-only stack is valid: drop the three lines below and every lexical
+# A CDM-only stack is valid: drop the references below and every lexical
 # feature still works.
 embedding_model_name = "embedding_model"
 vector_store_name    = "embeddings"
@@ -97,22 +101,25 @@ vector_store_name    = "embeddings"
                                       # source planning. No separate on/off flag.
 
 # MCP transport (stdio is the default for Claude Code; streamable-http for HTTP clients)
-[tools.groundworkers.mcp]
-transport = "stdio"
-# host = "127.0.0.1"
-# port = 8000
+mcp_transport = "stdio"
+# mcp_host    = "127.0.0.1"
+# mcp_port    = 8000
 
 # REST API (enables HTTP access alongside MCP stdio, e.g. for study-agent-mcp)
-[tools.groundworkers.rest]
-enabled = false
-# host      = "127.0.0.1"
-# port      = 18080
-# base_path = "/v1"
+rest_enabled     = false
+# rest_host      = "127.0.0.1"
+# rest_port      = 18080
+# rest_base_path = "/v1"
 
 # Grounding behaviour
-[tools.groundworkers.grounding]
-min_fulltext_overlap = 0.0    # 0.0-1.0; raise to tighten FTS result acceptance
-max_depth            = 5      # 1-10 hierarchy hops
+grounding_min_fulltext_overlap = 0.0   # 0.0-1.0; raise to tighten FTS acceptance
+grounding_max_depth            = 5     # 1-10 hierarchy hops
 
-[tools.groundworkers.source_planning]
-llm_assisted_enabled = true   # no effect unless llm_model_name is set
+# No effect unless llm_model_name is set.
+source_planning_llm_assisted_enabled = true
+
+# Knowledge packs: unset uses the packs shipped in the installed package.
+# knowledge_packs_root = "/absolute/path/to/packs"
+
+# Semantic projection tools are opt-in.
+semantic_projection_enabled = false

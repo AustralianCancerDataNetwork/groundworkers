@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
-from groundskeeping.contracts import (
+from groundskeeping.contracts.actions import (
     ChoiceOption,
     FieldKind,
     FieldSpec,
+    ValidationIssue,
+)
+from groundskeeping.contracts.wizards import (
     FormStep,
     ReviewChange,
     ReviewStep,
-    ValidationIssue,
     WizardResult,
     WizardResultStatus,
     WizardReview,

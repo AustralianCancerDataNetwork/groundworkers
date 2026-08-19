@@ -108,9 +108,19 @@ def test_migration_dependencies_use_explicit_public_boundaries() -> None:
     dependencies = metadata["project"]["dependencies"]
 
     assert "omop-llm>=1,<2" in dependencies
-    # groundskeeping 0.4.0 is published, so the temporary git pin is gone. No
-    # source or editable override may survive into a publishable artifact.
-    assert not metadata.get("tool", {}).get("uv", {}).get("sources", {})
+
+    # RELEASE BLOCKER. The steady state is no source pins at all -- none may
+    # survive into a publishable artifact. One temporary exception is allowed
+    # while oa-configurator's public path-based loader is unreleased, and it is
+    # pinned exactly here so that removing it fails this test and forces the
+    # assertion back to `assert not sources`.
+    sources = metadata.get("tool", {}).get("uv", {}).get("sources", {})
+    assert sources == {
+        "oa-configurator": {
+            "git": "https://github.com/AustralianCancerDataNetwork/oa-configurator.git",
+            "branch": "path_config",
+        }
+    }
 
 
 def _python_files(root: Path) -> tuple[Path, ...]:

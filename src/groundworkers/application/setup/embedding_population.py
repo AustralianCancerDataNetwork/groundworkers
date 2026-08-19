@@ -27,6 +27,8 @@ from groundworkers.application.setup.models import (
     EmbeddingPopulationLaunch,
     EmbeddingPopulationRequest,
 )
+from groundworkers.base.results import enum_value
+from groundworkers.base.sql import quote_identifier
 from groundworkers.config import GroundworkersConfig
 
 DEFAULT_EMBEDDING_BATCH_SIZE = 100
@@ -273,8 +275,8 @@ def _embedding_index_snapshot(
             model_name=canonical_model,
             registered=True,
             storage_identifier=record.storage_identifier,
-            registry_index_type=_enum_value(record.index_type),
-            registry_metric=_enum_value(record.metric_type),
+            registry_index_type=enum_value(record.index_type),
+            registry_metric=enum_value(record.metric_type),
             physical_indexes=physical_indexes,
             drop_sql=tuple(
                 _drop_index_sql(engine, name) for name in physical_indexes
@@ -301,24 +303,16 @@ def _physical_vector_indexes(
 
 
 def _drop_index_sql(engine: Engine, index_name: str) -> str:
-    return f"DROP INDEX IF EXISTS {_quote_identifier(engine, index_name)};"
+    return f"DROP INDEX IF EXISTS {quote_identifier(engine, index_name)};"
 
 
 def _qualified_name(engine: Engine, schema: str | None, table: str) -> str:
     if not schema or (engine.dialect.name == "sqlite" and schema == "main"):
-        return _quote_identifier(engine, table)
-    return f"{_quote_identifier(engine, schema)}.{_quote_identifier(engine, table)}"
-
-
-def _quote_identifier(engine: Engine, name: str) -> str:
-    return engine.dialect.identifier_preparer.quote(name)
+        return quote_identifier(engine, table)
+    return f"{quote_identifier(engine, schema)}.{quote_identifier(engine, table)}"
 
 
 def _canonical_model_name(model_name: str, *, provider_kind: str) -> str:
     return canonical_model_name(provider_kind, model_name)
 
 
-def _enum_value(value: object) -> str | None:
-    if value is None:
-        return None
-    return str(getattr(value, "value", value))

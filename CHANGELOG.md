@@ -4,9 +4,109 @@ Stack 1.0 cutover: oa-configurator 1.x, omop-alchemy 1.x, omop-graph 2.x,
 omop-emb 2.x, omop-llm 1.x. No compatibility shims are provided for the removed
 0.x shapes.
 
-The `tui` extra now resolves `groundskeeping>=0.4,<1` from PyPI. The temporary
-`[tool.uv.sources]` git pin and its lock entry are gone, so no source or editable
-dependency remains that would block publication.
+!!! danger "Release blocker"
+    `[tool.uv.sources]` pins `oa-configurator` to its unreleased `path_config`
+    branch, which makes path-based config loading public. Delete that section and
+    raise the version floor before publishing: no source or editable dependency
+    may reach a published artifact. `tests/unit/test_migration_boundaries.py`
+    pins the exact entry, so removing it fails that test until the assertion is
+    restored to "no sources".
+
+The `tui` extra resolves `groundskeeping>=0.5.1,<1` from PyPI, with no source pin.
+
+### Removed — standalone surfaces
+
+- `groundworkers --projection-tui` / the `projection-tui` command, and
+  `services/semantic_projection/tui_launcher.py` with it. The explorer was
+  omop-semantics' own `OutputDefinitionExplorer` driven second-hand through a
+  Groundworkers subclass and a set of sample payloads; the whole module existed
+  to serve it. Semantic projection remains available as an MCP tool, which
+  builds its requests from typed parameters and never used this path.
+- `scripts/demo.py`. It was referenced nowhere, hardcoded database credentials
+  outside oa-configurator, and called six adapter methods and two constructor
+  arguments that no longer exist.
+
+### Fixed — logging, identifier quoting, enum coercion
+
+- **Logging is now actually configured.** `GroundworkersConfig` has always
+  declared `extra_logging_namespaces = ("omop_graph", "omop_emb")`, but nothing
+  ever called `configure_logging`, so the declaration was inert, the stack's
+  `[logging]` section was ignored, and oa-configurator's `RedactingFormatter`
+  was never installed. `main()` now configures logging twice: once immediately
+  after parsing arguments, so oa-configurator's own load-time warnings (a config
+  file with loose permissions, for one) are formatted rather than falling
+  through to Python's last-resort handler; and again with the stack once it is
+  readable, so `[logging]` takes effect. A `-v` / `-vv` flag sets verbosity.
+  Handlers write to **stderr**, so this never interferes with the stdio MCP
+  transport.
+- Path-based config loading comes from oa-configurator's public
+  `load_stack_config_from_path`. Groundworkers' `bootstrap.py` had a
+  near-line-for-line reimplementation of upstream's private `_load_from_path`,
+  which had drifted: it never warned about a config file other users can read,
+  despite that file holding database passwords, and it re-parsed on every call
+  instead of using upstream's stat-keyed cache. Both are gained by the swap.
+- Identifier quoting goes through SQLAlchemy's dialect preparer
+  (`base/sql.py::quote_identifier`). `application/setup/databases.py` had its own
+  copy that hardcoded ANSI double quotes regardless of dialect, while
+  `embedding_population.py` already used the preparer.
+- One `enum_value` in `base/results.py` replaces three near-copies. The variant
+  in `embedding_setup.py` returned `str` rather than `str | None`, so a null
+  column would have reached the operator as the literal text `"None"`; the two
+  call sites reading `NOT NULL` registry columns now use `required_enum_value`,
+  which raises instead.
+
+### Changed — secret handling is centralised upstream
+
+- Requires `oa-configurator>=1.2.1` and `groundskeeping>=0.5.1`, which centralise
+  the secret primitives the stack previously duplicated.
+- Endpoint redaction now comes from oa-configurator's `safe_endpoint`, imported
+  directly at each use. Groundworkers previously carried **three** separate
+  copies with three different secret word lists — `config.py`,
+  `application/setup/embedding_setup.py`, and
+  `application/setup/runtime_setup.py` — which is how the stack-wide drift
+  started. No redaction code and no secret word list remains in this package.
+- Two behaviour changes follow from upstream's rules, both intended: every
+  query *value* is masked rather than only those whose parameter name matched a
+  word list (so `?region=au` renders as `?region=***`), and the userinfo
+  username is preserved while its password is masked, matching
+  `safe_url`. `***` is also no longer percent-encoded as `%2A%2A%2A`.
+- `describe()` reports `api_key_configured: bool` instead of a literal `"***"`.
+  `ResolvedProvider` is a dataclass carrying no `Sensitive()` marker to consult,
+  and in a JSON payload bound for an agent a fake mask reads like a value.
+- The setup wizard's "a blank secret answer keeps the stored one" rule now
+  derives its field set from the field specs' own `sensitive` flag rather than a
+  second hardcoded list.
+- The apply-review diff decides what to mask by walking the schema for
+  `Sensitive()` markers instead of pattern-matching flattened config paths. That
+  review is where a credential would actually surface to an operator, and it had
+  no test; one now asserts the secret is absent from the rendered diff while the
+  field still shows as changed.
+- URL fragments are masked (`#***`) by oa-configurator 1.2.1, so a token cannot
+  ride along in one. The interim local wrapper that existed only to drop the
+  fragment under 1.2.0 has been deleted.
+
+### Changed — `[tools.groundworkers]` is flat
+
+- The six nested sub-tables (`mcp`, `rest`, `grounding`, `source_planning`,
+  `knowledge`, `semantic_projection`) are replaced by flat fields grouped by
+  name prefix: `mcp_transport`, `rest_base_path`, `grounding_max_depth`, and so
+  on. This matches every other package in the stack.
+- Fixes silent config loss. The shared configure path replaces a nested
+  sub-table wholesale on any partial update, so setting one subfield reset its
+  untouched siblings to defaults — `--set mcp.transport=sse` also reverted
+  `mcp.host` and `mcp.port`. Flat fields update independently.
+- Fixes six unusable CLI flags. `--mcp`, `--rest`, `--grounding`,
+  `--source-planning`, `--knowledge` and `--semantic-projection` were typed as
+  strings and rejected every value with "Input should be a valid dictionary".
+  Between that and having no setup-console journey, those settings were
+  reachable only by hand-editing TOML.
+- Every field now carries `Field(description=...)`, which is the CLI flag help,
+  the interactive prompt, and the generated docs. The reasoning was previously
+  in `#` comments, invisible on all three.
+- `AppConfig` keeps its role — one resolved runtime picture shared by the tool
+  registry, both transports, `--describe`, and the setup console — but drops the
+  unused `resolver` field and the pass-through properties that gave each setting
+  a second name. Settings are read through `config.groundworkers.<field>`.
 
 ### Changed — chat model configuration
 

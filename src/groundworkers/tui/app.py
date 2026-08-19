@@ -12,7 +12,8 @@ def build_groundworkers_tui_spec(
     """Build the Groundworkers console with setup as its first registered page."""
 
     from groundskeeping.app import OperatorAppSpec
-    from groundskeeping.contracts import PageRegistration, WorkbenchLabels
+    from groundskeeping.contracts.pages import PageRegistration
+    from groundskeeping.contracts.views import WorkbenchLabels
 
     from groundworkers.tui.pages import SetupPage
     from groundworkers.tui.presenters.chat import ChatPresenter

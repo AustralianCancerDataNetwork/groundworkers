@@ -154,7 +154,7 @@ def build_adapters(config: AppConfig) -> Adapters:
 def build_services(config: AppConfig, adapters: Adapters) -> Services:
     services = Services()
     assisted_classifier = None
-    if adapters.llm is not None and config.source_planning.llm_assisted_enabled:
+    if adapters.llm is not None and config.groundworkers.source_planning_llm_assisted_enabled:
         assisted_classifier = AssistedColumnRoleClassifier(adapters.llm)
     services.source_planning = SourcePlanningService(assisted_classifier=assisted_classifier)
     if adapters.omop_graph is not None:
@@ -163,8 +163,8 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
         services.graph = GraphService(adapters.omop_graph, adapters.cdm)
         services.grounding = ConceptGroundingService(
             services.graph,
-            min_fulltext_overlap=config.grounding.min_fulltext_overlap,
-            max_depth=config.grounding.max_depth,
+            min_fulltext_overlap=config.groundworkers.grounding_min_fulltext_overlap,
+            max_depth=config.groundworkers.grounding_max_depth,
         )
     if adapters.cdm is not None:
         services.vocab = VocabService(adapters.cdm)

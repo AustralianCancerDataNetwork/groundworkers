@@ -1,7 +1,6 @@
 # groundworkers
 
-`groundworkers` is the reusable capability layer for OMOP-grounded lookup,
-mapping, source planning, and knowledge-pack discovery.
+`groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source planning, and knowledge-pack discovery.
 
 You can use it in three ways:
 
@@ -22,13 +21,9 @@ No patient-level writes. No session state. No transport-specific business logic.
 
 ## Knowledge Packs
 
-`groundworkers` ships with bundled baseline knowledge packs inside the package.
-These packs are available by default and provide reusable guidance and rules
-that apply broadly across deployments.
+`groundworkers` ships with bundled baseline knowledge packs inside the package. These packs are available by default and provide reusable guidance and rules that apply broadly across deployments.
 
-Site-specific or localisation packs are added through the shared stack config
-via `tools.groundworkers.knowledge.packs_root`. When a configured pack has the
-same `layer` and `name` as a bundled baseline pack, the configured copy wins.
+Site-specific or localisation packs are added through the shared stack config via `tools.groundworkers.knowledge_packs_root`. When a configured pack has the same `layer` and `name` as a bundled baseline pack, the configured copy wins.
 
 ## Runtime model
 
@@ -48,11 +43,7 @@ flowchart TD
     API --> SVC
 ```
 
-`build_application(...)` is the composition root. It builds one reusable
-runtime container with transport-agnostic services plus dependency-facing
-adapters. Most caller-facing workflows go through services; some MCP tools are
-intentionally adapter-backed when the capability is closer to a backend
-primitive than a domain service.
+`build_application(...)` is the composition root. It builds one reusable runtime container with transport-agnostic services plus dependency-facing adapters. Most caller-facing workflows go through services; some MCP tools are intentionally adapter-backed when the capability is closer to a backend primitive than a domain service.
 
 ## Quick start
 

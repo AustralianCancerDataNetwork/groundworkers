@@ -1,8 +1,6 @@
 # Tools Overview
 
-The MCP surface in `groundworkers` is grouped by workflow rather than by
-underlying package. Tool availability is resolved from the active runtime at
-startup.
+The MCP surface in `groundworkers` is grouped by workflow rather than by underlying package. Tool availability is resolved from the active runtime at startup.
 
 ## Tool groups
 
@@ -18,7 +16,7 @@ startup.
 | **Text** | `text_normalize`, `text_decompose`, `text_disambiguate` | LLM enabled |
 | **Domain** | `domain_classify` | LLM enabled |
 | **System** | `system_status`, `system_vocabulary_catalogue` | Always registered |
-| **Semantic projection** | `semantic_project` | `groundworkers.semantic_projection.enabled = true` (default `false`) |
+| **Semantic projection** | `semantic_project` | `groundworkers.semantic_projection_enabled = true` (default `false`) |
 
 ## What each group is for
 
@@ -28,21 +26,17 @@ startup.
 - **Mapping** tools assemble multi-channel evidence for review and adjudication workflows.
 - **Embedding** tools expose the embedding index directly.
 - **Source planning** tools prepare source artifacts into neutral pre-ingest structures.
-- **Knowledge** tools expose the bundled baseline pack catalogue and any configured
-  site/localisation packs that apply to a job context.
+- **Knowledge** tools expose the bundled baseline pack catalogue and any configured site/localisation packs that apply to a job context.
 - **Text** tools normalize or decompose free text before retrieval.
 - **Domain** tools classify structured labels into OMOP domains.
 - **System** tools expose runtime availability and vocabulary catalogue metadata.
-- **Semantic projection** tools deterministically turn an already-grounded
-  concept into one or more CDM rows — no LLM call, disabled by default.
+- **Semantic projection** tools deterministically turn an already-grounded concept into one or more CDM rows — no LLM call, disabled by default.
 
 ## Registration rules
 
-`system_status` and `system_vocabulary_catalogue` are always present so clients
-can inspect the deployment before assuming a capability exists.
+`system_status` and `system_vocabulary_catalogue` are always present so clients can inspect the deployment before assuming a capability exists.
 
-All other tool groups appear only when their backing services or backend
-wrappers are available in the resolved runtime.
+All other tool groups appear only when their backing services or backend wrappers are available in the resolved runtime.
 
 ## MCP versus REST
 
@@ -51,14 +45,11 @@ The MCP surface is broader than the REST surface.
 - MCP is the discovery-oriented interface
 - REST is a curated workflow interface over selected services
 
-If you need the full capability surface, MCP is the more complete transport. If
-you are building a fixed HTTP workflow, prefer the REST routes documented in
-[Integrations](../usage/integrations.md).
+If you need the full capability surface, MCP is the more complete transport. If you are building a fixed HTTP workflow, prefer the REST routes documented in [Integrations](../usage/integrations.md).
 
 ## Direct Python use
 
-The graph, grounding, mapping, search, text, domain, and source-planning
-behavior also exists as direct Python services:
+The graph, grounding, mapping, search, text, domain, and source-planning behavior also exists as direct Python services:
 
 ```mermaid
 flowchart LR
@@ -70,13 +61,10 @@ flowchart LR
     SVC --> ADP[adapters]
 ```
 
-If you are building a Python application, call `app.services.*` directly rather
-than importing tool modules.
+If you are building a Python application, call `app.services.*` directly rather than importing tool modules.
 
-`SemanticProjectionService` is the one exception — it needs no adapter, so it
-isn't part of `app.services`. Construct it directly:
-`from groundworkers.services.semantic_projection import SemanticProjectionService`.
-See [SemanticProjectionService](../services/semantic_projection.md).
+`SemanticProjectionService` is the one exception — it needs no adapter, so it isn't part of `app.services`. Construct it directly:
+`from groundworkers.services.semantic_projection import SemanticProjectionService`. See [SemanticProjectionService](../services/semantic_projection.md).
 
 ## Error response shape
 
@@ -101,5 +89,4 @@ Common codes:
 groundworkers --describe
 ```
 
-This prints the active runtime config plus the registered tool, prompt, and
-resource surfaces for the currently selected stack file and profile.
+This prints the active runtime config plus the registered tool, prompt, and resource surfaces for the currently selected stack file and profile.

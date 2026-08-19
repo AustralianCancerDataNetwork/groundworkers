@@ -1090,16 +1090,16 @@ wheels = [
 
 [[package]]
 name = "groundskeeping"
-version = "0.4.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
     { name = "pydantic" },
     { name = "textual" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/80/d9a2bc164e806862305ecb6cecf49f6e257f1830ec6024f792269fede17c/groundskeeping-0.4.0.tar.gz", hash = "sha256:635d23afcf100a25f60cc6d0bc0fe8892cf955bbc3faa855df4cca675556d0c0", size = 187564, upload-time = "2026-08-17T23:20:01.017Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/e4/37b50f943edb85a318bab4b9a1f3a150f4da58eddb5c6426a8097450e374/groundskeeping-0.5.1.tar.gz", hash = "sha256:e70881261be374217ff31ea30b13d34c22ae780571d8ad0ec226688017db7611", size = 191564, upload-time = "2026-08-19T00:40:14.504Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/0e/3b0a364ca519fae5b899743eac0f9c05ae914de126541cff4fc23540b413/groundskeeping-0.4.0-py3-none-any.whl", hash = "sha256:f65219d369317ea2662439e378973831bf63318b685a9f5501300123a4fc7f86", size = 64616, upload-time = "2026-08-17T23:19:59.403Z" },
+    { url = "https://files.pythonhosted.org/packages/88/69/78520cdeabfd8b2ea93a66cd3e620e6c041ce3e96504f19cca556f63716c/groundskeeping-0.5.1-py3-none-any.whl", hash = "sha256:bf3ecaaefd9b95101992a60220bb52154dee7458d0fb4bd8c84e37ccb7e31d7e", size = 66389, upload-time = "2026-08-19T00:40:12.994Z" },
 ]
 
 [[package]]
@@ -1171,7 +1171,7 @@ xlsx = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110,<1.0" },
-    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.4,<1" },
+    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.5.1,<1" },
     { name = "h5py", marker = "extra == 'embedding-artifacts'", specifier = ">=3.10,<4" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -1182,7 +1182,7 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "numpy", specifier = ">=1.26,<3" },
-    { name = "oa-configurator", specifier = ">=1.1,<2" },
+    { name = "oa-configurator", git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git?branch=path_config" },
     { name = "omop-alchemy", specifier = ">=1,<2" },
     { name = "omop-emb", specifier = ">=2,<3" },
     { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=2,<3" },
@@ -2513,8 +2513,8 @@ wheels = [
 
 [[package]]
 name = "oa-configurator"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
+version = "1.2.2.dev2+g18e622b96"
+source = { git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git?branch=path_config#18e622b964d5420ac08481cd7ecd3ac4858d2727" }
 dependencies = [
     { name = "click" },
     { name = "pydantic" },
@@ -2522,10 +2522,6 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tomli-w" },
     { name = "typer" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/16/a5/d06e75e97281952981c75d31f3befc314f39c08c74e51952b7f363f36de0/oa_configurator-1.1.0.tar.gz", hash = "sha256:251986a616e698e3b0b273f2a9428652af79fd3975dc4dd19898f96d89bf34ad", size = 173410, upload-time = "2026-08-13T07:49:11.365Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/5b/f3b600f3e2b6acc7c74271b12eb31cfe83d223ed28f80efa6edfd5e99d0f/oa_configurator-1.1.0-py3-none-any.whl", hash = "sha256:6af25c970338460677c4426b2ae84e870c202b758f71562440f98def227d39ef", size = 60691, upload-time = "2026-08-13T07:49:10.105Z" },
 ]
 
 [[package]]

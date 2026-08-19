@@ -30,6 +30,7 @@ from groundworkers.application.setup.models import (
     DiagnosticSeverity,
     ResourceDiagnostic,
 )
+from groundworkers.base.sql import quote_identifier
 from groundworkers.config import GroundworkersConfig
 
 CDM_TABLES = (
@@ -831,7 +832,7 @@ def _column_names(
         return {str(row[0]) for row in rows}
     if connection.dialect.name == "sqlite":
         rows = connection.execute(
-            text(f"PRAGMA table_info({_quote_identifier(table_name)})")
+            text(f"PRAGMA table_info({quote_identifier(connection, table_name)})")
         )
         return {str(row[1]) for row in rows}
     return {
@@ -851,20 +852,19 @@ def _count_table_rows(
     schema: str | None,
     table_name: str,
 ) -> int:
-    qualified = _qualified_name(schema, table_name)
+    qualified = _qualified_name(connection, schema, table_name)
     return int(
         connection.execute(text(f"SELECT count(*) FROM {qualified}")).scalar() or 0
     )
 
 
-def _qualified_name(schema: str | None, table_name: str) -> str:
+def _qualified_name(connection: Connection, schema: str | None, table_name: str) -> str:
     if schema:
-        return f"{_quote_identifier(schema)}.{_quote_identifier(table_name)}"
-    return _quote_identifier(table_name)
-
-
-def _quote_identifier(value: str) -> str:
-    return '"' + value.replace('"', '""') + '"'
+        return (
+            f"{quote_identifier(connection, schema)}."
+            f"{quote_identifier(connection, table_name)}"
+        )
+    return quote_identifier(connection, table_name)
 
 
 def _exception_chain(exc: BaseException):

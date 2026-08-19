@@ -1,48 +1,16 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 
 from oa_configurator import (  # type: ignore[import-untyped]
-    ConfigurationError,
     ResolvedCDMDatabase,
     Resolver,
     StackConfig,
     load_stack_config,
+    load_stack_config_from_path,
 )
-from pydantic import ValidationError
 
 from groundworkers.config import AppConfig, GroundworkersConfig
-
-
-def load_stack_config_from_path(path: str | Path) -> StackConfig:
-    """Load a stack config from an explicit TOML path."""
-
-    resolved_path = Path(path).expanduser()
-    if not resolved_path.exists():
-        raise FileNotFoundError(f"Config file not found: {resolved_path}")
-
-    try:
-        data = tomllib.loads(resolved_path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"Malformed TOML in {resolved_path}: {exc}") from exc
-
-    try:
-        config = StackConfig.model_validate(data)
-    except ValidationError as exc:
-        problems = "; ".join(
-            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
-            for error in exc.errors(
-                include_input=False,
-                include_url=False,
-                include_context=False,
-            )
-        )
-        raise ConfigurationError(
-            f"Invalid stack configuration in {resolved_path}: {problems}"
-        ) from None
-    config.bind_loaded_path(resolved_path)
-    return config
 
 
 def build_app_config(*, config_path: str | Path | None = None) -> AppConfig:
@@ -90,15 +58,14 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
     )
 
     knowledge_root = None
-    if groundworkers.knowledge.packs_root is not None:
+    if groundworkers.knowledge_packs_root is not None:
         knowledge_root = _resolve_path(
-            groundworkers.knowledge.packs_root,
+            groundworkers.knowledge_packs_root,
             stack.loaded_path,
         )
 
     return AppConfig(
         stack=stack,
-        resolver=resolver,
         groundworkers=groundworkers,
         cdm_database=cdm_database,
         cdm_engine=cdm_engine,

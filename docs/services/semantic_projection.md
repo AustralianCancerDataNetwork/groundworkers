@@ -2,22 +2,13 @@
 
 `SemanticProjectionService` deterministically projects a grounded OMOP concept
 into one or more CDM rows. It wraps [`omop-semantics`](https://australiancancerdatanetwork.github.io/omop-semantics/)'s
-`OutputDefinitionRuntime`: no LLM call, no database access. The same input
-always produces the same output.
+`OutputDefinitionRuntime`: no LLM call, no database access. The same input always produces the same output.
 
-It exists for cases a single grounded `concept_id` can't express on its own —
-a diagnosis paired with a separately-collected role/status field, a family-
-history statement where the grounded condition belongs in the OMOP value slot,
-or a Yes/No field whose negative answer should produce no record at all.
-Ordinary single-concept mappings don't need it.
+It exists for cases a single grounded `concept_id` can't express on its own — a diagnosis paired with a separately-collected role/status field, a family- history statement where the grounded condition belongs in the OMOP value slot, or a Yes/No field whose negative answer should produce no record at all. Ordinary single-concept mappings don't need it.
 
 ## Construction
 
-Unlike the other services documented here, `SemanticProjectionService` is
-**not** part of `app.services` — it needs no adapter (no database, no LLM), so
-it doesn't participate in the `build_application()` / `Services` composition
-described in [Architecture](../architecture.md). It's constructed directly
-where it's registered, the same way `KnowledgeCatalogue` is:
+Unlike the other services documented here, `SemanticProjectionService` is **not** part of `app.services` — it needs no adapter (no database, no LLM), so it doesn't participate in the `build_application()` / `Services` composition described in [Architecture](../architecture.md). It's constructed directly where it's registered, the same way `KnowledgeCatalogue` is:
 
 ```python
 from groundworkers.services.semantic_projection import SemanticProjectionService
@@ -25,23 +16,15 @@ from groundworkers.services.semantic_projection import SemanticProjectionService
 service = SemanticProjectionService()
 ```
 
-Compiling the catalogue happens once, at construction — an invalid definition
-(a `derivation_rules` entry pointing at a slot the profile doesn't allow, for
-example) raises immediately rather than failing on the first request that
-happens to hit it. `create_server()` builds one instance at startup when
-`groundworkers.semantic_projection.enabled = true`; see
-[Configuration](../usage/configuration.md#semantic_projection).
+Compiling the catalogue happens once, at construction — an invalid definition (a `derivation_rules` entry pointing at a slot the profile doesn't allow, for example) raises immediately rather than failing on the first request that happens to hit it. `create_server()` builds one instance at startup when `groundworkers.semantic_projection_enabled = true`; see [Configuration](../usage/configuration.md#semantic_projection).
 
-Pass a custom `definitions` iterable to test against a smaller catalogue, or
-to run a project-specific set instead of the built-in one:
+Pass a custom `definitions` iterable to test against a smaller catalogue, or to run a project-specific set instead of the built-in one:
 
 ```python
 service = SemanticProjectionService(definitions=my_definitions)
 ```
 
 ## The built-in catalogue
-
-Six definitions ship today:
 
 | Name | Pattern |
 |---|---|
@@ -52,12 +35,7 @@ Six definitions ship today:
 | `yes_no_observation` | An ordinary Yes/No observation where both answers remain informative. Raw `1`/`0` map to OMOP answer concepts in `value_as_concept_id`; unlike a gate, `0` still writes a row. |
 | `measurement_numeric_with_unit_from_context` | A quantitative measurement with a literal numeric value plus a derived OMOP unit concept. Shows how projection can bind both direct source values and code-mapped slots. |
 
-These definitions are deliberately illustrative as well as useful. The first
-four cover the most common "why projection exists at all" cases: sibling-field
-modifiers, value-carried family-history shapes, multi-row relative bundles,
-and deterministic row suppression. The latter two show that projection is also
-a good fit for ordinary coded observations and quantitative measurements once
-callers already know the row shape they want.
+These definitions are meant to be illustrative as well as useful. The first four cover the most common "why projection exists at all" cases: sibling-field modifiers, value-carried family-history shapes, multi-row relative bundles, and deterministic row suppression. The latter two show that projection is also a good fit for ordinary coded observations and quantitative measurements once callers already know the row shape they want.
 
 ## Method
 
@@ -79,31 +57,15 @@ service.project(request: SemanticProjectionRequest) -> SemanticProjectionResult
 | `definition_hint` | `str \| null` | see below |
 | `context` | `dict` | see below |
 
-`context` carries whatever the selected definition needs beyond the grounded
-concept itself:
+`context` carries whatever the selected definition needs beyond the grounded concept itself:
 
-- `raw_value` — the grounded field's own raw source code. Consulted by a
-  `SpecialValuePolicy` (e.g. `criteria_gate_condition`'s Yes/No check) or a
-  `DerivationRule` (e.g. `yes_no_observation`'s Yes/No answer mapping).
-- `raw_source_fields` — a mapping of well-known slot name to raw value, for
-  definitions that resolve a row's slot from a *different* source field via a
-  `DerivationRule` (e.g. `condition_with_status_from_secondary_field`'s role
-  field). The key is whatever the definition documents in its `notes` —
-  `role_field` today — not the field's actual name in your source data.
-- `numeric_value` — a literal numeric reading for quantitative projections such
-  as `measurement_numeric_with_unit_from_context`.
+- `raw_value` — the grounded field's own raw source code. Consulted by a `SpecialValuePolicy` (e.g. `criteria_gate_condition`'s Yes/No check) or a `DerivationRule` (e.g. `yes_no_observation`'s Yes/No answer mapping).
+- `raw_source_fields` — a mapping of well-known slot name to raw value, for definitions that resolve a row's slot from a *different* source field via a `DerivationRule` (e.g. `condition_with_status_from_secondary_field`'s role field). 
+- `numeric_value` — a literal numeric reading for quantitative projections such as `measurement_numeric_with_unit_from_context`.
 
 ### Selecting a definition
 
-Pass `definition_hint` to select a definition explicitly. Omit it and the
-service falls back to matching on `grounded_domain` alone — but only resolves
-when exactly one registered definition applies to that domain. With both
-built-in `Condition` definitions, that fallback is still ambiguous for
-`grounded_domain="Condition"`; `definition_hint` remains required there in
-practice. Other domains now have one shipped definition each (`Observation`
-and `Measurement`), so domain-only matching can resolve those unambiguously.
-This is deliberate: the service reports `status="no_match"` with an audit note
-rather than guessing.
+Pass `definition_hint` to explicitly select a definition otherwise the service will fall back to matching on `grounded_domain` alone. 
 
 ### Result
 
@@ -116,11 +78,7 @@ rather than guessing.
 | `suppressed` | A definition matched but every row it would have produced was dropped by a `DerivationRule` or `SpecialValuePolicy` (`suppressed_rows`) — nothing should be written. |
 | `no_match` | No definition matched, including an ambiguous domain match with no `definition_hint`. |
 
-Suppressed rows are never silently absent from `rows` — they're always listed
-in `suppressed_rows` with the reason, the source field consulted, and the raw
-code that triggered it. A `status="suppressed"` result carries exactly as much
-information as an `ok` one; it just says the deterministic answer is "write
-nothing here."
+Suppressed rows are listed in `suppressed_rows` (with the reason noted). A `status="suppressed"` result should be interpreted as a deterministic answer to "write nothing here" (as opposed to being skipped / unable to match).
 
 ## Typical input/output
 
@@ -153,33 +111,20 @@ SemanticProjectionResult(
 )
 ```
 
-Role field code `"3"` (Non-contributing) instead of `"1"` produces
-`status="suppressed"`, `rows=[]`, and one `suppressed_rows` entry.
-
 ## When to use it
 
 Use `SemanticProjectionService` when:
 
-- a single grounded concept needs a second CDM column populated from a
-  sibling source field's raw value
-- a fixed entity concept should carry context like family history while the
-  grounded concept belongs in a value slot
-- a source item should sometimes produce no CDM record at all, and that
-  decision needs to be deterministic and auditable rather than implicit in
-  caller code
-- a quantitative projection needs both a direct numeric literal and a mapped
-  OMOP unit concept
-- you want the same request to always produce the same result, with no LLM
-  call in the path
+- a single grounded concept needs a second CDM column populated from a sibling source field's raw value
+- a fixed entity concept should carry context like family history while the grounded concept belongs in a value slot
+- a source item should sometimes produce no CDM record at all, and that decision needs to be deterministic and auditable rather than implicit in caller code
+- a quantitative projection needs both a direct numeric literal and a mapped OMOP unit concept
+- you want the same request to always produce the same result, with no LLM call in the path
 
 Do not use it for:
 
-- ordinary single-concept grounding — that's `ConceptGroundingService` /
-  `concept_ground`
-- deciding *which* definition applies from free text or ambiguous context —
-  that inference doesn't exist yet (see the implementation-plan notes in
-  agent-stack's `SEMANTIC_INTEGRATION` design docs); today's callers must
-  already know to pass `definition_hint`
+- ordinary single-concept grounding — that's `ConceptGroundingService` / `concept_ground`
+- deciding *which* definition applies from free text or ambiguous context — callers must be able to pass a suggested `definition_hint`
 
 ## Relationship to downstream mapping
 
@@ -200,20 +145,11 @@ Launch the real catalogue through the worker-backed TUI with:
 groundworkers --tui
 ```
 
-This opens the same built-in definitions the service executes for
-`semantic_project`, but in an interactive terminal flow where you can browse the
-catalogue, start from definition-specific example payloads, run them, and
-inspect the result without standing up an MCP client first.
+This opens the same built-in definitions the service executes for `semantic_project`, but in an interactive terminal flow where you can browse the catalogue, start from definition-specific example payloads, run them, and inspect the result without standing up an MCP client first.
 
 ## Error handling
 
-- Raises `ValueError` at construction time for an invalid definition (bad
-  `derivation_rules`/`special_value_policy` reference, duplicate row id,
-  dangling link rule) — this is a startup-time failure, not a per-request one.
-- `project()` itself does not raise for ordinary "nothing matched" outcomes —
-  those are `status="no_match"` results, not exceptions.
-- A `SpecialValuePolicy` configured with `suppression_mode="fail"` raises
-  `ValueError` from `project()` if its trigger value actually occurs — that
-  mode exists for values that should never reach projection.
-- `keep_as_value` and `keep_as_modifier` suppression modes raise
-  `NotImplementedError` if triggered; no shipped definition uses them yet.
+- Raises `ValueError` at construction time for an invalid definition (bad `derivation_rules`/`special_value_policy` reference, duplicate row id, dangling link rule) — this is a startup-time failure, not a per-request one.
+- `project()` itself does not raise for ordinary "nothing matched" outcomes — those are `status="no_match"` results, not exceptions.
+- A `SpecialValuePolicy` configured with `suppression_mode="fail"` raises `ValueError` from `project()` if its trigger value actually occurs — that mode exists for values that should never reach projection.
+- `keep_as_value` and `keep_as_modifier` suppression modes raise `NotImplementedError` if triggered; no shipped definition uses them yet.

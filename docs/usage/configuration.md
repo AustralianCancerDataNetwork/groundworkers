@@ -1,9 +1,6 @@
 # Configuration
 
-`groundworkers` uses the shared OMOP stack configuration managed by
-`oa-configurator`. `build_app_config(...)` resolves that shared stack into a
-runtime `AppConfig`; callers do not provide a separate `groundworkers`-specific
-runtime file.
+`groundworkers` uses the shared OMOP stack configuration managed by `oa-configurator`. `build_app_config(...)` resolves that shared stack into a runtime `AppConfig`; callers do not provide a separate `groundworkers`-specific runtime file.
 
 ## Runtime entrypoints
 
@@ -27,24 +24,18 @@ config = build_app_config()
 app = build_application(config)
 ```
 
-The CLI entry point also accepts transport overrides and an interactive
-semantic-projection explorer flag:
+The CLI entry point also accepts transport overrides and a flag for the interactive setup console:
 
 ```bash
 groundworkers --transport streamable-http --host 127.0.0.1 --port 8000
 groundworkers --tui
 ```
 
-`--tui` launches the semantic projection explorer directly and exits instead of
-starting an MCP or REST server. Install the optional TUI dependencies with
-`uv sync --extra tui` or `pip install groundworkers[tui]`, and make sure a
-shared stack config is loadable with
-`tools.groundworkers.semantic_projection.enabled = true`.
+`--tui` launches the setup console and exits instead of starting an MCP or REST server. Install the optional TUI dependencies with `uv sync --extra tui` or `pip install groundworkers[tui]`.
 
 ## Configuration ownership
 
-`groundworkers` does not own every setting it consumes. The shared stack keeps
-package ownership explicit:
+`groundworkers` does not own every setting it consumes. The shared stack keeps package ownership explicit:
 
 | Concern | Where it lives |
 |---|---|
@@ -55,8 +46,7 @@ package ownership explicit:
 | Vector-store backend and its database | `[vector_stores.*]` |
 | Which of those entries Groundworkers uses, plus MCP/REST defaults, grounding policy, source-planning, knowledge-pack, and semantic-projection settings | `[tools.groundworkers]` |
 
-Groundworkers references stack entries **by name** and resolves them through
-`oa-configurator`. It does not read any other package's configuration section.
+Groundworkers references stack entries **by name** and resolves them through `oa-configurator`. It does not read any other package's configuration section.
 
 ## Typical TOML shape
 
@@ -103,28 +93,24 @@ llm_model_name = "chat_model"
 vector_store_name = "embeddings"
 app_name = "groundworkers"
 
-[tools.groundworkers.mcp]
-transport = "streamable-http"
-host = "127.0.0.1"
-port = 8000
+mcp_transport = "streamable-http"
+mcp_host = "127.0.0.1"
+mcp_port = 8000
 
-[tools.groundworkers.rest]
-enabled = true
-host = "127.0.0.1"
-port = 8080
-base_path = "/v1"
+rest_enabled = true
+rest_host = "127.0.0.1"
+rest_port = 8080
+rest_base_path = "/v1"
 
-[tools.groundworkers.grounding]
-min_fulltext_overlap = 0.5
-max_depth = 5
+grounding_min_fulltext_overlap = 0.5
+grounding_max_depth = 5
 
-[tools.groundworkers.source_planning]
-llm_assisted_enabled = true
+source_planning_llm_assisted_enabled = true
 ```
 
-A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name`
-and every lexical feature still works. See
-[Runtime combinations](#what-becomes-available-at-runtime).
+Settings are flat, grouped by name prefix - e.g. `omop-config configure groundworkers --grounding-max-depth 6` updates that one field and leaves its neighbours untouched. 
+
+A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name` and every lexical feature still works. See [Runtime combinations](#what-becomes-available-at-runtime).
 
 ### Reference fields
 
@@ -135,11 +121,7 @@ and every lexical feature still works. See
 | `llm_model_name` | a `[models.*]` entry | no |
 | `vector_store_name` | a `[vector_stores.*]` entry | no |
 
-`embedding_model_name` is the **embedding** model and `llm_model_name` is the
-**chat** model. Both name `[models.*]` entries and the two are never
-interchanged; they may point at different providers, or one may be unset.
-There is no separate on/off flag: chat is available exactly when
-`llm_model_name` resolves.
+`embedding_model_name` is the **embedding** model and `llm_model_name` is the **chat** model. Both name `[models.*]` entries and the two are never interchanged; they may point at different providers, or one may be unset. There is no separate on/off flag: chat is available exactly when `llm_model_name` resolves.
 
 ## groundworkers-owned fields
 
@@ -153,36 +135,32 @@ Application identity used by:
 
 Default: `groundworkers`
 
-### `mcp`
+### MCP transport (`mcp_*`)
 
 Default MCP startup settings used when you do not override them on the CLI.
 
 | Field | Type | Default |
 |---|---|---|
-| `transport` | `stdio` \| `sse` \| `streamable-http` | `stdio` |
-| `host` | `str` | `127.0.0.1` |
-| `port` | `int` | `8000` |
+| `mcp_transport` | `stdio` \| `sse` \| `streamable-http` | `stdio` |
+| `mcp_host` | `str` | `127.0.0.1` |
+| `mcp_port` | `int` | `8000` |
 
-### `rest`
+### REST transport (`rest_*`)
 
 Default REST startup settings.
 
 | Field | Type | Default |
 |---|---|---|
-| `enabled` | `bool` | `false` |
-| `host` | `str` | `127.0.0.1` |
-| `port` | `int` | `8080` |
-| `base_path` | `str` | `/v1` |
+| `rest_enabled` | `bool` | `false` |
+| `rest_host` | `str` | `127.0.0.1` |
+| `rest_port` | `int` | `8080` |
+| `rest_base_path` | `str` | `/v1` |
 
 `base_path` is validated to begin with `/`.
 
 ### `llm_model_name` and chat
 
-The chat model used by `TextService`, `DomainService`, and LLM-assisted source
-planning is a named `[models.*]` entry, exactly like the embedding model. Its
-endpoint and credentials live on the `[providers.*]` entry that model
-references, so they are stored, redacted, and reused the same way as every other
-provider in the stack:
+The chat model used by `TextService`, `DomainService`, and LLM-assisted source planning is a named `[models.*]` entry, exactly like the embedding model. Its endpoint and credentials live on the `[providers.*]` entry that model references, so they are stored, redacted, and reused the same way as every other provider in the stack:
 
 ```toml
 [providers.local_ollama]
@@ -199,31 +177,20 @@ structured_output = true
 llm_model_name = "chat_model"
 ```
 
-`structured_output = true` declares that the model can honour the JSON-mode
-request `complete_structured` makes; omop-llm treats every capability as opt-in.
+`structured_output = true` declares that the model can honour the JSON-mode request `complete_structured` makes; omop-llm treats every capability as opt-in. Chat is configured through the setup console's Chat section, which writes the provider and model entries through the same configuration provider as every other setup journey.
 
-Chat is configured through the setup console's Chat section, which writes the
-provider and model entries through the same configuration provider as every
-other setup journey.
+### Grounding (`grounding_*`)
 
-### `grounding`
-
-Groundworkers-owned grounding policy. omop-graph's traversal limits are per-call
-arguments, not shared configuration, so they do not appear here.
+Groundworkers-owned grounding policy. omop-graph's traversal limits are per-call arguments, not shared configuration, so they do not appear here.
 
 | Field | Type | Default |
 |---|---|---|
-| `min_fulltext_overlap` | `float` | `0.0` |
-| `max_depth` | `int` (1-10) | `5` |
+| `grounding_min_fulltext_overlap` | `float` | `0.0` |
+| `grounding_max_depth` | `int` (1-10) | `5` |
 
-`min_fulltext_overlap` must be between `0.0` and `1.0`. It is the minimum
-proportion of query tokens that must appear in a matched concept name for a
-full-text hit to be accepted; below the threshold grounding falls through to the
-next tier.
+`min_fulltext_overlap` must be between `0.0` and `1.0`. It is the minimum proportion of query tokens that must appear in a matched concept name for a full-text hit to be accepted; below the threshold grounding falls through to the next tier.
 
-`max_depth` bounds the hierarchy distance between a grounding candidate and a
-required parent concept, or the identity-hop count when grounding runs without
-`parent_ids`.
+`max_depth` bounds the hierarchy distance between a grounding candidate and a required parent concept, or the identity-hop count when grounding runs without `parent_ids`.
 
 ### Concept flag contract
 
@@ -235,35 +202,27 @@ Grounding results carry strict OMOP flags:
 | `classification_concept` | true only for raw `standard_concept = 'C'` |
 | `is_active` | `invalid_reason` unset, treating blank and whitespace-only as active |
 
-Grounding can legitimately land on a classification concept (an ATC or CPT4
-hierarchy node). Those are valid hierarchy positions but **not** valid mapping
-targets for a CDM entity field, so check the flags rather than assuming every
-result is standard.
+Grounding can legitimately land on a classification concept (an ATC or CPT4 hierarchy node). Those are valid hierarchy positions but **not** valid mapping targets for a CDM entity field, so check the flags rather than assuming every result is standard.
 
-`concept_ground` also accepts `standard_only` and `active_only` (both default
-`false`). They narrow *candidate resolution*, not the returned results.
+`concept_ground` also accepts `standard_only` and `active_only` (both default `false`). They narrow *candidate resolution*, not the returned results.
 
-### `source_planning`
+### Source planning (`source_planning_*`)
 
 | Field | Type | Default |
 |---|---|---|
-| `llm_assisted_enabled` | `bool` | `true` |
+| `source_planning_llm_assisted_enabled` | `bool` | `true` |
 
-This controls whether `build_application(...)` wires the assisted classifier
-into `SourcePlanningService` when an LLM adapter is present.
+This controls whether `build_application(...)` wires the assisted classifier into `SourcePlanningService` when an LLM adapter is present.
 
-### `knowledge`
+### Knowledge packs (`knowledge_*`)
 
 | Field | Type | Default |
 |---|---|---|
-| `packs_root` | `str \| null` | `null` |
+| `knowledge_packs_root` | `str \| null` | `null` |
 
-`groundworkers` includes bundled baseline knowledge packs as part of the
-package. Set `packs_root` when you want to add site-specific or localisation
-packs on top of that baseline.
+`groundworkers` includes bundled baseline knowledge packs as part of the package. Set `knowledge_packs_root` when you want to add site-specific or localisation packs on top of that baseline.
 
-The configured directory should contain a `packs/` tree grouped by knowledge
-layer, for example:
+The configured directory should contain a `packs/` tree grouped by knowledge layer, for example:
 
 ```text
 my-knowledge/
@@ -274,24 +233,19 @@ my-knowledge/
         guidance.md
 ```
 
-If a configured pack has the same `layer` and `name` as a bundled baseline
-pack, the configured copy wins.
+If a configured pack has the same `layer` and `name` as a bundled baseline pack, the configured copy wins.
 
-### `semantic_projection`
+### Semantic projection (`semantic_projection_*`)
 
 | Field | Type | Default |
 |---|---|---|
-| `enabled` | `bool` | `false` |
+| `semantic_projection_enabled` | `bool` | `false` |
 
 Gates the `semantic_project` MCP tool and its backing `SemanticProjectionService`.
-Off by default: the service is fully deterministic (no LLM, no database), so
-there's no missing-dependency reason to disable it — the flag exists purely
-for staged rollout, per agent-stack's `SEMANTIC_INTEGRATION` design notes
-(enable in local/test environments first).
 
 ```toml
-[tools.groundworkers.semantic_projection]
-enabled = true
+[tools.groundworkers]
+semantic_projection_enabled = true
 ```
 
 ## What becomes available at runtime
@@ -305,8 +259,7 @@ Graph availability follows the resolved CDM database, so a CDM-only stack gets:
 - `VocabService`, `GraphService`, `ConceptGroundingService`, `MappingService`
 - concept, resolver, search, mapping, source-planning, knowledge, and system MCP tools
 
-Embedding status reports as unconfigured. No `[tools.omop_graph]` section is
-required or read.
+Embedding status reports as unconfigured. No `[tools.omop_graph]` section is required or read.
 
 ### With `embedding_model_name` **and** `vector_store_name`
 
@@ -317,15 +270,9 @@ You additionally get:
 - embedding-backed channels in `MappingService`
 - the embedding grounding tier
 
-Both references are required. With only one configured, status reports an
-actionable incomplete-configuration message and embedding features stay off
-rather than guessing a default.
+Both references are required. With only one configured, status reports an actionable incomplete-configuration message and embedding features stay off rather than guessing a default.
 
-The store must be populated before the embedding tier can return anything;
-population is an explicit operator action (see the Embeddings setup section) and
-never starts implicitly at query time. The server holds the graph read-only
-(`write=False`), so it never writes vectors — Groundworkers encodes the query
-text itself for the embedding tier.
+The store must be populated before the embedding tier can return anything; population is an explicit operator action (see the Embeddings setup section) and never starts implicitly at query time. The server holds the graph read-only (`write=False`), so it never writes vectors — Groundworkers encodes the query text itself for the embedding tier.
 
 ### With `groundworkers.llm_model_name` configured
 
@@ -337,12 +284,11 @@ You additionally get:
 - text and domain MCP tools
 - LLM-assisted source planning when `source_planning.llm_assisted_enabled = true`
 
-### With `groundworkers.semantic_projection.enabled = true`
+### With `semantic_projection_enabled = true`
 
 You additionally get:
 
-- `SemanticProjectionService` (constructed directly, not part of `app.services`
-  — it needs no adapter)
+- `SemanticProjectionService` (constructed directly, not part of `app.services` — it needs no adapter)
 - the `semantic_project` MCP tool
 
 ## CLI selection rules
@@ -364,9 +310,7 @@ Equivalent environment override:
 
 - `OA_CONFIG_PATH`
 
-There is no profile selection. Profiles, resource aliases, and
-`[resources.*]` bundles were removed with the 1.0 stack; keep separate config
-files and select them with `--config-path` or `OA_CONFIG_PATH` instead.
+There is no profile selection. Profiles, resource aliases, and `[resources.*]` bundles were removed with the 1.0 stack; keep separate config files and select them with `--config-path` or `OA_CONFIG_PATH` instead.
 
 ## Direct Python example
 
@@ -381,9 +325,6 @@ grounding = app.services.grounding
 mapping = app.services.mapping
 ```
 
-Service attributes are `None` only when their prerequisites are not available in
-the resolved runtime.
+Service attributes are `None` only when their prerequisites are not available in the resolved runtime.
 
-`config.describe()` returns a redacted summary keyed by `database`, `model`, and
-`vector_store`. Passwords and API keys are masked; safe URLs never carry
-credentials.
+`config.describe()` returns a redacted summary keyed by `database`, `model`, and `vector_store`. Passwords and API keys are masked; safe URLs never carry credentials.

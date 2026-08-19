@@ -27,7 +27,7 @@ def create_rest_app(
     """Create the curated REST transport for groundworkers services."""
 
     api = FastAPI(
-        title=application.config.app_name,
+        title=application.config.groundworkers.app_name,
         version="0.1.0",
     )
 

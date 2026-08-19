@@ -16,6 +16,7 @@ from omop_llm import ModelBackend
 from sqlalchemy.engine import Engine
 
 from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.results import enum_value
 
 
 class OmopEmbAdapter:
@@ -84,9 +85,9 @@ class OmopEmbAdapter:
                 models.append(
                     {
                         "model_name": record.model_name,
-                        "provider": self._enum_value(record.provider_type),
+                        "provider": enum_value(record.provider_type),
                         "dimensions": int(record.dimensions),
-                        "index_type": self._enum_value(record.index_type),
+                        "index_type": enum_value(record.index_type),
                         "concept_count": int(concept_count),
                     }
                 )
@@ -268,7 +269,7 @@ class OmopEmbAdapter:
             backend=self._get_backend(),
             metric_type=record.metric_type or MetricType.COSINE,
             omop_cdm_engine=self._cdm_engine,
-            provider_type=self._enum_value(record.provider_type) or "ollama",
+            provider_type=enum_value(record.provider_type) or "ollama",
             faiss_cache_dir=self._faiss_cache_dir,
         )
 
@@ -288,7 +289,7 @@ class OmopEmbAdapter:
                 ) from exc
 
         configured_provider = self._model_backend.provider
-        record_provider = self._enum_value(record.provider_type)
+        record_provider = enum_value(record.provider_type)
         if (
             record.model_name != self._model_backend.model
             or record_provider != configured_provider
@@ -317,7 +318,7 @@ class OmopEmbAdapter:
 
     @staticmethod
     def _backend_type_from_backend(backend: EmbeddingBackend) -> str | None:
-        return OmopEmbAdapter._enum_value(getattr(backend, "backend_type", None))
+        return enum_value(getattr(backend, "backend_type", None))
 
     @staticmethod
     def _serialise_nearest_match(match: Any) -> dict[str, Any]:
@@ -329,8 +330,3 @@ class OmopEmbAdapter:
             "is_active": getattr(match, "is_active", None),
         }
 
-    @staticmethod
-    def _enum_value(value: object) -> str | None:
-        if value is None:
-            return None
-        return str(getattr(value, "value", value))

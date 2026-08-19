@@ -13,19 +13,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
-from groundskeeping.configurator import (
+from groundskeeping.configurator.controller import (
+    ConfigBranchCondition,
+    ConfigWorkflowSpec,
+    ConfigWorkflowStep,
+)
+from groundskeeping.configurator.models import ConfigTarget, ConfigTargetKind
+from groundskeeping.configurator.mutation import (
     ConfigApplyIntent,
     ConfigApplyResult,
     ConfigApplyStatus,
-    ConfigBranchCondition,
     ConfigDiff,
     ConfigDraft,
     ConfigPlan,
     ConfigStepResult,
-    ConfigTarget,
-    ConfigTargetKind,
-    ConfigWorkflowSpec,
-    ConfigWorkflowStep,
     EffectRef,
     MutationCapabilities,
     MutationOperation,
@@ -33,7 +34,7 @@ from groundskeeping.configurator import (
     UnavailableMutationService,
     build_config_diff,
 )
-from groundskeeping.contracts import (
+from groundskeeping.contracts.actions import (
     ChoiceOption,
     FieldKind,
     FieldSpec,
@@ -42,9 +43,10 @@ from groundskeeping.contracts import (
 from oa_configurator import (  # type: ignore[import-untyped]
     ConfigurationError,
     StackConfig,
+    is_sensitive,
     plan_configure,
 )
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from groundworkers.application.setup.configuration import (
     ConfigurationConflictError,
@@ -199,11 +201,16 @@ class GroundworkersConfigMutationService:
         if not step_key:
             raise ValueError("A configuration step key is required.")
 
+        # Derived from the field specs rather than a second hardcoded list: a
+        # blank answer for a secret means "keep the stored one", and the field
+        # already declares that it is a secret.
+        secret_fields = {item.key for item in session.fields if item.sensitive}
+
         proposed = dict(session.answers)
         for key in discard_fields:
             proposed.pop(key, None)
         for key, value in values.items():
-            if key in _SECRET_FIELDS and value in (None, ""):
+            if key in secret_fields and value in (None, ""):
                 continue
             proposed[key] = value
 
@@ -302,9 +309,7 @@ class GroundworkersConfigMutationService:
             original,
             planned,
             sensitive_fields=frozenset(
-                path
-                for path in set(original) | set(planned)
-                if _is_sensitive_path(path)
+                _sensitive_paths(session.base) | _sensitive_paths(candidate)
             ),
         )
         token = secrets.token_urlsafe(24)
@@ -921,9 +926,43 @@ def _flatten_stack(stack: StackConfig) -> dict[str, object]:
     return flattened
 
 
-def _is_sensitive_path(path: str) -> bool:
-    key = path.rsplit(".", 1)[-1].lower()
-    return any(marker in key for marker in ("password", "api_key", "secret", "token"))
+def _sensitive_paths(model: BaseModel, prefix: str = "") -> set[str]:
+    """Dotted paths into *model* whose field is declared ``Sensitive()``.
+
+    Walks the models rather than the flattened dict `_flatten_stack` produces,
+    so the schema's own declaration decides what the review diff masks, not the
+    field's spelling. Paths line up with `_flatten_stack`'s, and a path for a
+    value that `exclude_none` dropped is simply never looked up.
+
+    `StackConfig.tools` is `dict[str, dict[str, Any]]`, so a package's own tool
+    section carries no field metadata and is not walked. Secrets belong on the
+    `[connections.*]` / `[providers.*]` entries a tool section references, which
+    are typed and are covered here.
+    """
+    paths: set[str] = set()
+    for name, info in type(model).model_fields.items():
+        path = f"{prefix}.{name}" if prefix else name
+        if is_sensitive(info):
+            paths.add(path)
+            continue
+        paths |= _sensitive_paths_in(getattr(model, name, None), path)
+    return paths
+
+
+def _sensitive_paths_in(value: object, path: str) -> set[str]:
+    if isinstance(value, BaseModel):
+        return _sensitive_paths(value, path)
+    if isinstance(value, Mapping):
+        found: set[str] = set()
+        for key, item in value.items():
+            found |= _sensitive_paths_in(item, f"{path}.{key}")
+        return found
+    if isinstance(value, list | tuple):
+        found = set()
+        for index, item in enumerate(value):
+            found |= _sensitive_paths_in(item, f"{path}.{index}")
+        return found
+    return set()
 
 
 def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
@@ -998,7 +1037,6 @@ def _no_model_discovery(
     raise RuntimeError("No model discovery service is configured.")
 
 
-_SECRET_FIELDS = frozenset({"password", "api_key", "llm_api_key"})
 
 _LLM_PROVIDERS: Final = {
     "ollama": "Ollama",

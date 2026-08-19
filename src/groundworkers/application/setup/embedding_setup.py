@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from oa_configurator import ResolvedModel, Resolver
+from oa_configurator import (
+    ResolvedModel,
+    Resolver,
+    safe_endpoint,  # type: ignore[import-untyped]
+)
 from omop_emb import EmbeddingBackend, MetricType
 from omop_llm import (
     ModelBackend,
@@ -25,6 +28,7 @@ from groundworkers.application.setup.models import (
     ProviderSnapshot,
     RegisteredEmbeddingModel,
 )
+from groundworkers.base.results import enum_value, required_enum_value
 from groundworkers.config import GroundworkersConfig
 
 ModelBackendFactory = Callable[[ResolvedModel], ModelBackend]
@@ -83,7 +87,7 @@ def load_embedding_configuration(
         model_entry_name=model.name,
         model_name=model.model,
         embeddings_supported=model.embeddings,
-        api_base=(safe_api_base(model.provider.base_url) if model.provider.base_url else None),
+        api_base=(safe_endpoint(model.provider.base_url) if model.provider.base_url else None),
         database_path=database_path,
         database_path_exists=database_path_exists,
         faiss_cache_dir=vector_store.faiss_cache_dir,
@@ -118,14 +122,14 @@ def probe_embedding_store(
             models.append(
                 RegisteredEmbeddingModel(
                     model_name=record.model_name,
-                    provider=_enum_value(record.provider_type),
+                    provider=required_enum_value(record.provider_type),
                     dimensions=int(record.dimensions),
                     metric=(
-                        _enum_value(record.metric_type)
+                        enum_value(record.metric_type)
                         if record.metric_type is not None
                         else None
                     ),
-                    index_type=_enum_value(record.index_type),
+                    index_type=required_enum_value(record.index_type),
                     has_embeddings=has_embeddings,
                     concept_count=0 if not has_embeddings else None,
                 )
@@ -144,7 +148,7 @@ def probe_embedding_store(
             if any(model.has_embeddings for model in models)
             else EmbeddingStoreState.EMPTY
         ),
-        backend=backend_type or _enum_value(backend.backend_type),
+        backend=backend_type or enum_value(backend.backend_type),
         reachable=True,
         models=tuple(models),
     )
@@ -178,7 +182,7 @@ def probe_provider(
             provider_kind=resolved_model.provider.provider,
             model_entry_name=resolved_model.name,
             api_base=(
-                safe_api_base(resolved_model.provider.base_url)
+                safe_endpoint(resolved_model.provider.base_url)
                 if resolved_model.provider.base_url
                 else None
             ),
@@ -205,7 +209,7 @@ def probe_provider(
             provider_kind=backend.provider,
             model_entry_name=resolved_model.name,
             api_base=(
-                safe_api_base(resolved_model.provider.base_url)
+                safe_endpoint(resolved_model.provider.base_url)
                 if resolved_model.provider.base_url
                 else None
             ),
@@ -223,7 +227,7 @@ def probe_provider(
             provider_kind=backend.provider,
             model_entry_name=resolved_model.name,
             api_base=(
-                safe_api_base(resolved_model.provider.base_url)
+                safe_endpoint(resolved_model.provider.base_url)
                 if resolved_model.provider.base_url
                 else None
             ),
@@ -243,7 +247,7 @@ def probe_provider(
             provider_kind=backend.provider,
             model_entry_name=resolved_model.name,
             api_base=(
-                safe_api_base(resolved_model.provider.base_url)
+                safe_endpoint(resolved_model.provider.base_url)
                 if resolved_model.provider.base_url
                 else None
             ),
@@ -259,7 +263,7 @@ def probe_provider(
         provider_kind=backend.provider,
         model_entry_name=resolved_model.name,
         api_base=(
-            safe_api_base(resolved_model.provider.base_url)
+            safe_endpoint(resolved_model.provider.base_url)
             if resolved_model.provider.base_url
             else None
         ),
@@ -380,10 +384,6 @@ def _diagnostic(
     return ModelDiagnostic(code=code, severity=severity, message=message)
 
 
-def _enum_value(value: object) -> str:
-    return str(getattr(value, "value", value))
-
-
 def _path_exists(value: str, *, base: Path | None) -> bool:
     if value == ":memory:":
         return True
@@ -393,26 +393,3 @@ def _path_exists(value: str, *, base: Path | None) -> bool:
     return path.exists()
 
 
-def safe_api_base(api_base: str) -> str:
-    parts = urlsplit(api_base)
-    host = _safe_netloc_host(parts.hostname or "")
-    if parts.port is not None:
-        host = f"{host}:{parts.port}"
-    safe_query = urlencode(
-        tuple(
-            (key, "***" if _sensitive_key(key) else value)
-            for key, value in parse_qsl(parts.query, keep_blank_values=True)
-        )
-    )
-    return urlunsplit((parts.scheme, host, parts.path, safe_query, ""))
-
-
-def _safe_netloc_host(hostname: str) -> str:
-    if ":" in hostname and not hostname.startswith("["):
-        return f"[{hostname}]"
-    return hostname
-
-
-def _sensitive_key(key: str) -> bool:
-    lowered = key.lower()
-    return any(token in lowered for token in ("key", "secret", "password", "token"))
