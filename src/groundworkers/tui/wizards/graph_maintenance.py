@@ -27,10 +27,11 @@ from groundworkers.application.setup.graph_maintenance import (
     GraphRemediation,
     GraphRemediationRequest,
     build_graph_remediation_commands,
-    launch_graph_remediation,
     outstanding_remediations,
     packaged_predicate_csv_dir,
+    start_graph_remediation_run,
 )
+from groundworkers.application.setup.maintenance_runs import MaintenanceRun
 from groundworkers.application.setup.models import ConnectionResult, MaintenanceLaunch
 from groundworkers.tui.routes import SETUP_ROUTE
 from groundworkers.tui.state import SetupSession
@@ -46,7 +47,7 @@ _LABELS: dict[GraphRemediation, str] = {
     GraphRemediation.FUNCTIONAL_INDEXES: "Create functional text indexes",
 }
 
-Launcher = Callable[[Sequence[object]], tuple[MaintenanceLaunch, ...]]
+Launcher = Callable[[Sequence[object]], tuple[MaintenanceLaunch, ...] | MaintenanceRun]
 
 _SOURCE_BUNDLED = "bundled"
 _SOURCE_CUSTOM = "custom"
@@ -80,7 +81,12 @@ class GraphMaintenanceWizardController:
     ) -> None:
         self._session = session
         self._readiness = readiness
-        self._launcher = launcher or launch_graph_remediation
+        self._launcher = launcher or (
+            lambda commands: start_graph_remediation_run(
+                commands,
+                resource_key=f"graph:{self._session.configuration.path}",
+            )
+        )
         self._outstanding = outstanding_remediations(readiness)
         self._selected: set[GraphRemediation] = set(self._outstanding)
         # Pre-filled from the copy bundled with Groundworkers while omop-graph's
@@ -138,6 +144,16 @@ class GraphMaintenanceWizardController:
                 status=WizardResultStatus.FAILED,
                 summary="The graph preparation did not start.",
                 detail=str(exc),
+                refresh_pages=frozenset({SETUP_ROUTE.key}),
+            )
+        if isinstance(launches, MaintenanceRun):
+            return WizardResult(
+                status=WizardResultStatus.APPLIED,
+                summary=f"Graph preparation run {launches.run_id} started.",
+                detail=(
+                    f"{launches.total} ordered step(s) are persisted under "
+                    f"{launches.root}. Reopen the setup console to inspect progress."
+                ),
                 refresh_pages=frozenset({SETUP_ROUTE.key}),
             )
         detail = "\n".join(

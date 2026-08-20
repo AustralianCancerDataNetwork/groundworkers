@@ -12,6 +12,12 @@ from sqlalchemy.engine import Engine
 from groundworkers.application.setup.embedding_coverage import calculate_coverage
 from groundworkers.application.setup.embedding_setup import load_embedding_configuration
 from groundworkers.application.setup.maintenance import launch_maintenance_command
+from groundworkers.application.setup.maintenance_runs import (
+    MaintenancePlan,
+    MaintenanceRun,
+    MaintenanceRunner,
+    MaintenanceStep,
+)
 from groundworkers.application.setup.models import (
     ConfigurationSnapshot,
     CoverageScope,
@@ -199,6 +205,28 @@ def launch_embedding_population(
     return launch_maintenance_command(
         command, log_prefix="omop-emb", log_dir=log_dir
     )
+
+
+def start_embedding_population_run(
+    command: EmbeddingPopulationCommand,
+    *,
+    resource_key: str,
+    runner: MaintenanceRunner | None = None,
+) -> MaintenanceRun:
+    """Persist and start an embedding population run for one model/store."""
+
+    plan = MaintenancePlan(
+        kind="embedding-population",
+        steps=(
+            MaintenanceStep(
+                key="populate-embeddings",
+                command=command,
+                affected_resources=(resource_key,),
+            ),
+        ),
+        affected_resources=(resource_key,),
+    )
+    return (runner or MaintenanceRunner()).start(plan)
 
 
 def replace_coverage_metadata(coverage: CoverageSnapshot, *, plan) -> CoverageSnapshot:

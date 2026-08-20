@@ -36,6 +36,9 @@ from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
 )
+from groundworkers.application.setup.maintenance_runs import (
+    MaintenanceRunner,
+)
 from groundworkers.application.setup.model_inventory import discover_provider_models
 from groundworkers.application.setup.models import ConfigurationState
 from groundworkers.application.setup.runtime_setup import (
@@ -55,6 +58,7 @@ from groundworkers.tui.presenters.database import (
 from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
+from groundworkers.tui.presenters.runs import RunsPresenter
 from groundworkers.tui.state import SetupSession
 from groundworkers.tui.wizards.config_location import ConfigLocationWizardController
 from groundworkers.tui.wizards.graph_maintenance import GraphMaintenanceWizardController
@@ -65,6 +69,7 @@ LLM_PROVIDER_SECTION = "setup.llm_provider"
 EMBEDDINGS_SECTION = "setup.embeddings"
 CHAT_SECTION = "setup.chat"
 CONFIGURATION_SECTION = "setup.configuration"
+RUNS_SECTION = "setup.runs"
 
 # The database target whose diagnostics decide the Graph section's status.
 GRAPH_READINESS_TARGET = "database.graph"
@@ -75,6 +80,7 @@ SECTION_TITLES = {
     LLM_PROVIDER_SECTION: "LLM Provider Setup",
     EMBEDDINGS_SECTION: "Embeddings Setup",
     CHAT_SECTION: "Chat Setup",
+    RUNS_SECTION: "Runs",
 }
 
 
@@ -92,6 +98,7 @@ class SetupPage(GroundworkersPage):
         embeddings: EmbeddingsPresenter,
         chat: ChatPresenter,
         configuration: ConfigurationPresenter,
+        runs: RunsPresenter | None = None,
     ) -> None:
         super().__init__(route)
         self._session = session
@@ -101,9 +108,11 @@ class SetupPage(GroundworkersPage):
         self._embeddings = embeddings
         self._chat = chat
         self._configuration = configuration
+        self._runs = runs or RunsPresenter()
         self._config_location_offered = False
         self._selected_section = DATABASE_SECTION
         self._selected_database_target_key: str | None = None
+        self._selected_run_id: str | None = None
 
     def activate(self, context: PageContext) -> None:
         if self._should_choose_config_location():
@@ -197,6 +206,11 @@ class SetupPage(GroundworkersPage):
                     "View Configuration",
                     status=self._configuration.status(self._session.configuration),
                 ),
+                SectionItem(
+                    RUNS_SECTION,
+                    "Runs",
+                    status=self._runs.status(),
+                ),
             ),
         )
 
@@ -227,6 +241,8 @@ class SetupPage(GroundworkersPage):
         if self._selected_section == CHAT_SECTION:
             provider = load_llm_provider_configuration(self._session.configuration)
             return self._chat.landing(load_chat_configuration(provider))
+        if self._selected_section == RUNS_SECTION:
+            return self._runs.landing(selected_run_id=self._selected_run_id)
         return self._database.landing(
             self._session.configuration,
             resolve_database_targets(self._session.configuration),
@@ -246,6 +262,10 @@ class SetupPage(GroundworkersPage):
         self._show_section_detail(context)
 
     def row_highlighted(self, row_key: str, context: PageContext) -> None:
+        if self._selected_section == RUNS_SECTION:
+            self._selected_run_id = row_key
+            self._show_current_view(context)
+            return
         if self._selected_section != DATABASE_SECTION:
             return
         previous_key = self._selected_database_target_key
@@ -302,6 +322,12 @@ class SetupPage(GroundworkersPage):
         if action_key == "database.refresh":
             self._session.refresh_configuration()
             self._show_current_state(context)
+            return
+        if action_key == "runs.refresh":
+            self._show_current_state(context)
+            return
+        if action_key in {"runs.cancel", "runs.retry", "runs.postflight", "runs.export"}:
+            self._handle_run_action(action_key, context)
             return
         if action_key == "database.test_connections":
             self._start_connection_checks(context)
@@ -506,6 +532,23 @@ class SetupPage(GroundworkersPage):
                 ),
             )
             return
+        if self._selected_section == RUNS_SECTION:
+            run = next(
+                (
+                    item
+                    for item in self._runs.store.list()
+                    if item.run_id == self._selected_run_id
+                ),
+                None,
+            )
+            context.surface.show_detail(
+                self.route.key,
+                key_value_detail(
+                    "Maintenance run",
+                    run.run_id if run else "Select a run",
+                ),
+            )
+            return
         context.surface.show_detail(
             self.route.key,
             TextView(title=self._selected_section_title(), body=""),
@@ -513,6 +556,31 @@ class SetupPage(GroundworkersPage):
 
     def _selected_section_title(self) -> str:
         return SECTION_TITLES.get(self._selected_section, "Setup")
+
+    def _handle_run_action(self, action_key: str, context: PageContext) -> None:
+        if self._selected_run_id is None:
+            context.notify("Select a maintenance run first.", severity="warning")
+            return
+        try:
+            if action_key == "runs.cancel":
+                self._runs.store.cancel(self._selected_run_id)
+                context.notify("Cancellation requested.")
+            elif action_key == "runs.retry":
+                started = MaintenanceRunner(self._runs.store).retry(
+                    self._selected_run_id
+                )
+                context.notify(f"Retry run {started.run_id} started.")
+            elif action_key == "runs.postflight":
+                started = MaintenanceRunner(self._runs.store).rerun_postflight(
+                    self._selected_run_id
+                )
+                context.notify(f"Postflight run {started.run_id} started.")
+            else:
+                commands = self._runs.store.export_commands(self._selected_run_id)
+                context.notify("\n".join(commands))
+        except (KeyError, ValueError, RuntimeError) as exc:
+            context.notify(str(exc), severity="warning")
+        self._show_current_state(context)
 
     def _set_embedding_vocabulary_selection(
         self,

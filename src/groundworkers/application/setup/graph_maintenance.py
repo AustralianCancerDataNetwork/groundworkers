@@ -19,6 +19,12 @@ from groundworkers.application.setup.maintenance import (
     MaintenanceCommandError,
     run_maintenance_command,
 )
+from groundworkers.application.setup.maintenance_runs import (
+    MaintenancePlan,
+    MaintenanceRun,
+    MaintenanceRunner,
+    MaintenanceStep,
+)
 from groundworkers.application.setup.models import (
     ConnectionResult,
     DiagnosticSeverity,
@@ -34,6 +40,7 @@ __all__ = [
     "launch_graph_remediation",
     "outstanding_remediations",
     "packaged_predicate_csv_dir",
+    "start_graph_remediation_run",
 ]
 
 # The two files omop-graph's loader reads. Named here because both the packaged
@@ -200,6 +207,29 @@ def launch_graph_remediation(
                 f"completed PIDs: {completed}. Failed log: {exc.launch.log_path}"
             ) from exc
     return tuple(launches)
+
+
+def start_graph_remediation_run(
+    commands: Sequence[MaintenanceCommand],
+    *,
+    resource_key: str = "graph:default-cdm",
+    runner: MaintenanceRunner | None = None,
+) -> MaintenanceRun:
+    """Persist and start an ordered graph-preparation maintenance run."""
+
+    plan = MaintenancePlan(
+        kind="graph-preparation",
+        steps=tuple(
+            MaintenanceStep(
+                key=f"graph-{index}",
+                command=command,
+                affected_resources=(resource_key,),
+            )
+            for index, command in enumerate(commands, start=1)
+        ),
+        affected_resources=(resource_key,),
+    )
+    return (runner or MaintenanceRunner()).start(plan)
 
 
 def _executable(name: str) -> str:

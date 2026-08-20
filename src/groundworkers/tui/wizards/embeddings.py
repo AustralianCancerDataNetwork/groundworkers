@@ -25,9 +25,10 @@ from groundworkers.application.setup.embedding_population import (
     DEFAULT_EMBEDDING_BACKFILL_LIMIT,
     DEFAULT_EMBEDDING_BATCH_SIZE,
     build_embedding_population_command,
-    launch_embedding_population,
     load_embedding_coverage_report,
+    start_embedding_population_run,
 )
+from groundworkers.application.setup.maintenance_runs import MaintenanceRun
 from groundworkers.application.setup.models import (
     EmbeddingCoverageReport,
     EmbeddingPopulationCommand,
@@ -64,7 +65,9 @@ class EmbeddingPopulationWizardController:
         coverage: EmbeddingCoverageReport | None = None,
         vocabulary_mode: VocabularyMode | None = None,
         vocabularies: tuple[str, ...] | None = None,
-        launcher: Callable[[EmbeddingPopulationCommand], EmbeddingPopulationLaunch]
+        launcher: Callable[
+            [EmbeddingPopulationCommand], EmbeddingPopulationLaunch | MaintenanceRun | None
+        ]
         | None = None,
     ) -> None:
         self._session = session
@@ -72,7 +75,15 @@ class EmbeddingPopulationWizardController:
             session.configuration,
             standard_only=session.embedding_standard_only,
         )
-        self._launcher = launcher or launch_embedding_population
+        self._launcher = launcher or (
+            lambda command: start_embedding_population_run(
+                command,
+                resource_key=(
+                    f"embedding:{session.configuration.path}:"
+                    f"{command.argv[command.argv.index('--model-name') + 1]}"
+                ),
+            )
+        )
         self._step_index = 0
         resolved_mode = vocabulary_mode or (
             "all" if session.embedding_vocabulary_selection_all else "selected"
@@ -126,6 +137,16 @@ class EmbeddingPopulationWizardController:
                 status=WizardResultStatus.FAILED,
                 summary="Embedding population was not started.",
                 detail=str(exc),
+                refresh_pages=frozenset({SETUP_ROUTE.key}),
+            )
+        if isinstance(launch, MaintenanceRun):
+            return WizardResult(
+                status=WizardResultStatus.APPLIED,
+                summary=f"Embedding population run {launch.run_id} started.",
+                detail=(
+                    f"The ordered run is persisted under {launch.root}. "
+                    "Reopen the setup console to inspect progress."
+                ),
                 refresh_pages=frozenset({SETUP_ROUTE.key}),
             )
         return WizardResult(

@@ -79,7 +79,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             assert tabs.styles.display == "none"
             assert sections.styles.display == "block"
             assert catalogue.styles.display == "none"
-            assert sections.option_count == 6
+            assert sections.option_count == 7
             assert app.query_one("#result-panel").border_title == "Setup"
             # A resolvable config lists its databases, so the context panel shows
             # the highlighted row's detail rather than the setup placeholder.
@@ -94,6 +94,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
                 "setup.embeddings",
                 "setup.chat",
                 "setup.configuration",
+                "setup.runs",
             )
 
             sections.focus()

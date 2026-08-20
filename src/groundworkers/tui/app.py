@@ -24,6 +24,7 @@ def build_groundworkers_tui_spec(
     from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
     from groundworkers.tui.presenters.graph import GraphPresenter
     from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
+    from groundworkers.tui.presenters.runs import RunsPresenter
     from groundworkers.tui.routes import SETUP_ROUTE
 
     session = load_tui_state(config_path=config_path, ownership=ownership)
@@ -38,6 +39,7 @@ def build_groundworkers_tui_spec(
             embeddings=EmbeddingsPresenter(),
             chat=ChatPresenter(),
             configuration=ConfigurationPresenter(),
+            runs=RunsPresenter(),
         )
 
     return OperatorAppSpec(
