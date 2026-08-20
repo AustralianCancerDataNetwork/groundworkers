@@ -186,7 +186,11 @@ def probe_provider(
                 if resolved_model.provider.base_url
                 else None
             ),
-            configured_model=resolved_model.model,
+            # Canonical, as every other exit from this function is: the name is
+            # compared against the embedding store's registry, which holds
+            # canonical names, so an unreachable provider must not report a
+            # differently-spelled model from a reachable one.
+            configured_model=_canonical_or_raw(resolved_model),
             capabilities=ProviderCapabilities(
                 list_models=inventory_discoverer is not None,
                 encode_probe=resolved_model.embeddings,
@@ -276,17 +280,48 @@ def probe_provider(
     )
 
 
+def _canonical_or_raw(resolved_model: ResolvedModel) -> str:
+    """The model's canonical name, or its configured spelling if unrecognised."""
+
+    try:
+        return canonical_model_name(
+            resolved_model.provider.provider, resolved_model.model
+        )
+    except Exception:
+        # Broad except: an unregistered provider key is a configuration problem
+        # reported elsewhere, not a reason to lose the snapshot.
+        return resolved_model.model
+
+
 def reconcile_models(
     *,
     configured_model: str | None,
     registered_models: Sequence[RegisteredEmbeddingModel],
     provider: ProviderSnapshot | None,
+    store: EmbeddingStoreSnapshot | None = None,
 ) -> ModelReconciliation:
+    """Judge the configured model against the store that must hold its vectors
+    and the provider that must produce them.
+
+    *store* is optional only for callers that already know the registry was
+    read successfully. Without it an unreachable store is indistinguishable from
+    an empty one, and the empty reading is the reassuring one.
+    """
     diagnostics: list[ModelDiagnostic] = []
     registered = tuple(registered_models)
     selected = next(
         (item for item in registered if item.model_name == configured_model), None
     )
+
+    if store is not None and not store.reachable:
+        diagnostics.append(
+            _diagnostic(
+                "store_unreachable",
+                DiagnosticSeverity.ERROR,
+                "The embedding store could not be reached, so what it holds is unknown."
+                + (f" {store.failure.detail}" if store.failure is not None else ""),
+            )
+        )
 
     if configured_model is None and len(registered) > 1:
         diagnostics.append(
@@ -324,7 +359,24 @@ def reconcile_models(
             )
         )
     elif provider is not None:
-        if not provider.capabilities.encode_probe:
+        if not provider.reachable:
+            # Checked before the capability and encode branches below, which both
+            # read as verdicts about the model. An endpoint that never answered
+            # has told us nothing about the model, and sends the operator at the
+            # wrong fix.
+            diagnostics.append(
+                _diagnostic(
+                    "provider_unreachable",
+                    DiagnosticSeverity.ERROR,
+                    "The provider endpoint could not be reached."
+                    + (
+                        f" {provider.failure.detail}"
+                        if provider.failure is not None
+                        else ""
+                    ),
+                )
+            )
+        elif not provider.capabilities.encode_probe:
             diagnostics.append(
                 _diagnostic(
                     "provider_embeddings_unsupported",
@@ -375,6 +427,7 @@ def reconcile_models(
         registered_models=registered,
         provider=provider,
         diagnostics=tuple(diagnostics),
+        store=store,
     )
 
 

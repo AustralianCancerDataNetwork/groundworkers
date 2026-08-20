@@ -7,11 +7,11 @@ import tomllib
 from pathlib import Path
 
 from oa_configurator import (
-    DEFAULT_CONFIG_PATH,
     ConfigurationError,
     StackConfig,
     save_stack_config,
 )
+from oa_configurator import loader as _loader
 from pydantic import ValidationError
 
 from groundworkers.application.setup.models import (
@@ -21,11 +21,28 @@ from groundworkers.application.setup.models import (
     ConfigurationState,
     SetupIssue,
 )
-from groundworkers.config import GroundworkersConfig
+from groundworkers.config import GroundworkersConfig, split_vocabulary_connection
 
 
 class ConfigurationConflictError(RuntimeError):
     """Raised when a save would overwrite configuration changed elsewhere."""
+
+
+def resolved_config_path() -> Path:
+    """The stack configuration the running process would load on its own.
+
+    ``OA_CONFIG_PATH`` when set, otherwise ``~/.config/omop/config.toml``.
+
+    Read through the module attribute rather than imported as a name, so this
+    returns the same value ``load_stack_config`` will: oa-configurator resolves
+    ``CONFIG_PATH`` once at import, and the setup console must not resolve a
+    second, differently-timed answer. The console previously defaulted to
+    ``DEFAULT_CONFIG_PATH``, which ignores the environment variable entirely --
+    so with it set, the console edited one file and ``groundworkers serve`` read
+    another.
+    """
+
+    return Path(_loader.CONFIG_PATH)
 
 
 def missing_revision(path: str | Path) -> str:
@@ -42,7 +59,7 @@ def load_configuration(
 ) -> ConfigurationSnapshot:
     """Load setup configuration without constructing the runtime application."""
 
-    path = Path(config_path or DEFAULT_CONFIG_PATH).expanduser().resolve()
+    path = Path(config_path or resolved_config_path()).expanduser().resolve()
     ownership = ownership or ConfigurationOwnership()
     if not path.exists():
         return ConfigurationSnapshot(
@@ -110,7 +127,15 @@ def save_configuration(
             "This configuration is read-only; use its controlling source to edit it."
         )
     validated = StackConfig.model_validate(stack.model_dump(mode="python"))
-    GroundworkersConfig.validate_candidate(validated)
+    groundworkers = GroundworkersConfig.validate_candidate(validated)
+    split = split_vocabulary_connection(validated, groundworkers.cdm_db)
+    if split is not None:
+        primary, vocabulary = split
+        raise ValueError(
+            f"The CDM database reads its vocabulary from connection {vocabulary!r} and "
+            f"its clinical tables from {primary!r}. Groundworkers uses one connection "
+            "for both; separate them with vocab_schema instead."
+        )
     destination = Path(path).expanduser().resolve()
     existed = destination.exists()
     if existed:
@@ -142,7 +167,7 @@ def save_configuration(
 
 def _incomplete_issues(stack: StackConfig) -> tuple[SetupIssue, ...]:
     try:
-        GroundworkersConfig.validate_candidate(stack)
+        groundworkers = GroundworkersConfig.validate_candidate(stack)
     except (ConfigurationError, ValidationError, ValueError) as exc:
         return (
             SetupIssue(
@@ -151,6 +176,22 @@ def _incomplete_issues(stack: StackConfig) -> tuple[SetupIssue, ...]:
                 message=(
                     "Groundworkers needs a valid CDM database reference before it can start. "
                     f"Validation failed with {type(exc).__name__}."
+                ),
+            ),
+        )
+    # Reference-valid but unrunnable: the runtime refuses this at bootstrap, so
+    # the console must not present it as merely unverified.
+    split = split_vocabulary_connection(stack, groundworkers.cdm_db)
+    if split is not None:
+        primary, vocabulary = split
+        return (
+            SetupIssue(
+                code="vocabulary_connection_split",
+                field=f"databases.{groundworkers.cdm_db}.vocab_connection",
+                message=(
+                    f"The CDM database reads its vocabulary from connection {vocabulary!r} "
+                    f"and its clinical tables from {primary!r}. Groundworkers uses one "
+                    "connection for both; separate them with vocab_schema instead."
                 ),
             ),
         )

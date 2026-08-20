@@ -72,6 +72,10 @@ class DatabaseTarget:
     vocabulary_schema: str
     connection_url: str = field(repr=False)
     role: str = "cdm"
+    # The schema omop-emb's registry and storage tables live in, when this target
+    # touches them. Distinct from cdm_schema, which is never None and falls back
+    # to a dialect default; None here means "no override, use the search path".
+    embedding_schema: str | None = None
     expected_embedding_model_name: str | None = None
     embedding_safe_url: str | None = None
     embedding_connection_url: str | None = field(default=None, repr=False)
@@ -317,12 +321,29 @@ class ModelReconciliation:
     registered_models: tuple[RegisteredEmbeddingModel, ...]
     provider: ProviderSnapshot | None
     diagnostics: tuple[ModelDiagnostic, ...]
+    store: EmbeddingStoreSnapshot | None = None
 
     @property
     def ready_for_population(self) -> bool:
         return not any(
             item.severity is DiagnosticSeverity.ERROR for item in self.diagnostics
         )
+
+    @property
+    def model_is_registered(self) -> bool:
+        """Whether the store already holds a registry entry for this model."""
+        return any(
+            item.model_name == self.configured_model
+            for item in self.registered_models
+        )
+
+    @property
+    def worst_severity(self) -> DiagnosticSeverity | None:
+        """The most serious thing found, or None when nothing was."""
+        for severity in (DiagnosticSeverity.ERROR, DiagnosticSeverity.WARNING):
+            if any(item.severity is severity for item in self.diagnostics):
+                return severity
+        return None
 
 
 @dataclass(frozen=True)

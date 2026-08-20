@@ -459,7 +459,8 @@ def test_embedding_coverage_refresh_shows_loading_state(
             await pilot.press("enter")
             await pilot.pause()
 
-            await pilot.click("#view-action-0")
+            assert str(app.query_one("#view-action-0").label) == "Check model"
+            await pilot.click("#view-action-1")
             await pilot.pause(0.05)
 
             assert app.query_one("#result-loading").styles.display == "block"
@@ -547,7 +548,7 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
             sections.highlighted = 3
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.click("#view-action-0")
+            await pilot.click("#view-action-1")
             await pilot.pause(0.2)
 
             setup = app.query_one("#result-table")

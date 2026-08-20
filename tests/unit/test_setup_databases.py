@@ -3,16 +3,23 @@ from __future__ import annotations
 import socket
 from pathlib import Path
 
+from oa_configurator.io import save_stack_config
 from sqlalchemy import create_engine, text
 
 from groundworkers.application.setup.configuration import load_configuration
 from groundworkers.application.setup.databases import (
+    _embedding_registry_rows,
     _index_defines_lower_expression,
     classify_connection_error,
     resolve_database_targets,
     verify_database_target,
 )
-from groundworkers.application.setup.models import ConnectionFailureKind, DatabaseTarget
+from groundworkers.application.setup.models import (
+    ConfigurationState,
+    ConnectionFailureKind,
+    DatabaseTarget,
+)
+from tests.support.stack_config import build_embedding_stack
 
 VALID_DATABASE_CONFIG = """
 [connections.main]
@@ -44,7 +51,11 @@ def test_database_targets_are_resolved_with_safe_urls(tmp_path: Path) -> None:
     assert "connection_url" not in repr(targets[0])
 
 
-def test_distinct_vocabulary_connection_is_a_separate_target(tmp_path: Path) -> None:
+def test_distinct_vocabulary_connection_is_refused_rather_than_targeted(
+    tmp_path: Path,
+) -> None:
+    """Nothing reads a second engine, so offering it as a target would promise a
+    split the runtime does not honour."""
     path = tmp_path / "config.toml"
     path.write_text(
         """
@@ -69,13 +80,13 @@ cdm_db = "cdm_db"
         encoding="utf-8",
     )
 
-    targets = resolve_database_targets(load_configuration(config_path=path))
+    snapshot = load_configuration(config_path=path)
 
-    vocabulary = next(
-        target for target in targets if target.key == "database.vocabulary"
-    )
-    assert vocabulary.connection_name == "vocabulary"
-    assert vocabulary.safe_url.endswith("vocabulary.db")
+    assert snapshot.state is ConfigurationState.INCOMPLETE
+    assert [issue.code for issue in snapshot.issues] == [
+        "vocabulary_connection_split"
+    ]
+    assert resolve_database_targets(snapshot) == ()
 
 
 def test_database_verification_records_latency(tmp_path: Path) -> None:
@@ -231,6 +242,70 @@ def test_embedding_readiness_reports_valid_registered_model(tmp_path: Path) -> N
         "embedding_registry_present",
         "embedding_table_valid",
     }
+
+
+def test_the_registry_is_read_from_the_configured_schema(tmp_path: Path) -> None:
+    """The hand-written SELECT this replaced named the table unqualified, and
+    text() is exempt from schema_translate_map -- so a store with a schema was
+    written by omop-emb into it and read back from the default one."""
+    default_path = tmp_path / "default.db"
+    store_path = tmp_path / "store.db"
+    _create_registry(store_path, model_name="in-the-store")
+    _create_registry(default_path, model_name="in-the-default-schema")
+
+    engine = create_engine(f"sqlite:///{default_path}")
+    with engine.connect() as connection:
+        connection.execute(text(f"ATTACH DATABASE '{store_path}' AS vectors"))
+
+        rows = _embedding_registry_rows(connection, schema="vectors")
+        unqualified = _embedding_registry_rows(connection, schema=None)
+    engine.dispose()
+
+    assert [row["model_name"] for row in rows] == ["in-the-store"]
+    assert [row["model_name"] for row in unqualified] == ["in-the-default-schema"]
+
+
+def test_the_embedding_targets_carry_the_stores_schema(tmp_path: Path) -> None:
+    """Both targets that read omop-emb's tables need it, and neither can borrow
+    the CDM's."""
+    path = tmp_path / "config.toml"
+    save_stack_config(build_embedding_stack("pgvector"), path)
+
+    targets = {
+        target.key: target
+        for target in resolve_database_targets(load_configuration(config_path=path))
+    }
+
+    assert targets["database.embedding"].embedding_schema == "groundworkers"
+    assert targets["database.groundworkers"].embedding_schema == "groundworkers"
+    assert targets["database.cdm"].embedding_schema is None
+
+
+def _create_registry(db_path: Path, *, model_name: str) -> None:
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE model_registry (
+                    model_name TEXT PRIMARY KEY,
+                    storage_identifier TEXT NOT NULL,
+                    dimensions INTEGER NOT NULL,
+                    index_type TEXT NOT NULL,
+                    metric_type TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO model_registry "
+                "(model_name, storage_identifier, dimensions, index_type, metric_type) "
+                "VALUES (:model_name, 'emb_test_model', 3, 'FLAT', NULL)"
+            ),
+            {"model_name": model_name},
+        )
+    engine.dispose()
 
 
 def test_groundworkers_tuning_warns_when_grounding_model_is_missing(

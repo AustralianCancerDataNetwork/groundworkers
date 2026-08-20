@@ -1,10 +1,20 @@
-If it's your first time starting up, you will need to select a location for your config file.
-
 **IMPORTANT NOTE** - groundworkers is in beta state at the moment (as at August 2026). The configuration options below are the ones that have been tested from scratch. Although file based options for database backing and cached embeddings are supproted by their individual libraries, we recommend sticking to pgvector for both at this time.
 
 Similarly, if you choose not to apply the omop-graph optimisations for string indices and clustering, you should expect that graph operations will be slow. These indices take more space than is typical for standard OMOP CDM vocabularies, but they do significantly improve performance.
 
 These instructions cover setup for local use in a python virtual environment, which is useful to run through claude code, or similar. If you want a visual tool inspector, [the bedrock repository](https://github.com/AustralianCancerDataNetwork/bedrock), which offers a containerised version, may also be an option.
+
+### Local Dev Installation
+
+Demonstrated configuration: 
+
+```
+uv pip install -e ".[tui,all_source,embedding-pgvector]"
+```
+
+### Create Config
+
+If it's your first time starting up, you will need to select a location for your config file.
 
 ![Create Config](./static/01_create_config.png)
 
@@ -24,9 +34,12 @@ Not a requirement (yet):
 - fulltext extension
 - index creation optional
 
-![Database Wizard](./static/03_1_configure_cdm.png)
-![Database Wizard](./static/03_2_configure_cdm.png)
-![Database Wizard](./static/03_3_configure_cdm.png)
+![Database Wizard](./static/03_config_wizard.png)
+
+Press *Test connections* to validate the setup.
+
+
+![Test Connections](./static/04_test_cnx.png)
 
 Click through the different rows in the *Setup* pane and you can view different warnings in the *Database detail* pane
 

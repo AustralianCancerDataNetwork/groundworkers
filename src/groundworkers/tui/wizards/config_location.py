@@ -16,8 +16,13 @@ from groundskeeping.contracts.wizards import (
     WizardTransition,
     validate_wizard_steps,
 )
-from oa_configurator import DEFAULT_CONFIG_PATH  # type: ignore[import-untyped]
 
+from groundworkers._env import (
+    ENV_CONFIG_PATH,
+    env_file_path,
+    rejected_config_path,
+)
+from groundworkers.application.setup.configuration import resolved_config_path
 from groundworkers.tui.routes import SETUP_ROUTE
 from groundworkers.tui.state import SetupSession
 
@@ -29,20 +34,12 @@ class ConfigLocationWizardController:
     else. Every actual configuration journey -- the CDM database, the embedding
     model, the chat model -- already exists behind the setup page's own
     workflows, and this hands straight back to them once the location is known.
-
-    It exists because the setup console previously assumed the default location
-    silently. An operator with a config somewhere else had no way to say so from
-    inside the TUI, and one who wanted it somewhere else could only find out
-    after the first write had already gone to the default path.
     """
 
     spec = WizardSpec(
         key="groundworkers.config-location",
         title="Choose the configuration location",
         purpose="Accept the default location or point Groundworkers at an existing file.",
-        # Kept short deliberately: groundskeeping fixes the wizard buttons at
-        # width 14, so a longer label wraps to two lines and breaks the row's
-        # alignment. The other buttons are 4-6 characters.
         apply_label="Confirm",
     )
 
@@ -54,8 +51,10 @@ class ConfigLocationWizardController:
     ) -> None:
         self._session = session
         self._original = session.configuration.path
+        self._resolved = resolved_config_path()
+        self._rejected = rejected_config_path()
         self._default = Path(
-            default_path or session.config_path or DEFAULT_CONFIG_PATH
+            default_path or session.config_path or self._rejected or self._resolved
         ).expanduser()
         self._selected = self._default
         self._step_index = 0
@@ -82,6 +81,10 @@ class ConfigLocationWizardController:
 
     def apply(self) -> WizardResult:
         self._session.config_path = self._selected
+        # The one place the console is told where the configuration lives, as
+        # opposed to which file to read now. The session writes the pointer once
+        # there is a configuration at that path to point at.
+        self._session.record_location = not self._is_resolved_default()
         self._session.refresh_configuration()
         snapshot = self._session.configuration
         if snapshot.usable:
@@ -91,8 +94,27 @@ class ConfigLocationWizardController:
         return WizardResult(
             status=WizardResultStatus.APPLIED,
             summary=summary,
-            detail="Continue in the Database section to configure the CDM connection.",
+            detail=self._persistence_detail(recorded=snapshot.usable),
             refresh_pages=frozenset({SETUP_ROUTE.key}),
+        )
+
+    def _is_resolved_default(self) -> bool:
+        """Whether a fresh process already resolves the selected path unaided."""
+
+        return self._selected.expanduser().resolve() == self._resolved
+
+    def _persistence_detail(self, *, recorded: bool) -> str:
+        next_step = "Continue in the Database section to configure the CDM connection."
+        if self._is_resolved_default():
+            return next_step
+        if recorded:
+            return (
+                f"Recorded in {env_file_path()}, so later runs read it too. "
+                f"{next_step}"
+            )
+        return (
+            f"{ENV_CONFIG_PATH} is recorded in {env_file_path()} once the "
+            f"configuration is first saved, so later runs read it too. {next_step}"
         )
 
     def cancel(self) -> WizardResult:
@@ -118,9 +140,19 @@ class ConfigLocationWizardController:
                     "config_path",
                     "Configuration file",
                     default=str(self._default),
-                    help="Accept the default, or give the path to an existing config.toml.",
+                    help=self._location_help(),
                 ),
             ),
+        )
+
+    def _location_help(self) -> str:
+        if self._rejected is not None:
+            return (
+                f"{ENV_CONFIG_PATH}: {self._rejected} does not exist - it will be created"
+            )
+        return (
+            f"{self._resolved} is what Groundworkers resolves on its own. Another "
+            f"path is recorded in {env_file_path()} so later runs find it too."
         )
 
     def _review_step(self) -> ReviewStep:
@@ -130,6 +162,15 @@ class ConfigLocationWizardController:
             warnings.append(
                 f"{self._selected.parent} does not exist yet and will be created "
                 "when the configuration is first saved."
+            )
+        if not self._is_resolved_default():
+            # Groundworkers passes OA_CONFIG_PATH to every maintenance command it
+            # launches, so those follow. A stack CLI the operator runs by hand
+            # does not read this file and will resolve the default.
+            warnings.append(
+                f"Groundworkers will read this path, and so will the maintenance "
+                f"commands it launches. omop-emb, omop-alchemy and omop-graph run "
+                f"by hand need {ENV_CONFIG_PATH} in their own environment."
             )
         return ReviewStep(
             key="review",
@@ -143,9 +184,19 @@ class ConfigLocationWizardController:
                     ),
                 ),
                 effects=(
-                    "Load the existing configuration."
-                    if exists
-                    else "Start a new configuration at this path.",
+                    (
+                        "Load the existing configuration."
+                        if exists
+                        else "Start a new configuration at this path."
+                    ),
+                    *(
+                        ()
+                        if self._is_resolved_default()
+                        else (
+                            f"Record {ENV_CONFIG_PATH}={self._selected} in "
+                            f"{env_file_path()}, so later runs read it too.",
+                        )
+                    ),
                 ),
                 warnings=tuple(warnings),
             ),

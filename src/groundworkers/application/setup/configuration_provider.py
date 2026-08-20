@@ -41,6 +41,7 @@ from groundskeeping.contracts.actions import (
     ValidationIssue,
 )
 from oa_configurator import (  # type: ignore[import-untyped]
+    CDMDatabaseConfig,
     ConfigurationError,
     StackConfig,
     is_sensitive,
@@ -103,6 +104,27 @@ ModelDiscoverer = Callable[[str, str | None, str | None], Sequence[str]]
 # already exist) or from the provider (population must follow).
 MODEL_SOURCE_REGISTERED: Final = "registered"
 MODEL_SOURCE_NEW: Final = "new"
+
+# Where the vectors are stored. `cdm` derives the store's database from the CDM
+# entry -- same connection, same schema -- so the ordinary case needs no answers
+# at all; `separate` opens the step that asks for them. oa-configurator requires
+# a vector store to name a *generic* database entry and a CDM entry is a distinct
+# kind, so `cdm` still writes an entry; it just derives every field of it.
+STORE_LOCATION_CDM: Final = "cdm"
+STORE_LOCATION_SEPARATE: Final = "separate"
+# Suffix for the derived entry. The name is a config-level label only: the
+# connection and schema underneath it are the CDM's own.
+CDM_VECTOR_DATABASE_SUFFIX: Final = "_vectors"
+
+# Which omop-emb backend can actually store vectors in a given CDM dialect.
+_BACKEND_FOR_DIALECT: Final = {
+    "sqlite": "sqlitevec",
+    "postgresql": "pgvector",
+}
+_BACKEND_CHOICES: Final = (
+    ChoiceOption("sqlitevec", "sqlite-vec (single file, no server)"),
+    ChoiceOption("pgvector", "pgvector (PostgreSQL extension)"),
+)
 ApplyCallback = Callable[[], None]
 
 
@@ -237,7 +259,7 @@ class GroundworkersConfigMutationService:
                 continue
             proposed[key] = value
 
-        issues = self._submission_issues(session.target, step_key, proposed, values)
+        issues = self._submission_issues(session, step_key, proposed, values)
         if issues:
             return ConfigStepResult(
                 issues=issues,
@@ -299,6 +321,10 @@ class GroundworkersConfigMutationService:
                         help="Models reported by the accepted provider endpoint.",
                     ),
                 )
+        elif session.target == VECTOR_STORE_SETUP_TARGET and step_key == "location":
+            # The CDM's dialect decides which omop-emb backend can store vectors
+            # in it, so once the location is known the choice narrows to one.
+            future_fields = (_backend_type_field(session.base, proposed),)
         elif session.target == MODEL_SETUP_TARGET and step_key == "registry":
             future_fields = (self._model_choice_field(session, proposed),)
         elif session.target == MODEL_SETUP_TARGET and step_key == "model":
@@ -555,11 +581,18 @@ class GroundworkersConfigMutationService:
 
     def _submission_issues(
         self,
-        target: ConfigTarget,
+        session: _MutationSession,
         step_key: str,
         proposed: Mapping[str, object],
         submitted: Mapping[str, object],
     ) -> tuple[ValidationIssue, ...]:
+        """Validate one step's answers against the journey and the stack.
+
+        Takes the session rather than the target alone: some answers are only
+        wrong in the context of what the stack already holds, e.g. a backend the
+        CDM database's dialect cannot serve.
+        """
+        target = session.target
         issues: list[ValidationIssue] = []
         if target == CDM_SETUP_TARGET:
             for key in ("connection_name", "database_name", "cdm_db_name"):
@@ -614,12 +647,33 @@ class GroundworkersConfigMutationService:
                     )
                 )
         elif target == VECTOR_STORE_SETUP_TARGET:
+            if step_key == "location":
+                location = _optional_text(proposed.get("store_location"))
+                if location not in {STORE_LOCATION_CDM, STORE_LOCATION_SEPARATE}:
+                    issues.append(
+                        ValidationIssue(
+                            "Choose where the vectors are stored.",
+                            field_key="store_location",
+                        )
+                    )
+                elif (
+                    location == STORE_LOCATION_CDM
+                    and _cdm_entry(session.base)[1] is None
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            "There is no CDM database to store vectors in yet. "
+                            "Run the CDM journey first, or choose somewhere else.",
+                            field_key="store_location",
+                        )
+                    )
             if step_key == "store":
                 for key in ("store_entry_name", "backend_type"):
                     if not _optional_text(proposed.get(key)):
                         issues.append(
                             ValidationIssue("A value is required.", field_key=key)
                         )
+                issues.extend(_backend_location_issues(session.base, proposed))
             if step_key == "database":
                 for key in ("store_database_name", "store_connection_name"):
                     if not _optional_text(proposed.get(key)):
@@ -667,7 +721,7 @@ class GroundworkersConfigMutationService:
         elif session.target == MODEL_SETUP_TARGET:
             set_dict = _model_set_dict(session.answers)
         elif session.target == VECTOR_STORE_SETUP_TARGET:
-            set_dict = _vector_store_set_dict(session.answers)
+            set_dict = _vector_store_set_dict(session.answers, session.base)
         elif session.target == LLM_SETUP_TARGET:
             set_dict = _llm_set_dict(session.answers)
         else:
@@ -776,15 +830,27 @@ def model_setup_workflow(
 def vector_store_setup_workflow(
     operation: MutationOperation,
 ) -> ConfigWorkflowSpec:
-    """Describe creating the embedding store and the database it lives in."""
+    """Describe creating the embedding store and the database it lives in.
+
+    Location is asked first and defaults to the CDM database, because that is
+    what the rest of the tier already assumes: the embedding adapter enriches
+    from ``cdm_engine`` and coverage counts the CDM's own concepts. Somewhere
+    else is a real option, but it is the opt-in, and answering it is the only
+    reason the database step exists.
+    """
 
     return ConfigWorkflowSpec(
         key="groundworkers-vector-store",
         target=VECTOR_STORE_SETUP_TARGET,
         operation=operation,
         title="Configure the Groundworkers embedding store",
-        purpose="Choose a backend and the database its vectors are stored in.",
+        purpose="Choose where vectors are stored, and the backend that stores them.",
         steps=(
+            ConfigWorkflowStep(
+                "location",
+                "Where the vectors live",
+                ("store_location",),
+            ),
             ConfigWorkflowStep(
                 "store",
                 "Choose the backend",
@@ -792,8 +858,14 @@ def vector_store_setup_workflow(
             ),
             ConfigWorkflowStep(
                 "database",
-                "Where the vectors live",
+                "Describe the separate database",
                 ("store_database_name", "store_connection_name", "store_schema_name"),
+                when=(
+                    ConfigBranchCondition(
+                        "store_location",
+                        frozenset({STORE_LOCATION_SEPARATE}),
+                    ),
+                ),
             ),
         ),
     )
@@ -840,8 +912,8 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             kind=FieldKind.CHOICE,
             default=dialect,
             choices=(
-                ChoiceOption("sqlite", "SQLite"),
                 ChoiceOption("postgresql+psycopg", "PostgreSQL"),
+                ChoiceOption("sqlite", "SQLite"),
             ),
         ),
         FieldSpec(
@@ -983,12 +1055,11 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     database_name = getattr(store, "database", "embedding_db")
     database = stack.databases.get(database_name)
     connection_name = getattr(database, "connection", None)
-    # Defaults to the CDM's own connection: for pgvector the store usually lives
-    # on the same server, and it is the one connection known to work.
-    cdm_name = _optional_text(tool.get("cdm_db", "cdm_db"))
-    cdm = stack.databases.get(cdm_name or "")
+    _, cdm = _cdm_entry(stack)
     connections = tuple(stack.connections) or ("cdm_main",)
+    location = _store_location_field(stack, database)
     return (
+        location,
         FieldSpec(
             "store_entry_name", "Store entry", default=store_name or "embeddings"
         ),
@@ -996,11 +1067,10 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "backend_type",
             "Backend",
             kind=FieldKind.CHOICE,
-            default=getattr(store, "backend_type", "sqlitevec"),
-            choices=(
-                ChoiceOption("sqlitevec", "sqlite-vec (single file, no server)"),
-                ChoiceOption("pgvector", "pgvector (PostgreSQL extension)"),
-            ),
+            default=getattr(store, "backend_type", None)
+            or _backend_for_stack(stack)
+            or "sqlitevec",
+            choices=_BACKEND_CHOICES,
         ),
         FieldSpec(
             "store_database_name", "Database entry", default=database_name
@@ -1019,7 +1089,13 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "store_schema_name",
             "Schema",
             required=False,
-            default=getattr(database, "schema_name", None) or "public",
+            # No hardcoded fallback: 'public' is a PostgreSQL name, and it was
+            # being offered for SQLite stores and for CDMs whose own schema is
+            # something else. Blank means no override, which is right whenever
+            # there is nothing better to copy.
+            default=getattr(database, "schema_name", None)
+            or getattr(cdm, "schema_name", None),
+            help="Blank uses the connection's own default schema.",
         ),
         FieldSpec(
             "faiss_cache_dir",
@@ -1029,6 +1105,148 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             help="Optional query-time cache. Leave blank unless using the embedding-faiss extra.",
         ),
     )
+
+
+def _cdm_entry(stack: StackConfig) -> tuple[str, CDMDatabaseConfig | None]:
+    """The CDM database entry Groundworkers is pointed at, and its name."""
+
+    tool = stack.tools.get(GroundworkersConfig.tool_name, {})
+    name = _optional_text(tool.get("cdm_db", "cdm_db")) or "cdm_db"
+    entry = stack.databases.get(name)
+    return name, entry if isinstance(entry, CDMDatabaseConfig) else None
+
+
+def _store_location_field(
+    stack: StackConfig,
+    database: object | None,
+) -> FieldSpec:
+    """Offer the CDM database first, and only offer it when there is one.
+
+    Preselects what the stored store already does, so re-running the journey on
+    a configured stack does not silently propose to move the vectors.
+    """
+
+    cdm_name, cdm = _cdm_entry(stack)
+    separate = ChoiceOption(
+        STORE_LOCATION_SEPARATE, "Somewhere else (choose a connection and schema)"
+    )
+    if cdm is None:
+        return FieldSpec(
+            "store_location",
+            "Vector storage",
+            kind=FieldKind.CHOICE,
+            default=STORE_LOCATION_SEPARATE,
+            choices=(separate,),
+            help=(
+                "No CDM database is configured yet. Run the CDM journey first to "
+                "store vectors alongside it."
+            ),
+        )
+    stored = (
+        STORE_LOCATION_CDM
+        if database is not None and _matches_cdm(database, cdm)
+        else STORE_LOCATION_SEPARATE
+        if database is not None
+        else STORE_LOCATION_CDM
+    )
+    return FieldSpec(
+        "store_location",
+        "Vector storage",
+        kind=FieldKind.CHOICE,
+        default=stored,
+        choices=(
+            ChoiceOption(
+                STORE_LOCATION_CDM,
+                f"In the CDM database ({cdm_name})",
+            ),
+            separate,
+        ),
+        help=(
+            "The embedding tier already reads the CDM for concept text and coverage. "
+            "Keeping the vectors there needs no further answers."
+        ),
+    )
+
+
+def _matches_cdm(database: object, cdm: CDMDatabaseConfig) -> bool:
+    return (
+        getattr(database, "connection", None) == cdm.connection
+        and getattr(database, "schema_name", None) == cdm.schema_name
+    )
+
+
+def _backend_type_field(
+    stack: StackConfig,
+    answers: Mapping[str, object],
+) -> FieldSpec:
+    """The backend choice, narrowed once the storage location is known."""
+
+    stored = _optional_text(answers.get("backend_type")) or _stored_backend(stack)
+    backend = _backend_for_stack(stack)
+    if _store_location(answers) != STORE_LOCATION_CDM or backend is None:
+        return FieldSpec(
+            "backend_type",
+            "Backend",
+            kind=FieldKind.CHOICE,
+            default=stored or backend or "sqlitevec",
+            choices=_BACKEND_CHOICES,
+        )
+    return FieldSpec(
+        "backend_type",
+        "Backend",
+        kind=FieldKind.CHOICE,
+        default=backend,
+        choices=tuple(item for item in _BACKEND_CHOICES if item.value == backend),
+        help="Fixed by the CDM database's dialect, which is where the vectors go.",
+    )
+
+
+def _backend_location_issues(
+    stack: StackConfig,
+    answers: Mapping[str, object],
+) -> tuple[ValidationIssue, ...]:
+    """Refuse a backend the CDM database cannot serve.
+
+    Only meaningful for the in-the-CDM location: elsewhere the store's own
+    connection decides, and that connection is chosen a step later.
+    """
+
+    if _store_location(answers) != STORE_LOCATION_CDM:
+        return ()
+    required = _backend_for_stack(stack)
+    backend = _optional_text(answers.get("backend_type"))
+    if required is None or backend is None or backend == required:
+        return ()
+    return (
+        ValidationIssue(
+            f"The CDM database can only store vectors through {required!r}. "
+            "Choose that backend, or store the vectors somewhere else.",
+            field_key="backend_type",
+        ),
+    )
+
+
+def _stored_backend(stack: StackConfig) -> str | None:
+    """The backend the configured store already uses, if there is one."""
+
+    tool = stack.tools.get(GroundworkersConfig.tool_name, {})
+    name = _optional_text(tool.get("vector_store_name"))
+    store = stack.vector_stores.get(name) if name else None
+    return getattr(store, "backend_type", None)
+
+
+def _backend_for_stack(stack: StackConfig) -> str | None:
+    """The only omop-emb backend that can store vectors in the CDM's own database."""
+
+    _, cdm = _cdm_entry(stack)
+    if cdm is None:
+        return None
+    connection = stack.connections.get(cdm.connection)
+    dialect = getattr(connection, "dialect", "")
+    for prefix, backend in _BACKEND_FOR_DIALECT.items():
+        if dialect.startswith(prefix):
+            return backend
+    return None
 
 
 def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
@@ -1101,13 +1319,53 @@ def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     return {"cdm_db": database}
 
 
-def _vector_store_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
+def _vector_store_set_dict(
+    answers: Mapping[str, object],
+    stack: StackConfig,
+) -> dict[str, object]:
     """Create the store, its generic database, and the reference to it.
 
     The connection is named rather than defined: a vector store sits on a server
     that is already configured, and creating connections is the CDM journey's job.
     """
-    database: dict[str, object] = {
+    store: dict[str, object] = {
+        "name": str(answers["store_entry_name"]),
+        "backend_type": str(answers["backend_type"]),
+        "database": _store_database(answers, stack),
+    }
+    cache_dir = answers.get("faiss_cache_dir")
+    if cache_dir not in (None, ""):
+        store["faiss_cache_dir"] = cache_dir
+    return {"vector_store_name": store}
+
+
+def _store_database(
+    answers: Mapping[str, object],
+    stack: StackConfig,
+) -> dict[str, object]:
+    """The generic database entry the store's vectors live in.
+
+    A vector store must reference a ``GenericDatabaseConfig`` and the CDM entry
+    is a ``CDMDatabaseConfig``, so "in the CDM database" cannot be expressed by
+    pointing at the CDM entry itself. It is expressed instead as a generic entry
+    that copies the CDM's connection and schema, which is the same physical
+    place.
+    """
+    if _store_location(answers) == STORE_LOCATION_CDM:
+        cdm_name, cdm = _cdm_entry(stack)
+        if cdm is None:
+            raise ValueError(
+                "Storing vectors in the CDM database needs a configured CDM database."
+            )
+        database: dict[str, object] = {
+            "name": f"{cdm_name}{CDM_VECTOR_DATABASE_SUFFIX}",
+            "kind": "generic",
+            "connection": cdm.connection,
+        }
+        if cdm.schema_name:
+            database["schema_name"] = cdm.schema_name
+        return database
+    database = {
         "name": str(answers["store_database_name"]),
         "kind": "generic",
         "connection": str(answers["store_connection_name"]),
@@ -1115,15 +1373,11 @@ def _vector_store_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     schema = answers.get("store_schema_name")
     if schema not in (None, ""):
         database["schema_name"] = schema
-    store: dict[str, object] = {
-        "name": str(answers["store_entry_name"]),
-        "backend_type": str(answers["backend_type"]),
-        "database": database,
-    }
-    cache_dir = answers.get("faiss_cache_dir")
-    if cache_dir not in (None, ""):
-        store["faiss_cache_dir"] = cache_dir
-    return {"vector_store_name": store}
+    return database
+
+
+def _store_location(answers: Mapping[str, object]) -> str:
+    return _optional_text(answers.get("store_location")) or STORE_LOCATION_CDM
 
 
 def _model_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
@@ -1309,7 +1563,13 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
         )
     if session.target == VECTOR_STORE_SETUP_TARGET:
         store_name = str(session.answers.get("store_entry_name", "embeddings"))
-        database_name = str(session.answers.get("store_database_name", "embedding_db"))
+        # Named the same way `_store_database` names it, so the effect an operator
+        # is shown is the entry the apply actually writes.
+        database_name = str(
+            _store_database(session.answers, session.base).get(
+                "name", "embedding_db"
+            )
+        )
         return (
             EffectRef(
                 session.operation.value,

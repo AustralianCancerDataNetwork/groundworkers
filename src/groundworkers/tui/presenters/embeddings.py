@@ -13,19 +13,35 @@ from groundskeeping.contracts import (
 )
 
 from groundworkers.application.setup.models import (
+    DiagnosticSeverity,
     EmbeddingConfiguration,
     EmbeddingCoverageReport,
+    ModelReconciliation,
 )
 from groundworkers.tui.presenters.base import SetupPresenterBase
 
 
 class EmbeddingsPresenter(SetupPresenterBase):
-    def status(self, *, database_ready: bool, configured: bool) -> SemanticStatus:
-        return (
-            SemanticStatus.OK
-            if database_ready and configured
-            else SemanticStatus.WARNING
-        )
+    def status(
+        self,
+        *,
+        database_ready: bool,
+        configured: bool,
+        reconciliation: ModelReconciliation | None = None,
+    ) -> SemanticStatus:
+        """Report what the tier can do, not that two names resolve.
+
+        Two references resolving used to read as OK, which is how a store that
+        was never reachable and a model that was never registered both showed
+        green. Follows the Graph section instead: unchecked is IDLE, because
+        nothing is known to be wrong yet, and a checked tier reports what the
+        check found.
+        """
+        if not configured:
+            return SemanticStatus.WARNING
+        if reconciliation is None:
+            return SemanticStatus.IDLE
+        return _reconciliation_status(reconciliation)
 
     def landing(
         self,
@@ -33,6 +49,7 @@ class EmbeddingsPresenter(SetupPresenterBase):
         database_ready: bool,
         configuration: EmbeddingConfiguration | None,
         coverage: EmbeddingCoverageReport | None = None,
+        reconciliation: ModelReconciliation | None = None,
         selected_all: bool = True,
         selected_vocabularies: tuple[str, ...] = (),
     ) -> SurfaceView:
@@ -55,10 +72,15 @@ class EmbeddingsPresenter(SetupPresenterBase):
         if coverage is not None:
             return _setup_view_with_coverage(
                 coverage,
+                reconciliation=reconciliation,
                 selected_all=selected_all,
                 selected_vocabularies=selected_vocabularies,
             )
-        return _configuration_view(configuration, database_ready=database_ready)
+        return _configuration_view(
+            configuration,
+            database_ready=database_ready,
+            reconciliation=reconciliation,
+        )
 
     def loading(self) -> LoadingView:
         return LoadingView(
@@ -95,6 +117,7 @@ def _configuration_view(
     configuration: EmbeddingConfiguration,
     *,
     database_ready: bool,
+    reconciliation: ModelReconciliation | None = None,
 ) -> TableView:
     rows: list[TableRow] = [
         TableRow(
@@ -106,7 +129,7 @@ def _configuration_view(
             cells=(
                 "Provider",
                 _provider_label(configuration),
-                "Not tested",
+                _provider_status(reconciliation),
             ),
         ),
         TableRow(
@@ -114,7 +137,7 @@ def _configuration_view(
             cells=(
                 "Model",
                 _model_label(configuration),
-                "Not tested" if configuration.embeddings_supported else "Not embedding-capable",
+                _model_status(configuration, reconciliation),
             ),
         ),
     ]
@@ -129,13 +152,23 @@ def _configuration_view(
                 ),
             )
         )
+    rows.extend(_reconciliation_rows(reconciliation))
     return TableView(
         title="Embedding setup",
         columns=("Component", "Configuration", "Status"),
         rows=tuple(rows),
-        status=_embedding_status(configuration, database_ready=database_ready),
-        message=_embedding_message(configuration, database_ready=database_ready),
+        status=_embedding_status(
+            configuration,
+            database_ready=database_ready,
+            reconciliation=reconciliation,
+        ),
+        message=_embedding_message(
+            configuration,
+            database_ready=database_ready,
+            reconciliation=reconciliation,
+        ),
         actions=(
+            ViewAction("embeddings.check_model", "Check model"),
             ViewAction("embeddings.refresh_coverage", "Refresh coverage"),
             ViewAction("embeddings.populate", "Populate", disabled=True),
             ViewAction("embeddings.configure_model", "Configure model"),
@@ -146,19 +179,20 @@ def _configuration_view(
 def _setup_view_with_coverage(
     report: EmbeddingCoverageReport,
     *,
+    reconciliation: ModelReconciliation | None = None,
     selected_all: bool,
     selected_vocabularies: tuple[str, ...],
 ) -> TableView:
-    rows = _setup_rows_with_coverage(report)
-    status = _coverage_status(report)
+    rows = _setup_rows_with_coverage(report, reconciliation=reconciliation)
     coverage = report.coverage
     return TableView(
         title="Embedding setup",
         columns=("Component", "Configuration", "Status"),
         rows=tuple(rows),
-        status=status,
-        message=_coverage_message(report),
+        status=_coverage_status(report, reconciliation=reconciliation),
+        message=_coverage_message(report, reconciliation=reconciliation),
         actions=(
+            ViewAction("embeddings.check_model", "Check model"),
             ViewAction("embeddings.refresh_coverage", "Refresh coverage"),
             ViewAction(
                 "embeddings.populate",
@@ -168,6 +202,12 @@ def _setup_view_with_coverage(
                     not coverage.available
                     or coverage.pending_total <= 0
                     or (not selected_all and not selected_vocabularies)
+                    # A run that cannot encode, or cannot reach the store, fails
+                    # after the operator has committed to it.
+                    or (
+                        reconciliation is not None
+                        and not reconciliation.ready_for_population
+                    )
                 ),
             ),
             ViewAction("embeddings.configure_model", "Configure model"),
@@ -187,6 +227,8 @@ def _setup_detail_view(report: EmbeddingCoverageReport) -> TableView:
 
 def _setup_rows_with_coverage(
     report: EmbeddingCoverageReport,
+    *,
+    reconciliation: ModelReconciliation | None = None,
 ) -> tuple[TableRow, ...]:
     coverage = report.coverage
     index = report.index
@@ -200,7 +242,7 @@ def _setup_rows_with_coverage(
             cells=(
                 "Provider",
                 _provider_label(report.configuration),
-                "Configured",
+                _provider_status(reconciliation),
             ),
         ),
         TableRow(
@@ -208,9 +250,7 @@ def _setup_rows_with_coverage(
             cells=(
                 "Model",
                 _model_label(report.configuration),
-                "Configured"
-                if report.configuration.embeddings_supported
-                else "Not embedding-capable",
+                _model_status(report.configuration, reconciliation),
             ),
         ),
         TableRow(
@@ -256,6 +296,7 @@ def _setup_rows_with_coverage(
             )
         )
     rows.extend(_index_warning_rows(index))
+    rows.extend(_reconciliation_rows(reconciliation))
     return tuple(rows)
 
 
@@ -289,34 +330,128 @@ def _embedding_status(
     configuration: EmbeddingConfiguration,
     *,
     database_ready: bool,
+    reconciliation: ModelReconciliation | None = None,
 ) -> SemanticStatus:
     if configuration.backend not in {"pgvector", "sqlitevec"}:
         return SemanticStatus.ERROR
-    if configuration.backend == "pgvector" and not database_ready:
-        return SemanticStatus.WARNING
     if not configuration.embeddings_supported:
         return SemanticStatus.ERROR
+    if reconciliation is not None:
+        reconciled = _reconciliation_status(reconciliation)
+        if reconciled is not SemanticStatus.OK:
+            return reconciled
+    if configuration.backend == "pgvector" and not database_ready:
+        return SemanticStatus.WARNING
     if configuration.database_path_exists is False:
         return SemanticStatus.WARNING
     if configuration.faiss_cache_dir_exists is False:
         return SemanticStatus.WARNING
-    return SemanticStatus.OK
+    return SemanticStatus.OK if reconciliation is not None else SemanticStatus.IDLE
 
 
 def _embedding_message(
     configuration: EmbeddingConfiguration,
     *,
     database_ready: bool,
+    reconciliation: ModelReconciliation | None = None,
 ) -> str:
     if configuration.backend not in {"sqlitevec", "pgvector"}:
         return "Choose a supported vector store backend: sqlitevec or pgvector. FAISS can be configured separately as a query cache."
     if not configuration.embeddings_supported:
         return "The selected model is not declared as embedding-capable. Choose an embedding model before population."
-    if configuration.backend == "pgvector" and database_ready:
-        return "pgvector store metadata is verified on the Database screen."
-    if configuration.backend == "sqlitevec":
-        return "File-backed embedding setup is checked here; provider encoding is verified separately."
-    return "Configuration is visible, but database targets are not verified."
+    if reconciliation is None:
+        return (
+            "Two references resolve. Run Check model to find out whether the store "
+            "holds this model and the provider can encode with it."
+        )
+    return _reconciliation_message(reconciliation)
+
+
+def _reconciliation_status(reconciliation: ModelReconciliation) -> SemanticStatus:
+    severity = reconciliation.worst_severity
+    if severity is DiagnosticSeverity.ERROR:
+        return SemanticStatus.ERROR
+    if severity is DiagnosticSeverity.WARNING:
+        return SemanticStatus.WARNING
+    return SemanticStatus.OK
+
+
+def _reconciliation_message(reconciliation: ModelReconciliation) -> str:
+    """Lead with the first thing standing in the way, if anything is."""
+
+    for severity in (DiagnosticSeverity.ERROR, DiagnosticSeverity.WARNING):
+        blocking = next(
+            (
+                item
+                for item in reconciliation.diagnostics
+                if item.severity is severity
+            ),
+            None,
+        )
+        if blocking is not None:
+            return blocking.message
+    if not reconciliation.model_is_registered:
+        return (
+            "The provider can encode with this model. It is not in the store's "
+            "registry yet; population will register it."
+        )
+    return "The store holds this model and the provider can encode with it."
+
+
+def _provider_status(reconciliation: ModelReconciliation | None) -> str:
+    if reconciliation is None:
+        return "Not checked"
+    provider = reconciliation.provider
+    if provider is None:
+        return "Not configured"
+    if not provider.reachable:
+        return "Unreachable"
+    if not provider.encoding_succeeded:
+        return "Cannot encode"
+    return "Encoding"
+
+
+def _model_status(
+    configuration: EmbeddingConfiguration,
+    reconciliation: ModelReconciliation | None,
+) -> str:
+    if not configuration.embeddings_supported:
+        return "Not embedding-capable"
+    if reconciliation is None:
+        return "Not checked"
+    if reconciliation.model_is_registered:
+        return "Registered"
+    return "Not registered"
+
+
+def _reconciliation_rows(
+    reconciliation: ModelReconciliation | None,
+) -> tuple[TableRow, ...]:
+    """One row per finding, so the verdict says why and not only how bad.
+
+    Nothing is emitted before the check runs: an empty section reads as "no
+    problems", which is exactly the claim an unrun check cannot make.
+    """
+    if reconciliation is None:
+        return ()
+    return tuple(
+        TableRow(
+            key=f"embeddings.diagnostic.{item.code}.{offset}",
+            cells=(
+                _SEVERITY_LABELS[item.severity],
+                item.message,
+                item.code,
+            ),
+        )
+        for offset, item in enumerate(reconciliation.diagnostics, start=1)
+    )
+
+
+_SEVERITY_LABELS = {
+    DiagnosticSeverity.ERROR: "! Blocker",
+    DiagnosticSeverity.WARNING: "! Warning",
+    DiagnosticSeverity.INFO: "  Note",
+}
 
 
 def _path_status(exists: bool | None) -> str:
@@ -417,15 +552,38 @@ def _index_warning_rows(index) -> tuple[TableRow, ...]:
     return tuple(rows)
 
 
-def _coverage_status(report: EmbeddingCoverageReport) -> SemanticStatus:
+def _coverage_status(
+    report: EmbeddingCoverageReport,
+    *,
+    reconciliation: ModelReconciliation | None = None,
+) -> SemanticStatus:
+    if reconciliation is not None:
+        reconciled = _reconciliation_status(reconciliation)
+        if reconciled is SemanticStatus.ERROR:
+            return reconciled
     if not report.coverage.available:
         return SemanticStatus.ERROR
-    if report.coverage.pending_total or report.index.insert_warning is not None:
+    if (
+        report.coverage.pending_total
+        or report.index.insert_warning is not None
+        or (
+            reconciliation is not None
+            and _reconciliation_status(reconciliation) is SemanticStatus.WARNING
+        )
+    ):
         return SemanticStatus.WARNING
     return SemanticStatus.OK
 
 
-def _coverage_message(report: EmbeddingCoverageReport) -> str:
+def _coverage_message(
+    report: EmbeddingCoverageReport,
+    *,
+    reconciliation: ModelReconciliation | None = None,
+) -> str:
+    # A blocker outranks the count: population cannot close the gap while it
+    # stands, so reporting only the gap would send the operator at the button.
+    if reconciliation is not None and not reconciliation.ready_for_population:
+        return _reconciliation_message(reconciliation)
     if not report.coverage.available:
         return "Vocabulary coverage could not be loaded."
     return (

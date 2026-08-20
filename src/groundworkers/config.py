@@ -183,6 +183,37 @@ class GroundworkersConfig(PackageConfigBase):
         return value.rstrip("/") or "/"
 
 
+def split_vocabulary_connection(
+    stack: StackConfig, cdm_db: str
+) -> tuple[str, str] | None:
+    """Report a CDM entry whose vocabulary sits on a second physical connection.
+
+    Groundworkers reads the vocabulary through the CDM engine and nothing else:
+    the knowledge graph, the vocabulary service, and the embedding tier are all
+    handed ``AppConfig.cdm_engine``, with only the vocabulary *schema* applied on
+    top. A ``vocab_connection`` naming a different server is therefore not a
+    supported split -- it would be silently ignored and the vocabulary schema
+    looked for on the CDM server instead. Reported here so both the runtime and
+    the setup console can refuse it in the same terms, rather than plumbing a
+    second engine no caller reads.
+
+    Returns
+    -------
+    tuple[str, str] or None
+        The ``(primary, vocabulary)`` connection names when they differ, or
+        ``None`` when the entry is absent, is not a CDM entry, or names one
+        connection for both roles.
+    """
+
+    database = stack.databases.get(cdm_db)
+    if not isinstance(database, CDMDatabaseConfig):
+        return None
+    vocabulary = database.vocab_connection
+    if vocabulary is None or vocabulary == database.connection:
+        return None
+    return (database.connection, vocabulary)
+
+
 @dataclass(frozen=True, repr=False)
 class AppConfig:
     """Resolved runtime configuration owned and consumed by Groundworkers.
@@ -195,13 +226,18 @@ class AppConfig:
 
     Settings are read through ``groundworkers``: this type deliberately does not
     re-export them, so each one has exactly one name.
+
+    There is one database engine, not two. The vocabulary is reached through
+    ``cdm_engine`` with ``cdm_database.vocab_schema`` applied on top, so a CDM
+    entry that splits its vocabulary onto a second connection is refused at
+    bootstrap rather than represented here. See
+    :func:`split_vocabulary_connection`.
     """
 
     stack: StackConfig
     groundworkers: GroundworkersConfig
     cdm_database: ResolvedCDMDatabase
     cdm_engine: Engine
-    vocabulary_engine: Engine
     embedding_model: ResolvedModel | None
     llm_model: ResolvedModel | None
     vector_store: ResolvedVectorStore | None

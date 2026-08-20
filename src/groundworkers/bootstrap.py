@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from oa_configurator import (  # type: ignore[import-untyped]
+    ConfigurationError,
     ResolvedCDMDatabase,
     Resolver,
     StackConfig,
@@ -10,7 +11,11 @@ from oa_configurator import (  # type: ignore[import-untyped]
     load_stack_config_from_path,
 )
 
-from groundworkers.config import AppConfig, GroundworkersConfig
+from groundworkers.config import (
+    AppConfig,
+    GroundworkersConfig,
+    split_vocabulary_connection,
+)
 
 
 def build_app_config(*, config_path: str | Path | None = None) -> AppConfig:
@@ -34,12 +39,17 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
         raise TypeError(
             f"Groundworkers cdm_db {groundworkers.cdm_db!r} must reference a CDM database."
         )
+    split = split_vocabulary_connection(stack, groundworkers.cdm_db)
+    if split is not None:
+        primary, vocabulary = split
+        raise ConfigurationError(
+            f"Groundworkers cdm_db {groundworkers.cdm_db!r} names connection "
+            f"{vocabulary!r} for its vocabulary and {primary!r} for the CDM. "
+            "Groundworkers reads both through one engine; put the vocabulary on "
+            "the CDM connection and use vocab_schema to separate them."
+        )
 
     cdm_engine = cdm_database.connection.create_engine(future=True)
-    if cdm_database.vocab_connection.name == cdm_database.connection.name:
-        vocabulary_engine = cdm_engine
-    else:
-        vocabulary_engine = cdm_database.vocab_connection.create_engine(future=True)
 
     embedding_model = (
         resolver.resolve_model(groundworkers.embedding_model_name)
@@ -69,7 +79,6 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
         groundworkers=groundworkers,
         cdm_database=cdm_database,
         cdm_engine=cdm_engine,
-        vocabulary_engine=vocabulary_engine,
         embedding_model=embedding_model,
         llm_model=llm_model,
         vector_store=vector_store,

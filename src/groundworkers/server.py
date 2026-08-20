@@ -4,6 +4,7 @@ import argparse
 import json
 from typing import Literal, cast, get_args
 
+from groundworkers._env import ENV_CONFIG_PATH, rejected_config_path
 from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config
@@ -129,8 +130,12 @@ def main(argv: list[str] | None = None) -> None:
     # configure_logging is documented as idempotent.
     GroundworkersConfig.configure_logging(verbosity=args.verbose)
     if args.tui or args.command == "tui":
+        # The console reports a rejected OA_CONFIG_PATH itself, by opening the
+        # location wizard on it, so it is not an error here.
         _launch_groundworkers_tui(config_path=args.config_path)
         return
+    if args.config_path is None:
+        _require_usable_config_path()
     config = build_app_config(config_path=args.config_path)
     # Now that the stack is loaded, its [logging] section takes precedence, and
     # the namespaces GroundworkersConfig declares (omop_graph, omop_emb) are
@@ -168,6 +173,26 @@ def main(argv: list[str] | None = None) -> None:
     host = args.host or config.groundworkers.mcp_host
     port = args.port or config.groundworkers.mcp_port
     server.run(transport=cast(MCPTransport, transport), host=host, port=port)
+
+
+def _require_usable_config_path() -> None:
+    """Refuse to serve from a fallback the operator did not ask for.
+
+    ``OA_CONFIG_PATH`` naming a file that is not there used to kill the process
+    inside an import, before argparse; it is now dropped early so the console can
+    offer to fix it. For a server that leaves the default path in its place,
+    which would answer questions from the wrong vocabulary rather than not
+    answering them. Say so and stop.
+    """
+
+    rejected = rejected_config_path()
+    if rejected is None:
+        return
+    raise SystemExit(
+        f"{ENV_CONFIG_PATH} points at {rejected}, which is not an existing .toml "
+        "file. Correct it, pass --config-path, or run 'groundworkers tui' to "
+        "choose a configuration location."
+    )
 
 
 def _launch_groundworkers_tui(*, config_path: str | None) -> None:

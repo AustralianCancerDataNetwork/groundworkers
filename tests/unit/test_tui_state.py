@@ -211,12 +211,12 @@ def test_embeddings_presenter_shows_sqlitevec_and_faiss_paths() -> None:
     assert view.rows[1].cells == (
         "Provider",
         "embedding_provider (ollama) · http://localhost:11434/v1",
-        "Not tested",
+        "Not checked",
     )
     assert view.rows[2].cells == (
         "Model",
         "embedding_model · qwen3-embedding:0.6b",
-        "Not tested",
+        "Not checked",
     )
     assert view.rows[3].cells == ("FAISS cache", "faiss-cache", "Missing")
 

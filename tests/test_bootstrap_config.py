@@ -126,10 +126,26 @@ def test_cdm_only_runtime_resolves_without_embedding_configuration() -> None:
     assert config.cdm_database.name == "cdm_db"
     assert config.embedding_model is None
     assert config.vector_store is None
-    assert config.vocabulary_engine is config.cdm_engine
 
 
-def test_distinct_vocabulary_connection_gets_its_own_engine() -> None:
+def test_a_vocabulary_connection_naming_the_cdm_connection_is_accepted() -> None:
+    """Spelling out the same connection is redundant, not a split."""
+    stack = build_cdm_stack()
+    stack.databases["cdm_db"] = CDMDatabaseConfig(
+        connection="cdm_main",
+        schema_name="main",
+        vocab_connection="cdm_main",
+        vocab_schema="vocab",
+    )
+
+    config = build_app_config_from_stack(stack)
+
+    assert config.cdm_database.vocab_schema == "vocab"
+
+
+def test_distinct_vocabulary_connection_is_refused() -> None:
+    """The graph, the vocabulary service, and the embedding tier all read the CDM
+    engine; a second connection would be silently ignored."""
     stack = build_cdm_stack()
     stack.connections["vocab_main"] = ConnectionConfig(
         dialect="sqlite",
@@ -142,10 +158,8 @@ def test_distinct_vocabulary_connection_gets_its_own_engine() -> None:
         vocab_schema="main",
     )
 
-    config = build_app_config_from_stack(stack)
-
-    assert config.cdm_database.vocab_connection.name == "vocab_main"
-    assert config.vocabulary_engine is not config.cdm_engine
+    with pytest.raises(ConfigurationError, match="vocab_schema"):
+        build_app_config_from_stack(stack)
 
 
 def test_optional_model_and_vector_store_are_resolved_without_building_backends() -> (

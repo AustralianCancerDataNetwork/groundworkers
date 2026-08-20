@@ -20,6 +20,7 @@ from groundskeeping.contracts import (
     TextView,
 )
 
+from groundworkers._env import rejected_config_path
 from groundworkers.application.setup.configuration_provider import (
     CDM_SETUP_TARGET,
     LLM_SETUP_TARGET,
@@ -114,6 +115,16 @@ class SetupPage(GroundworkersPage):
             return
         self._show_section_detail(context)
 
+    def _config_path_was_rejected(self) -> bool:
+        """Whether OA_CONFIG_PATH named a file Groundworkers could not use.
+
+        It is dropped before oa-configurator can refuse to start on it, which
+        leaves the console reading the default instead. That is the right thing
+        to keep running on and the wrong thing to do silently: the operator asked
+        for somewhere else.
+        """
+        return rejected_config_path() is not None
+
     def _graph_readiness(self):
         """The connection check that already probes everything the graph needs."""
         return next(
@@ -126,9 +137,11 @@ class SetupPage(GroundworkersPage):
         )
 
     def _should_choose_config_location(self) -> bool:
+        if self._config_location_offered:
+            return False
         return (
-            not self._config_location_offered
-            and self._session.configuration.state is ConfigurationState.MISSING
+            self._session.configuration.state is ConfigurationState.MISSING
+            or self._config_path_was_rejected()
         )
 
     def build_navigation(self, context: PageContext) -> SectionNavigation:
@@ -171,6 +184,7 @@ class SetupPage(GroundworkersPage):
                     status=self._embeddings.status(
                         database_ready=database_ready,
                         configured=embeddings is not None,
+                        reconciliation=self._session.embedding_reconciliation,
                     ),
                 ),
                 SectionItem(
@@ -204,6 +218,7 @@ class SetupPage(GroundworkersPage):
                 database_ready=database_ready,
                 configuration=load_embedding_configuration(self._session.configuration),
                 coverage=self._session.embedding_coverage,
+                reconciliation=self._session.embedding_reconciliation,
                 selected_all=self._session.embedding_vocabulary_selection_all,
                 selected_vocabularies=self._session.embedding_selected_vocabularies,
             )
@@ -299,6 +314,9 @@ class SetupPage(GroundworkersPage):
             return
         if action_key == "embeddings.configure_model":
             self._open_config_wizard(context, MODEL_SETUP_TARGET, model_setup_workflow)
+            return
+        if action_key == "embeddings.check_model":
+            self._start_embedding_model_check(context)
             return
         if action_key == "embeddings.refresh_coverage":
             self._start_embedding_coverage_refresh(context)
@@ -421,6 +439,30 @@ class SetupPage(GroundworkersPage):
         self._sync_embedding_vocabulary_selection()
         self._show_current_state(context)
 
+    def _start_embedding_model_check(self, context: PageContext) -> None:
+        """Ask the store and the provider whether the configured model works.
+
+        Separate from the coverage refresh, and cheaper: coverage counts a whole
+        vocabulary, this reads one registry and encodes one probe string. It is
+        also the check that decides whether populating can succeed at all, so it
+        is offered first.
+        """
+        context.notify("Checking the embedding store and provider.")
+
+        def verify() -> None:
+            result = verify_embedding_model(self._session.configuration)
+            self.app.call_from_thread(
+                self._finish_embedding_model_check,
+                result,
+                context,
+            )
+
+        self.run_worker(verify, thread=True, exclusive=True)
+
+    def _finish_embedding_model_check(self, result, context: PageContext) -> None:
+        self._session.embedding_reconciliation = result
+        self._show_current_state(context)
+
     def _show_current_state(self, context: PageContext) -> None:
         context.surface.show_navigation(
             self.route.key,
@@ -541,3 +583,16 @@ def load_embedding_coverage_report(snapshot, *, standard_only: bool):
     )
 
     return load(snapshot, standard_only=standard_only)
+
+
+def verify_embedding_model(snapshot):
+    """Imported the same lazily-guarded way as the coverage report above, so a
+    stack without the embedding extras still reaches CDM setup."""
+
+    try:
+        from groundworkers.application.setup.embedding_reconciliation import (
+            verify_embedding_model as verify,
+        )
+    except ImportError:
+        return None
+    return verify(snapshot)

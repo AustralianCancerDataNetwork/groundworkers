@@ -19,3 +19,4 @@ settings.json
 site/
 _knowledge/
 data/
+.env
