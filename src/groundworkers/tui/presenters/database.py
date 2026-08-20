@@ -89,12 +89,19 @@ class DatabasePresenter(SetupPresenterBase):
             )
 
         result_by_key = {item.target_key: item for item in results}
+        rows = [
+            _target_row(target, result_by_key.get(target.key)) for target in targets
+        ]
+        if not any(target.key == EMBEDDING_TARGET_KEY for target in targets):
+            # Shown even when absent. The embedding store is one of the databases
+            # Groundworkers uses, and leaving the row out when it is unconfigured
+            # meant there was nothing to select and so no way to configure one
+            # from the console at all.
+            rows.append(_unconfigured_embedding_row())
         return TableView(
             title="Databases",
             columns=("Entry", "Connection", "Schemas", "Status", "Latency"),
-            rows=tuple(
-                _target_row(target, result_by_key.get(target.key)) for target in targets
-            ),
+            rows=tuple(rows),
             status=_connection_status(results),
             message=f"{snapshot.path}  |  {snapshot.ownership.mode.value}",
             actions=_database_actions(selected_target_key),
@@ -116,6 +123,27 @@ class DatabasePresenter(SetupPresenterBase):
                 ("guidance", snapshot.ownership.guidance),
             ),
         )
+
+
+EMBEDDING_TARGET_KEY = "database.embedding"
+
+
+def _unconfigured_embedding_row() -> TableRow:
+    return TableRow(
+        key=EMBEDDING_TARGET_KEY,
+        cells=("Embedding store", "—", "—", "Not configured", ""),
+        detail=(
+            detail_row(
+                "warn",
+                "No vector store is configured, so embedding search and the "
+                "embedding grounding tier are unavailable.",
+            ),
+            detail_row(
+                "unknown",
+                "Configure one here, or run 'omop-config configure groundworkers'.",
+            ),
+        ),
+    )
 
 
 def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> TableRow:

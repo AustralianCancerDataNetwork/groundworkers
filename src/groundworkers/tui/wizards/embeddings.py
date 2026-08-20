@@ -39,6 +39,13 @@ from groundworkers.tui.state import SetupSession
 
 VocabularyMode = str
 
+SCOPE_STANDARD: str = "standard"
+SCOPE_ALL: str = "all"
+
+VOCABULARY_MODE_ALL: str = "all"
+VOCABULARY_MODE_INCOMPLETE: str = "incomplete"
+VOCABULARY_MODE_SELECTED: str = "selected"
+
 
 class EmbeddingPopulationWizardController:
     """Start an omop-emb concept embedding population run."""
@@ -135,7 +142,7 @@ class EmbeddingPopulationWizardController:
         )
 
     def _steps(self) -> tuple[FormStep | ReviewStep, ...]:
-        return (self._run_step(), self._review_step())
+        return (self._scope_step(), self._run_step(), self._review_step())
 
     def _wizard_snapshot(
         self, *, issues: tuple[ValidationIssue, ...] = ()
@@ -161,6 +168,14 @@ class EmbeddingPopulationWizardController:
     def _safe_values(self, step: FormStep | ReviewStep) -> Mapping[str, object]:
         if isinstance(step, ReviewStep):
             return {}
+        if step.key == "scope":
+            return {
+                "concept_scope": SCOPE_STANDARD
+                if self._request.standard_only
+                else SCOPE_ALL,
+                "vocabulary_mode": self._request.vocabulary_mode,
+                "vocabularies": "\n".join(self._selected_or_incomplete()),
+            }
         return {
             "run_mode": "limit" if self._request.limit is not None else "complete",
             "num_embeddings": self._request.limit or DEFAULT_EMBEDDING_BACKFILL_LIMIT,
@@ -181,6 +196,8 @@ class EmbeddingPopulationWizardController:
                 issues.append(ValidationIssue(str(exc), field_key=field.key))
         if issues:
             return tuple(issues)
+        if step.key == "scope":
+            return self._apply_scope(parsed)
         if step.key == "run":
             return self._apply_run(parsed)
         return ()
@@ -208,6 +225,146 @@ class EmbeddingPopulationWizardController:
             batch_size=batch_size,
         )
         return ()
+
+    def _known_vocabularies(self) -> tuple[str, ...]:
+        if self._coverage is None or not self._coverage.coverage.available:
+            return ()
+        return tuple(row.vocabulary for row in self._coverage.coverage.rows)
+
+    def _incomplete_vocabularies(self) -> tuple[str, ...]:
+        if self._coverage is None or not self._coverage.coverage.available:
+            return ()
+        return self._coverage.incomplete_vocabularies
+
+    def _selected_or_incomplete(self) -> tuple[str, ...]:
+        """Prefill the list with what is actually missing, not with everything.
+
+        Re-embedding a vocabulary that is already complete is the expensive
+        mistake here, so the box opens on the vocabularies with concepts still
+        pending and the operator narrows from there.
+        """
+        return self._request.vocabularies or self._incomplete_vocabularies()
+
+    def _apply_scope(
+        self,
+        parsed: Mapping[str, object],
+    ) -> tuple[ValidationIssue, ...]:
+        concept_scope = str(parsed["concept_scope"])
+        if concept_scope not in {SCOPE_STANDARD, SCOPE_ALL}:
+            return (ValidationIssue("Choose a concept scope.", "concept_scope"),)
+        mode = str(parsed["vocabulary_mode"])
+        if mode not in {
+            VOCABULARY_MODE_ALL,
+            VOCABULARY_MODE_INCOMPLETE,
+            VOCABULARY_MODE_SELECTED,
+        }:
+            return (ValidationIssue("Choose which vocabularies to run.", "vocabulary_mode"),)
+
+        if mode == VOCABULARY_MODE_ALL:
+            vocabularies: tuple[str, ...] = ()
+        elif mode == VOCABULARY_MODE_INCOMPLETE:
+            vocabularies = self._incomplete_vocabularies()
+            if not vocabularies:
+                return (
+                    ValidationIssue(
+                        "No vocabulary has concepts pending under this scope.",
+                        "vocabulary_mode",
+                    ),
+                )
+        else:
+            names = _parse_vocabularies(parsed.get("vocabularies"))
+            if not names:
+                return (
+                    ValidationIssue(
+                        "List at least one vocabulary, or choose a different mode.",
+                        "vocabularies",
+                    ),
+                )
+            known = self._known_vocabularies()
+            unknown = tuple(name for name in names if name not in known)
+            if unknown:
+                return (
+                    ValidationIssue(
+                        "Not in the CDM under this scope: " + ", ".join(unknown),
+                        "vocabularies",
+                    ),
+                )
+            # Ordered by the coverage table, so the command reads the same way
+            # the numbers on screen do regardless of typing order.
+            vocabularies = tuple(name for name in known if name in set(names))
+
+        self._request = EmbeddingPopulationRequest(
+            standard_only=concept_scope == SCOPE_STANDARD,
+            vocabulary_mode=mode,
+            vocabularies=vocabularies,
+            limit=self._request.limit,
+            batch_size=self._request.batch_size,
+        )
+        return ()
+
+    def _scope_step(self) -> FormStep:
+        incomplete = self._incomplete_vocabularies()
+        known = self._known_vocabularies()
+        return FormStep(
+            key="scope",
+            title="Concept scope",
+            purpose="Choose which concepts this run should embed.",
+            fields=(
+                FieldSpec(
+                    "concept_scope",
+                    "Concepts",
+                    kind=FieldKind.CHOICE,
+                    choices=(
+                        ChoiceOption(SCOPE_STANDARD, "Standard concepts only"),
+                        ChoiceOption(SCOPE_ALL, "All concepts"),
+                    ),
+                    default=SCOPE_STANDARD
+                    if self._request.standard_only
+                    else SCOPE_ALL,
+                    help=(
+                        "Coverage above was measured for "
+                        + (
+                            "standard concepts only."
+                            if self._coverage_standard_only()
+                            else "all concepts."
+                        )
+                        + " Changing this changes what counts as missing."
+                    ),
+                ),
+                FieldSpec(
+                    "vocabulary_mode",
+                    "Vocabularies",
+                    kind=FieldKind.CHOICE,
+                    choices=(
+                        ChoiceOption(VOCABULARY_MODE_ALL, "Every vocabulary"),
+                        ChoiceOption(
+                            VOCABULARY_MODE_INCOMPLETE,
+                            f"Only those with concepts pending ({len(incomplete)})",
+                        ),
+                        ChoiceOption(
+                            VOCABULARY_MODE_SELECTED, "Only the ones I list below"
+                        ),
+                    ),
+                    default=self._request.vocabulary_mode,
+                ),
+                FieldSpec(
+                    "vocabularies",
+                    "Selected vocabularies",
+                    kind=FieldKind.MULTILINE,
+                    required=False,
+                    default="\n".join(self._selected_or_incomplete()),
+                    help=(
+                        "One per line, or comma separated. Used only by the "
+                        "last mode above. "
+                        + (
+                            f"Available: {', '.join(known)}"
+                            if known
+                            else "Refresh coverage to list the available names."
+                        )
+                    ),
+                ),
+            ),
+        )
 
     def _run_step(self) -> FormStep:
         return FormStep(
@@ -248,9 +405,23 @@ class EmbeddingPopulationWizardController:
         warnings = []
         if self._coverage is None:
             warnings.append("Embedding coverage is unavailable.")
-        elif self._coverage.index.insert_warning is not None:
-            warnings.append(self._coverage.index.insert_warning)
-            warnings.extend(self._coverage.index.drop_sql)
+        else:
+            if self._request.standard_only != self._coverage_standard_only():
+                # The counts on screen were produced by a different WHERE
+                # clause, so they do not describe the run about to start.
+                warnings.append(
+                    "Coverage was measured for "
+                    + (
+                        "standard concepts only"
+                        if self._coverage_standard_only()
+                        else "all concepts"
+                    )
+                    + ", so the missing counts do not describe this run. "
+                    "Refresh coverage after changing the concept scope."
+                )
+            if self._coverage.index.insert_warning is not None:
+                warnings.append(self._coverage.index.insert_warning)
+                warnings.extend(self._coverage.index.drop_sql)
         return ReviewStep(
             key="review",
             title="Review command",
@@ -273,6 +444,11 @@ class EmbeddingPopulationWizardController:
             ),
         )
 
+    def _coverage_standard_only(self) -> bool:
+        if self._coverage is None:
+            return self._request.standard_only
+        return self._coverage.coverage.scope.standard_only
+
     def _command(self) -> EmbeddingPopulationCommand:
         assert self._coverage is not None
         return build_embedding_population_command(
@@ -280,6 +456,19 @@ class EmbeddingPopulationWizardController:
             self._request,
             config_path=self._session.configuration.path,
         )
+
+
+def _parse_vocabularies(value: object) -> tuple[str, ...]:
+    """Read a vocabulary list typed as lines, commas, or any mix of the two."""
+    if value is None:
+        return ()
+    names = [
+        part.strip()
+        for chunk in str(value).replace(",", "\n").splitlines()
+        for part in (chunk,)
+        if part.strip()
+    ]
+    return tuple(dict.fromkeys(names))
 
 
 def _scope_label(request: EmbeddingPopulationRequest) -> str:

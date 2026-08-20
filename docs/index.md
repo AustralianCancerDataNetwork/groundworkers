@@ -1,8 +1,6 @@
 # groundworkers
 
-`groundworkers` is the reusable capability layer for OMOP-grounded lookup,
-mapping, source-planning, and knowledge-pack discovery. You can use it in three
-ways:
+`groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source-planning, and knowledge-pack discovery. You can use it in three ways:
 
 - as an **MCP service** for agentic clients and tool discovery
 - as a **REST service** for controlled workflow applications
@@ -15,6 +13,10 @@ ways:
 | Agentic clients, tool discovery, shared remote service | MCP |
 | Fixed request/response workflows, typed HTTP clients, OpenAPI | REST |
 | In-process Python applications, batch evaluation, custom orchestration | Direct Python |
+
+## First time setting up locally?
+
+[Try here](from-scratch.md)
 
 ## At a glance
 
@@ -33,11 +35,7 @@ flowchart TD
     A --> LLM[LLM API]
 ```
 
-This is the conceptual shape of the package: transport choices stay thin,
-reusable workflow logic lives in `services/`, and concrete dependencies are
-isolated behind `adapters/`. Configuration and startup wiring are described in
-[Architecture](architecture.md); the home page keeps the focus on the layer
-boundaries that matter to most users.
+This is the conceptual shape of the package: transport choices stay thin, reusable workflow logic lives in `services/`, and concrete dependencies are isolated behind `adapters/`. Configuration and startup wiring are described in [Architecture](architecture.md); the home page keeps the focus on the layer boundaries that matter to most users.
 
 ## What groundworkers provides
 

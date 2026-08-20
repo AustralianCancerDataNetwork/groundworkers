@@ -30,6 +30,7 @@ from groundworkers.application.setup.configuration_provider import (
     CDM_SETUP_TARGET,
     LLM_SETUP_TARGET,
     MODEL_SETUP_TARGET,
+    VECTOR_STORE_SETUP_TARGET,
     GroundworkersConfigMutationService,
 )
 from tests.support.stack_config import build_cdm_stack
@@ -68,7 +69,29 @@ CASES = {
                     "api_key": CANARY,
                 },
             ),
-            ("model", {"model_entry_name": "embedding_model", "model_choice": "m1"}),
+            ("model", {"model_entry_name": "embedding_model", "model_choice": "m1:v1"}),
+        ),
+    ),
+    "vector_store": (
+        VECTOR_STORE_SETUP_TARGET,
+        MutationOperation.CREATE,
+        (
+            (
+                "store",
+                {
+                    "store_entry_name": "embeddings",
+                    "backend_type": "sqlitevec",
+                    "faiss_cache_dir": None,
+                },
+            ),
+            (
+                "database",
+                {
+                    "store_database_name": "embedding_db",
+                    "store_connection_name": "cdm_main",
+                    "store_schema_name": "public",
+                },
+            ),
         ),
     ),
     "chat": (
@@ -84,7 +107,7 @@ CASES = {
                     "llm_api_key": CANARY,
                 },
             ),
-            ("model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "m1"}),
+            ("model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "m1:v1"}),
         ),
     ),
 }
@@ -104,7 +127,7 @@ def _factory(tmp_path: Path, name: str):
         save_stack_config(build_cdm_stack(), path)
         return GroundworkersConfigMutationService(
             path,
-            model_discoverer=lambda *_args: ("m1", "m2"),
+            model_discoverer=lambda *_args: ("m1:v1", "m2:v1"),
         )
 
     return make
@@ -125,12 +148,16 @@ def test_provider_satisfies_the_mutation_lifecycle_contract(
     )
 
 
-@pytest.mark.parametrize("name", ["embedding_model", "chat"])
+@pytest.mark.parametrize("name", ["embedding_model", "vector_store", "chat"])
 def test_provider_satisfies_the_hooked_contract(tmp_path: Path, name: str) -> None:
     """The fault-injection half: validation, conflict, and typed refusal."""
     target, operation, submissions = CASES[name]
     invalid_values = {
         "embedding_model": ({"provider_name": ""}, frozenset({"provider_name"})),
+        "vector_store": (
+            {"store_entry_name": "", "backend_type": ""},
+            frozenset({"store_entry_name", "backend_type"}),
+        ),
         "chat": (
             # Valid entry name, so only the two genuinely invalid fields report.
             {
@@ -143,8 +170,12 @@ def test_provider_satisfies_the_hooked_contract(tmp_path: Path, name: str) -> No
     }
     values, expected_fields = invalid_values[name]
 
+    # Each journey names its own first step, so take it from the case rather
+    # than assuming every journey starts with a provider.
+    first_step_key = submissions[0][0]
+
     def invalid_submission(service, draft):
-        return service.submit(draft, "provider", values)
+        return service.submit(draft, first_step_key, values)
 
     def advance_revision(service):
         # Another operator writes the file after this provider prepared its plan.

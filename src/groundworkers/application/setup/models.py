@@ -440,7 +440,7 @@ class EmbeddingPopulationRequest:
 
 
 @dataclass(frozen=True)
-class EmbeddingPopulationCommand:
+class MaintenanceCommand:
     argv: tuple[str, ...]
     environment: tuple[tuple[str, str], ...] = ()
 
@@ -452,10 +452,17 @@ class EmbeddingPopulationCommand:
 
 
 @dataclass(frozen=True)
-class EmbeddingPopulationLaunch:
-    command: EmbeddingPopulationCommand
+class MaintenanceLaunch:
+    command: MaintenanceCommand
     pid: int
     log_path: Path
+
+
+# Kept as names for the embedding journey, which was the first caller. The graph
+# remediation journey launches the same way, so the type is shared rather than
+# copied.
+EmbeddingPopulationCommand = MaintenanceCommand
+EmbeddingPopulationLaunch = MaintenanceLaunch
 
 
 def _shell_quote(value: str) -> str:

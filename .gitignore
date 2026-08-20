@@ -18,3 +18,4 @@ settings.json
 *.local.toml
 site/
 _knowledge/
+data/

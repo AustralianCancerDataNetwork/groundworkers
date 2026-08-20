@@ -23,6 +23,7 @@ from oa_configurator import (
     ConfigurationError,
     GenericDatabaseConfig,
     StackConfig,
+    load_stack_config_from_path,
     save_stack_config,
 )
 
@@ -186,7 +187,7 @@ def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe
 
     def discover(provider: str, base_url: str | None, api_key: str | None):
         calls.append((provider, base_url, api_key == canary))
-        return ("embed-small", "embed-large")
+        return ("embed-small:v1", "embed-large:v1")
 
     controller = ConfigWizardController(
         model_setup_workflow(MutationOperation.CREATE),
@@ -204,24 +205,41 @@ def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe
     snapshots.append(model)
 
     assert calls == [("ollama", "http://models.example", True)]
+    # The registry step now sits between the provider and the model choice.
+    assert isinstance(model.step, FormStep)
+    assert model.step.key == "registry"
+    source = next(field for field in model.step.fields if field.key == "model_source")
+    # No embedding store is configured in this fixture, so there is nothing
+    # registered to choose between and the only honest option is a new model.
+    assert tuple(option.value for option in source.choices) == ("new",)
+    assert source.disabled is True
+
+    model = controller.submit({"model_source": "new"}).snapshot
+    snapshots.append(model)
+
     assert isinstance(model.step, FormStep)
     assert model.step.key == "model"
     choice = next(field for field in model.step.fields if field.key == "model_choice")
     assert choice.disabled is False
     assert tuple(option.value for option in choice.choices) == (
-        "embed-small",
-        "embed-large",
+        "embed-small:v1",
+        "embed-large:v1",
     )
-    assert model.values["model_choice"] == "embed-small"
+    assert model.values["model_choice"] == "embed-small:v1"
     assert canary not in repr(snapshots)
     assert canary not in repr([asdict(snapshot) for snapshot in snapshots])
 
-    review = controller.submit(
+    prefixes = controller.submit(
         {
             "model_entry_name": "embedding_model",
-            "model_choice": "embed-small",
+            "model_choice": "embed-small:v1",
         }
     ).snapshot
+    snapshots.append(prefixes)
+    assert isinstance(prefixes.step, FormStep)
+    assert prefixes.step.key == "prefixes"
+
+    review = controller.submit({"prefix_convention": "none"}).snapshot
     snapshots.append(review)
     assert isinstance(review.step, ReviewStep)
     assert canary not in repr(review)
@@ -429,3 +447,170 @@ def _reach_cdm_review(controller: ConfigWizardController):
             "results_schema": None,
         }
     ).snapshot
+
+
+def test_provider_rejects_a_mutable_ollama_tag_at_the_model_step(
+    tmp_path: Path,
+) -> None:
+    """The naming rule must fire where the name is chosen, not at population.
+
+    ``omop_llm`` refuses an Ollama ``:latest`` tag because re-pulling the model
+    silently changes what already-stored vectors mean. That verdict used to
+    surface only when something downstream built a backend -- by which point
+    the entry was saved and the operator was looking at an unrelated screen.
+    """
+    path = tmp_path / "config.toml"
+    save_stack_config(_cdm_stack(), path)
+    controller = ConfigWizardController(
+        model_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(
+            path,
+            model_discoverer=lambda *_: ("arctic:latest", "arctic:v2"),
+        ),
+    )
+    controller.start()
+    controller.submit(
+        {
+            "provider_name": "local_models",
+            "provider_kind": "ollama",
+            "base_url": "http://models.example",
+            "api_key": None,
+        }
+    )
+    controller.submit({"model_source": "new"})
+
+    rejected = controller.submit(
+        {"model_entry_name": "embedding_model", "model_choice": "arctic:latest"}
+    )
+
+    assert rejected.issues
+    issue = rejected.issues[0]
+    assert issue.field_key == "model_choice"
+    assert ":latest" in issue.message
+    # Still on the model step: nothing was written.
+    assert isinstance(rejected.snapshot.step, FormStep)
+    assert rejected.snapshot.step.key == "model"
+
+    accepted = controller.submit(
+        {"model_entry_name": "embedding_model", "model_choice": "arctic:v2"}
+    )
+
+    assert not accepted.issues
+    assert isinstance(accepted.snapshot.step, FormStep)
+    assert accepted.snapshot.step.key == "prefixes"
+
+
+def test_offered_prefixes_are_the_ones_omop_llm_recognises() -> None:
+    """The pairs offered must stay inside the set upstream vouches for.
+
+    ``KNOWN_EMBEDDING_PREFIXES`` is what ``omop_llm`` warns against at backend
+    build time. Offering a prefix outside it would produce a config that
+    triggers that warning on every run, from a choice the wizard suggested.
+    """
+    from omop_llm import KNOWN_EMBEDDING_PREFIXES
+
+    offered = {
+        prefix
+        for _key, _label, document, query, _fragments in provider_module._PREFIX_CONVENTIONS
+        for prefix in (document, query)
+        if prefix is not None
+    }
+
+    assert offered
+    assert offered <= set(KNOWN_EMBEDDING_PREFIXES)
+
+
+def test_an_asymmetric_model_preselects_its_convention_and_writes_the_pair(
+    tmp_path: Path,
+) -> None:
+    """The prefixes must be settled before anything is embedded.
+
+    Populating under the wrong pair yields vectors that retrieve badly with
+    nothing raised anywhere, and the only repair is re-embedding the corpus.
+    """
+    path = tmp_path / "config.toml"
+    save_stack_config(_cdm_stack(), path)
+    controller = ConfigWizardController(
+        model_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(
+            path,
+            model_discoverer=lambda *_: ("snowflake-arctic-embed2:local-1",),
+        ),
+    )
+    controller.start()
+    controller.submit(
+        {
+            "provider_name": "embedding_provider",
+            "provider_kind": "ollama",
+            "base_url": "http://localhost:11434/v1",
+            "api_key": None,
+        }
+    )
+    controller.submit({"model_source": "new"})
+    prefixes = controller.submit(
+        {
+            "model_entry_name": "embedding_model",
+            "model_choice": "snowflake-arctic-embed2:local-1",
+        }
+    ).snapshot
+
+    assert isinstance(prefixes.step, FormStep)
+    convention = next(
+        field for field in prefixes.step.fields if field.key == "prefix_convention"
+    )
+    # Preselected from the model, never applied without being passed through.
+    assert convention.default == "query_only"
+
+    controller.submit({"prefix_convention": "nomic"})
+    assert controller.apply().status is WizardResultStatus.APPLIED
+
+    model = load_stack_config_from_path(path).models["embedding_model"]
+    # The trailing space is part of the prefix and must survive the round trip.
+    assert model.document_prefix == "search_document: "
+    assert model.query_prefix == "search_query: "
+
+
+def test_custom_prefixes_are_only_asked_for_when_chosen(tmp_path: Path) -> None:
+    """A symmetric model must not be made to answer two prefix questions."""
+    path = tmp_path / "config.toml"
+    save_stack_config(_cdm_stack(), path)
+
+    def _drive(convention: str):
+        controller = ConfigWizardController(
+            model_setup_workflow(MutationOperation.CREATE),
+            GroundworkersConfigMutationService(
+                path, model_discoverer=lambda *_: ("plain-embed:v1",)
+            ),
+        )
+        controller.start()
+        controller.submit(
+            {
+                "provider_name": "embedding_provider",
+                "provider_kind": "ollama",
+                "base_url": "http://localhost:11434/v1",
+                "api_key": None,
+            }
+        )
+        controller.submit({"model_source": "new"})
+        controller.submit(
+            {"model_entry_name": "embedding_model", "model_choice": "plain-embed:v1"}
+        )
+        return controller, controller.submit({"prefix_convention": convention}).snapshot
+
+    # Nothing recognisable in the name, so no convention is guessed.
+    _, symmetric = _drive("none")
+    assert isinstance(symmetric.step, ReviewStep)
+
+    controller, custom = _drive("custom")
+    assert isinstance(custom.step, FormStep)
+    assert custom.step.key == "custom_prefixes"
+
+    empty = controller.submit({"document_prefix": "", "query_prefix": ""})
+    assert empty.issues
+    assert "at least one prefix" in empty.issues[0].message
+
+    controller.submit({"document_prefix": "index: ", "query_prefix": "ask: "})
+    assert controller.apply().status is WizardResultStatus.APPLIED
+
+    model = load_stack_config_from_path(path).models["embedding_model"]
+    assert (model.document_prefix, model.query_prefix) == ("index: ", "ask: ")

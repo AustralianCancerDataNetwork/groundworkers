@@ -26,6 +26,218 @@ The `tui` extra resolves `groundskeeping>=0.5.1,<1` from PyPI, with no source pi
   outside oa-configurator, and called six adapter methods and two constructor
   arguments that no longer exist.
 
+### Added — embedding prefixes are settled before anything is populated
+
+Asymmetric embedding models index documents and queries under different
+prefixes. Nothing set `document_prefix` or `query_prefix`, so every model was
+written without them: `omop-llm` logged a warning at backend-build time and the
+run proceeded, producing vectors that retrieve badly with no error anywhere. The
+only repair is re-embedding the corpus, which makes this a decision that has to
+be made before population, not after.
+
+- The embedding model journey gains a prefix step offering the conventions as
+  matched pairs. The pairs are the point: indexing with `search_document: ` and
+  querying with `query: ` is the failure mode two free-text boxes invite.
+- The convention is preselected from the model name, and only for families where
+  the name settles it. Arctic Embed is why the list is narrow — 1.0 used the BGE
+  instruction and 2.0 uses a bare `query: `, so a name-based guess is worth less
+  than the operator's model card. Whatever is chosen appears on the review.
+- `custom` opens a second step for prefixes entered by hand. They are stored
+  exactly as typed, trailing space included: `search_document: ` and
+  `search_document:` are different prefixes.
+
+### Fixed — wizard text boxes are drawn at a usable height
+
+Groundskeeping's theme sizes every `TextArea` at `height: 1fr`, written for the
+workbench context pane. Inside a wizard the labels, help lines, and sibling
+fields claim their auto height first and the remaining fraction rounds to zero
+rows, so the vocabulary list box rendered at `height=0`: focusable, editable,
+and invisible. It read as an entry box that ignored the keyboard.
+
+The console now subclasses `OperatorApp` to size wizard text boxes explicitly.
+The subclass re-anchors `CSS_PATH` on the groundskeeping package, since Textual
+resolves a relative path against the module declaring the class and would
+otherwise look for the theme under groundworkers and refuse to start.
+
+`test_a_wizard_text_box_is_actually_drawn` asserts the rendered height, which is
+the only kind of check that catches this — every contract-level assertion passes
+on a widget nobody can see. Remove once groundskeeping scopes the rule to
+`#context`.
+
+### Added — population scope is chosen in the wizard
+
+Population always ran every vocabulary, and `--standard-only` was fixed on. The
+selection state the page carried was never reachable: the coverage detail view
+took `selected_all`/`selected_vocabularies` and returned a plain, unselectable
+table, so the gate in front of the Populate action guarded a choice no one could
+make.
+
+- The population wizard opens on a scope step: standard concepts or all, and
+  every vocabulary, only those still behind, or a named list. The list box is
+  prefilled with the vocabularies that actually have concepts pending.
+- A name the CDM does not hold under the chosen scope is named back rather than
+  dropped, which would otherwise start a smaller run than the one requested.
+- Changing the concept scope warns on the review that the coverage counts on
+  screen were measured under the other filter and do not describe the run.
+
+### Fixed — a rejected model name is now visible where it is chosen
+
+`omop-llm` refuses an Ollama model name carrying the mutable `:latest` tag,
+because re-pulling the model silently changes what already-stored vectors mean.
+Nothing applied that rule until something downstream built a backend, so the
+entry saved cleanly and the verdict arrived much later as a failed coverage
+refresh — reported only as "setup failed with ValueError", which named neither
+the model nor the rule.
+
+- The model step of both the embedding and chat journeys now runs the chosen
+  name through the provider's own canonicaliser and attaches any refusal to the
+  model field, so the name cannot be written in the first place.
+- `load_embedding_coverage_report` forwards the message for a `ValueError`,
+  which is a configuration verdict authored for an operator. Driver and engine
+  failures keep the class-name-only form because they quote the DSN that failed,
+  and URLs are masked through `oa_configurator.safe_endpoint` on both paths.
+
+Test fixtures that paired `provider_kind = "ollama"` with untagged names
+(`first-model`, `m1`, `provider-a`) were describing models Ollama cannot serve;
+they now carry explicit tags.
+
+### Changed — the embedding model journey shows the registry
+
+- A "Registered models" step now sits between choosing the provider and choosing
+  the model. It reports what omop-emb's registry actually holds — model name,
+  dimensions, and whether vectors exist — and asks whether to use one of those or
+  register a new model from the provider.
+- The final dropdown then lists the registry's models or the provider's,
+  according to that answer. Previously it always listed provider models, which is
+  what the endpoint *could* embed with rather than what has *been* embedded, so a
+  model with no vectors looked identical to one ready for grounding. That
+  mismatch is what produced the "not registered in the embedding store" warning
+  after an apparently successful configuration.
+- An empty registry disables the "use a registered model" option rather than
+  offering a dead end, and an unreachable store says so instead of claiming to be
+  empty — the two call for different actions.
+- This is what `probe_embedding_store()` was written for. It already returned
+  exactly this data and had never been called from production code.
+
+### Added — the embedding store is configurable from the console
+
+- The setup console had no way to configure a vector store. Nothing in the
+  mutation provider wrote `[vector_stores.*]` or `vector_store_name`, and the
+  embedding tier needs that reference as well as `embedding_model_name` — so
+  configuring an embedding model through the console left embeddings off with no
+  console path to turn them on.
+- The Databases table now always lists "Embedding store", showing
+  "Not configured" when absent. It was previously added only once a store
+  existed, so there was no row to select and therefore no Configure action to
+  reach.
+- Configuring it creates the `[vector_stores.*]` entry and the generic
+  `[databases.*]` entry its vectors live in, then points `vector_store_name` at
+  it. The connection is referenced by name rather than defined: a store sits on
+  a server that is already configured, and creating connections is the CDM
+  journey's job.
+- The new journey runs the same groundskeeping conformance suite as the other
+  three. That suite's fault-injection hook previously hardcoded the first step
+  as `provider`; it now takes the step from the case, since this journey starts
+  at `store`.
+
+!!! note "Also available from the CLI"
+    `omop-config configure groundworkers` already resolved this generically —
+    `GroundworkersConfig` declares `vector_store_name` as a `RefTo`, so the
+    shared configure path creates the store, its database and its connection by
+    recursion. The console was the gap, not the stack.
+
+### Fixed — provider choices and endpoint defaults in the setup wizards
+
+- The chat wizard offered `openai-compatible` as a provider, which any-llm does
+  not recognise. Configuring a non-Ollama chat provider through the console
+  produced a config that failed at runtime with `UnsupportedProviderError`
+  rather than being rejected at the point of choosing it. Both wizards now
+  derive their choices from omop-llm's `supported_providers()`, so the offered
+  values cannot drift from the accepted ones again — and `vllm`, `llamacpp`,
+  `anthropic` and `gemini` become selectable, having been omitted.
+- Selecting Ollama pre-fills the provider endpoint with
+  `http://localhost:11434/v1`. Previously the embeddings wizard had no default
+  at all, so a blank endpoint sent model discovery to `api.openai.com` even with
+  Ollama selected; the chat wizard had the opposite problem, defaulting every
+  provider to Ollama's port. A stored value always wins, and a hosted provider
+  gets no guessed endpoint — blank means "use the provider's own default".
+- Both endpoint fields are optional and document the expected shape: an
+  OpenAI-compatible root including `/v1`.
+
+### Fixed — the Graph section reports its real status
+
+- `GraphPresenter.status` returned `WARNING` unconditionally, ignoring both its
+  arguments, so Graph stayed amber even with every readiness check passing. It
+  now derives from the `database.graph` readiness result: OK when all four
+  checks pass, WARNING or ERROR from the worst diagnostic, ERROR when the
+  database is unreachable, and IDLE before the check has been run — nothing is
+  known to be wrong at that point, so it no longer claims otherwise.
+
+### Added — Prepare graph
+
+- The Graph section gains a wizard that closes the gaps the readiness check
+  reports: load the relationship-classification tables, create the full-text
+  indexes, create the functional text indexes. Selections start pre-set to
+  exactly what the check found outstanding.
+- Each remediation is a sibling package's own CLI command run out-of-process
+  (`omop-graph relationship-classification`, `omop-alchemy fulltext
+  install`/`populate`, `omop-alchemy indexes enable --vocab`), matching how
+  embedding population already works. The DDL involved — GIN index builds,
+  tsvector population, CLUSTER over vocabulary tables — is far too slow to hold
+  the console, and its output belongs in a log.
+- Full-text preparation runs `install` **and** `populate`. Installing alone
+  creates empty indexes, which the readiness check would report as present while
+  full-text grounding matched nothing.
+- Commands run tables-first, then indexes; indexing before the rows exist would
+  index nothing.
+- Relationship classification reads `predicate_classification.csv` and
+  `predicate_mapping.csv`. omop-graph keeps its copies at its repo root, outside
+  `src/omop_graph/`, so they never reach its wheel and the command cannot run
+  from a normal install. Pending the upstream packaging fix, Groundworkers
+  bundles a verbatim copy under `groundworkers/config/`. The wizard asks which
+  classification to load rather than where it lives: accepting the bundled copy
+  is a single choice, and only a site keeping its own is asked for a directory.
+  An 80-character absolute path in a one-line field was unreadable, and Textual
+  selects an input's whole value on focus, so it rendered as a solid block. An
+  overridden directory is still validated for both files.
+
+!!! warning "Temporary duplication"
+    `src/groundworkers/config/` duplicates data that belongs to omop-graph.
+    Remove it, `packaged_predicate_csv_dir()`, and the wizard default once
+    omop-graph ships the CSVs in its wheel.
+- The subprocess launch is now shared with embedding population rather than
+  copied (`application/setup/maintenance.py`).
+
+### Added — the setup console asks where the configuration lives
+
+- Starting the TUI with no configuration on disk now opens a one-field wizard
+  that either accepts the default location or takes the path to an existing
+  `config.toml`. Previously the console silently assumed the default: an
+  operator whose config lived elsewhere had no way to say so from inside the
+  TUI, and one who wanted it elsewhere only found out after the first write had
+  already gone to the default path.
+- It settles a path and nothing else. Every configuration journey — CDM
+  database, embedding model, chat model — is unchanged, and the console hands
+  straight back to them once the location is known.
+- Offered once per mount, not on every activation, so the page stays reachable.
+  Cancelling keeps the current default rather than leaving a dead end.
+
+### Added — Configuration section in the setup console
+
+- A sixth setup section renders the whole stack config as a tree, via
+  groundskeeping's `OAConfiguratorAdapter`. Every other section reports whether
+  something *works*; this one reports what the configuration *says* — which
+  entries Groundworkers references and whether each reference resolves.
+- Groundworkers' own `[tools.groundworkers]` section is typed automatically from
+  the `omop.config` entry-point registry, so nothing is passed to the adapter by
+  hand. This only became worthwhile once the tool section was flattened: as
+  nested sub-models, `mcp`/`rest`/`grounding` each collapsed to an opaque
+  `'N entries'` in the tree.
+- Redaction is by the schema's own `Sensitive()` markers. A `[tools.*]` section
+  whose package registers no config class shows its key count only — without a
+  schema there is no basis for deciding its values are safe to display — and the
+  section reports WARNING rather than passing silently.
+
 ### Fixed — logging, identifier quoting, enum coercion
 
 - **Logging is now actually configured.** `GroundworkersConfig` has always

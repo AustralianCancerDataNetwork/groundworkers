@@ -46,6 +46,7 @@ from oa_configurator import (  # type: ignore[import-untyped]
     is_sensitive,
     plan_configure,
 )
+from omop_llm import canonical_model_name, supported_providers
 from pydantic import BaseModel, ValidationError
 
 from groundworkers.application.setup.configuration import (
@@ -53,9 +54,15 @@ from groundworkers.application.setup.configuration import (
     load_configuration,
     save_configuration,
 )
+from groundworkers.application.setup.embedding_registry import (
+    RegistryLister,
+    list_registered_models,
+)
 from groundworkers.application.setup.models import (
     ConfigurationOwnership,
     ConfigurationState,
+    EmbeddingStoreSnapshot,
+    EmbeddingStoreState,
 )
 from groundworkers.config import GroundworkersConfig
 
@@ -73,6 +80,11 @@ MODEL_SETUP_TARGET: Final = ConfigTarget(
 # shape as the embedding model above and written through this same provider
 # boundary. `embedding_model_name` is never repurposed as the chat model: the two
 # journeys write independent entries and may point at different providers.
+VECTOR_STORE_SETUP_TARGET: Final = ConfigTarget(
+    ConfigTargetKind.TOOL,
+    "groundworkers.vector-store",
+    "Groundworkers embedding store",
+)
 LLM_SETUP_TARGET: Final = ConfigTarget(
     ConfigTargetKind.TOOL,
     "groundworkers.llm",
@@ -86,6 +98,11 @@ _PROVIDER_DISCOVERY_STEPS: Final = {
 }
 
 ModelDiscoverer = Callable[[str, str | None, str | None], Sequence[str]]
+
+# Whether the chosen model comes from the embedding store's registry (vectors
+# already exist) or from the provider (population must follow).
+MODEL_SOURCE_REGISTERED: Final = "registered"
+MODEL_SOURCE_NEW: Final = "new"
 ApplyCallback = Callable[[], None]
 
 
@@ -100,6 +117,10 @@ class _MutationSession:
     changed_fields: frozenset[str] = frozenset()
     candidate: StackConfig | None = None
     apply_token: str | None = None
+    # Carried between steps: the provider's live inventory, and what the
+    # embedding store already holds vectors for.
+    provider_models: tuple[str, ...] = ()
+    registered_models: tuple[str, ...] = ()
 
 
 class GroundworkersConfigMutationService:
@@ -111,11 +132,13 @@ class GroundworkersConfigMutationService:
         *,
         ownership: ConfigurationOwnership | None = None,
         model_discoverer: ModelDiscoverer | None = None,
+        registry_lister: RegistryLister | None = None,
         on_applied: ApplyCallback | None = None,
     ) -> None:
         self._path = Path(config_path).expanduser().resolve()
         self._ownership = ownership or ConfigurationOwnership()
         self._model_discoverer = model_discoverer or _no_model_discovery
+        self._registry_lister = registry_lister or list_registered_models
         self._on_applied = on_applied
         self._sessions: dict[str, _MutationSession] = {}
         self._apply_tokens: dict[str, str] = {}
@@ -260,14 +283,31 @@ class GroundworkersConfigMutationService:
                     ),
                     changed_fields=session.changed_fields,
                 )
+            session.provider_models = models
+            if session.target is MODEL_SETUP_TARGET or session.target == MODEL_SETUP_TARGET:
+                # The registry step comes next for embeddings, so refresh its
+                # choice with what the store actually holds.
+                future_fields = (self._model_source_field(session),)
+            else:
+                future_fields = (
+                    FieldSpec(
+                        key=choice_key,
+                        label="Model",
+                        kind=FieldKind.CHOICE,
+                        choices=tuple(ChoiceOption(name, name) for name in models),
+                        default=models[0],
+                        help="Models reported by the accepted provider endpoint.",
+                    ),
+                )
+        elif session.target == MODEL_SETUP_TARGET and step_key == "registry":
+            future_fields = (self._model_choice_field(session, proposed),)
+        elif session.target == MODEL_SETUP_TARGET and step_key == "model":
+            # The convention a model is trained with can only be preselected
+            # once there is a model to look at.
             future_fields = (
-                FieldSpec(
-                    key=choice_key,
-                    label="Model",
-                    kind=FieldKind.CHOICE,
-                    choices=tuple(ChoiceOption(name, name) for name in models),
-                    default=models[0],
-                    help="Models reported by the accepted provider endpoint.",
+                _prefix_convention_field(
+                    _optional_text(proposed.get("model_choice")),
+                    default=None,
                 ),
             )
 
@@ -277,6 +317,67 @@ class GroundworkersConfigMutationService:
         return ConfigStepResult(
             changed_fields=session.changed_fields,
             future_fields=future_fields,
+        )
+
+    def _model_source_field(self, session: _MutationSession) -> FieldSpec:
+        """Offer the registry only when it actually holds something."""
+        store = self._registry_lister(self._load_snapshot())
+        session.registered_models = tuple(
+            model.model_name for model in store.models
+        )
+        registered = session.registered_models
+        if not registered:
+            return FieldSpec(
+                "model_source",
+                "Model source",
+                kind=FieldKind.CHOICE,
+                default=MODEL_SOURCE_NEW,
+                choices=(
+                    ChoiceOption(
+                        MODEL_SOURCE_NEW, "Register a new model from the provider"
+                    ),
+                ),
+                disabled=True,
+                help=_registry_summary(store),
+            )
+        return FieldSpec(
+            "model_source",
+            "Model source",
+            kind=FieldKind.CHOICE,
+            default=MODEL_SOURCE_REGISTERED,
+            choices=(
+                ChoiceOption(
+                    MODEL_SOURCE_REGISTERED,
+                    f"Use one of the {len(registered)} registered model(s)",
+                ),
+                ChoiceOption(
+                    MODEL_SOURCE_NEW, "Register a new model from the provider"
+                ),
+            ),
+            help=_registry_summary(store),
+        )
+
+    def _model_choice_field(
+        self, session: _MutationSession, proposed: Mapping[str, object]
+    ) -> FieldSpec:
+        use_registered = (
+            _optional_text(proposed.get("model_source")) == MODEL_SOURCE_REGISTERED
+            and session.registered_models
+        )
+        names = (
+            session.registered_models if use_registered else session.provider_models
+        )
+        return FieldSpec(
+            key="model_choice",
+            label="Model",
+            kind=FieldKind.CHOICE,
+            choices=tuple(ChoiceOption(name, name) for name in names),
+            default=names[0] if names else None,
+            help=(
+                "Registered in the embedding store, so vectors already exist."
+                if use_registered
+                else "Reported by the provider. Populate embeddings after saving."
+            ),
         )
 
     def plan(self, draft: ConfigDraft) -> ConfigPlan:
@@ -446,6 +547,8 @@ class GroundworkersConfigMutationService:
             return _cdm_fields(stack)
         if target == MODEL_SETUP_TARGET:
             return _model_fields(stack)
+        if target == VECTOR_STORE_SETUP_TARGET:
+            return _vector_store_fields(stack)
         if target == LLM_SETUP_TARGET:
             return _llm_fields(stack)
         raise ValueError("Groundworkers does not support this configuration target.")
@@ -492,6 +595,37 @@ class GroundworkersConfigMutationService:
                         issues.append(
                             ValidationIssue("A model is required.", field_key=key)
                         )
+                issues.extend(
+                    _model_name_issues(
+                        proposed,
+                        kind_key="provider_kind",
+                        model_key="model_choice",
+                    )
+                )
+            if step_key == "custom_prefixes" and not (
+                _prefix_text(proposed.get("document_prefix"))
+                or _prefix_text(proposed.get("query_prefix"))
+            ):
+                issues.append(
+                    ValidationIssue(
+                        "Enter at least one prefix, or go back and choose "
+                        "'No prefixes'.",
+                        field_key="document_prefix",
+                    )
+                )
+        elif target == VECTOR_STORE_SETUP_TARGET:
+            if step_key == "store":
+                for key in ("store_entry_name", "backend_type"):
+                    if not _optional_text(proposed.get(key)):
+                        issues.append(
+                            ValidationIssue("A value is required.", field_key=key)
+                        )
+            if step_key == "database":
+                for key in ("store_database_name", "store_connection_name"):
+                    if not _optional_text(proposed.get(key)):
+                        issues.append(
+                            ValidationIssue("A value is required.", field_key=key)
+                        )
         elif target == LLM_SETUP_TARGET:
             if step_key == "provider":
                 if not _optional_text(proposed.get("llm_provider_name")):
@@ -500,7 +634,7 @@ class GroundworkersConfigMutationService:
                             "A provider name is required.", field_key="llm_provider_name"
                         )
                     )
-                if _optional_text(proposed.get("llm_provider_kind")) not in _LLM_PROVIDERS:
+                if _optional_text(proposed.get("llm_provider_kind")) not in supported_provider_keys():
                     issues.append(
                         ValidationIssue(
                             "Choose a supported provider.", field_key="llm_provider_kind"
@@ -518,6 +652,13 @@ class GroundworkersConfigMutationService:
                         issues.append(
                             ValidationIssue("A chat model is required.", field_key=key)
                         )
+                issues.extend(
+                    _model_name_issues(
+                        proposed,
+                        kind_key="llm_provider_kind",
+                        model_key="llm_model_choice",
+                    )
+                )
         return tuple(issues)
 
     def _candidate(self, session: _MutationSession) -> StackConfig:
@@ -525,6 +666,8 @@ class GroundworkersConfigMutationService:
             set_dict = _cdm_set_dict(session.answers)
         elif session.target == MODEL_SETUP_TARGET:
             set_dict = _model_set_dict(session.answers)
+        elif session.target == VECTOR_STORE_SETUP_TARGET:
+            set_dict = _vector_store_set_dict(session.answers)
         elif session.target == LLM_SETUP_TARGET:
             set_dict = _llm_set_dict(session.answers)
         else:
@@ -601,9 +744,56 @@ def model_setup_workflow(
                 ("provider_name", "provider_kind", "base_url", "api_key"),
             ),
             ConfigWorkflowStep(
+                "registry",
+                "Registered models",
+                ("model_source",),
+            ),
+            ConfigWorkflowStep(
                 "model",
                 "Choose the model",
                 ("model_entry_name", "model_choice"),
+            ),
+            ConfigWorkflowStep(
+                "prefixes",
+                "Set the embedding prefixes",
+                ("prefix_convention",),
+            ),
+            ConfigWorkflowStep(
+                "custom_prefixes",
+                "Enter the prefixes",
+                ("document_prefix", "query_prefix"),
+                when=(
+                    ConfigBranchCondition(
+                        "prefix_convention",
+                        frozenset({PREFIX_CONVENTION_CUSTOM}),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def vector_store_setup_workflow(
+    operation: MutationOperation,
+) -> ConfigWorkflowSpec:
+    """Describe creating the embedding store and the database it lives in."""
+
+    return ConfigWorkflowSpec(
+        key="groundworkers-vector-store",
+        target=VECTOR_STORE_SETUP_TARGET,
+        operation=operation,
+        title="Configure the Groundworkers embedding store",
+        purpose="Choose a backend and the database its vectors are stored in.",
+        steps=(
+            ConfigWorkflowStep(
+                "store",
+                "Choose the backend",
+                ("store_entry_name", "backend_type", "faiss_cache_dir"),
+            ),
+            ConfigWorkflowStep(
+                "database",
+                "Where the vectors live",
+                ("store_database_name", "store_connection_name", "store_schema_name"),
             ),
         ),
     )
@@ -709,25 +899,28 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     model = stack.models.get(model_name) if model_name else None
     provider_name = getattr(model, "provider", "embedding_provider")
     provider = stack.providers.get(provider_name)
+    provider_kind = getattr(provider, "provider", "ollama")
     existing_model = getattr(model, "model", None)
     pending = existing_model or "pending"
+    stored_convention = _convention_for_stored_prefixes(
+        getattr(model, "document_prefix", None),
+        getattr(model, "query_prefix", None),
+    )
     return (
         FieldSpec("provider_name", "Provider entry", default=provider_name),
         FieldSpec(
             "provider_kind",
             "Provider",
             kind=FieldKind.CHOICE,
-            default=getattr(provider, "provider", "ollama"),
-            choices=(
-                ChoiceOption("ollama", "Ollama"),
-                ChoiceOption("openai", "OpenAI-compatible"),
-            ),
+            default=provider_kind,
+            choices=_provider_choices(),
         ),
         FieldSpec(
             "base_url",
             "Provider endpoint",
             required=False,
-            default=getattr(provider, "base_url", None),
+            default=_default_endpoint(provider_kind, getattr(provider, "base_url", None)),
+            help="OpenAI-compatible root, including /v1. Blank uses the provider's own default.",
         ),
         FieldSpec(
             "api_key",
@@ -736,6 +929,22 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             required=False,
             sensitive=True,
             help="Leave blank to preserve an existing key.",
+        ),
+        FieldSpec(
+            "model_source",
+            "Model source",
+            kind=FieldKind.CHOICE,
+            default=MODEL_SOURCE_REGISTERED,
+            choices=(
+                ChoiceOption(
+                    MODEL_SOURCE_REGISTERED,
+                    "Use a model already registered in the embedding store",
+                ),
+                ChoiceOption(
+                    MODEL_SOURCE_NEW, "Register a new model from the provider"
+                ),
+            ),
+            help="Populated from the store once the provider step is accepted.",
         ),
         FieldSpec(
             "model_entry_name", "Model entry", default=model_name or "embedding_model"
@@ -749,6 +958,76 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             disabled=existing_model is None,
             help="Complete the provider step to discover available models.",
         ),
+        _prefix_convention_field(existing_model, default=stored_convention),
+        FieldSpec(
+            "document_prefix",
+            "Document prefix",
+            required=False,
+            default=getattr(model, "document_prefix", None),
+            help="Prepended to concept text as it is stored.",
+        ),
+        FieldSpec(
+            "query_prefix",
+            "Query prefix",
+            required=False,
+            default=getattr(model, "query_prefix", None),
+            help="Prepended to search text at query time.",
+        ),
+    )
+
+
+def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
+    tool = stack.tools.get(GroundworkersConfig.tool_name, {})
+    store_name = _optional_text(tool.get("vector_store_name"))
+    store = stack.vector_stores.get(store_name) if store_name else None
+    database_name = getattr(store, "database", "embedding_db")
+    database = stack.databases.get(database_name)
+    connection_name = getattr(database, "connection", None)
+    # Defaults to the CDM's own connection: for pgvector the store usually lives
+    # on the same server, and it is the one connection known to work.
+    cdm_name = _optional_text(tool.get("cdm_db", "cdm_db"))
+    cdm = stack.databases.get(cdm_name or "")
+    connections = tuple(stack.connections) or ("cdm_main",)
+    return (
+        FieldSpec(
+            "store_entry_name", "Store entry", default=store_name or "embeddings"
+        ),
+        FieldSpec(
+            "backend_type",
+            "Backend",
+            kind=FieldKind.CHOICE,
+            default=getattr(store, "backend_type", "sqlitevec"),
+            choices=(
+                ChoiceOption("sqlitevec", "sqlite-vec (single file, no server)"),
+                ChoiceOption("pgvector", "pgvector (PostgreSQL extension)"),
+            ),
+        ),
+        FieldSpec(
+            "store_database_name", "Database entry", default=database_name
+        ),
+        FieldSpec(
+            "store_connection_name",
+            "Connection",
+            kind=FieldKind.CHOICE,
+            default=connection_name
+            or getattr(cdm, "connection", None)
+            or connections[0],
+            choices=tuple(ChoiceOption(name, name) for name in connections),
+            help="An existing connection. Add one through the CDM journey or omop-config.",
+        ),
+        FieldSpec(
+            "store_schema_name",
+            "Schema",
+            required=False,
+            default=getattr(database, "schema_name", None) or "public",
+        ),
+        FieldSpec(
+            "faiss_cache_dir",
+            "FAISS cache directory",
+            required=False,
+            default=getattr(store, "faiss_cache_dir", None),
+            help="Optional query-time cache. Leave blank unless using the embedding-faiss extra.",
+        ),
     )
 
 
@@ -758,6 +1037,7 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     model = stack.models.get(model_name) if model_name else None
     provider_name = getattr(model, "provider", "chat_provider")
     provider = stack.providers.get(provider_name)
+    provider_kind = getattr(provider, "provider", "ollama")
     existing_model = getattr(model, "model", None)
     pending = existing_model or "pending"
     return (
@@ -766,15 +1046,15 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "llm_provider_kind",
             "Provider",
             kind=FieldKind.CHOICE,
-            default=getattr(provider, "provider", "ollama"),
-            choices=tuple(
-                ChoiceOption(key, label) for key, label in _LLM_PROVIDERS.items()
-            ),
+            default=provider_kind,
+            choices=_provider_choices(),
         ),
         FieldSpec(
             "llm_base_url",
             "Provider endpoint",
-            default=getattr(provider, "base_url", None) or _DEFAULT_LLM_ENDPOINT,
+            required=False,
+            default=_default_endpoint(provider_kind, getattr(provider, "base_url", None)),
+            help="OpenAI-compatible root, including /v1. Blank uses the provider's own default.",
         ),
         FieldSpec(
             "llm_api_key",
@@ -821,6 +1101,31 @@ def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     return {"cdm_db": database}
 
 
+def _vector_store_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
+    """Create the store, its generic database, and the reference to it.
+
+    The connection is named rather than defined: a vector store sits on a server
+    that is already configured, and creating connections is the CDM journey's job.
+    """
+    database: dict[str, object] = {
+        "name": str(answers["store_database_name"]),
+        "kind": "generic",
+        "connection": str(answers["store_connection_name"]),
+    }
+    schema = answers.get("store_schema_name")
+    if schema not in (None, ""):
+        database["schema_name"] = schema
+    store: dict[str, object] = {
+        "name": str(answers["store_entry_name"]),
+        "backend_type": str(answers["backend_type"]),
+        "database": database,
+    }
+    cache_dir = answers.get("faiss_cache_dir")
+    if cache_dir not in (None, ""):
+        store["faiss_cache_dir"] = cache_dir
+    return {"vector_store_name": store}
+
+
 def _model_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     provider: dict[str, object] = {
         "name": str(answers["provider_name"]),
@@ -830,12 +1135,24 @@ def _model_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
         value = answers.get(key)
         if value not in (None, ""):
             provider[key] = value
+    convention = _optional_text(answers.get("prefix_convention"))
+    if convention == PREFIX_CONVENTION_CUSTOM:
+        document_prefix = _prefix_text(answers.get("document_prefix"))
+        query_prefix = _prefix_text(answers.get("query_prefix"))
+    else:
+        document_prefix, query_prefix = _prefix_pair(
+            convention or PREFIX_CONVENTION_NONE
+        )
     return {
         "embedding_model_name": {
             "name": str(answers["model_entry_name"]),
             "provider": provider,
             "model": str(answers["model_choice"]),
             "embeddings": True,
+            # Written even when None, so a convention chosen once can be taken
+            # back off the entry rather than being stuck there for good.
+            "document_prefix": document_prefix,
+            "query_prefix": query_prefix,
         }
     }
 
@@ -879,6 +1196,9 @@ def _target_exists(stack: StackConfig | None, target: ConfigTarget) -> bool:
     if target == MODEL_SETUP_TARGET:
         name = tool.get("embedding_model_name")
         return isinstance(name, str) and name in stack.models
+    if target == VECTOR_STORE_SETUP_TARGET:
+        name = tool.get("vector_store_name")
+        return isinstance(name, str) and name in stack.vector_stores
     if target == LLM_SETUP_TARGET:
         name = tool.get("llm_model_name")
         return isinstance(name, str) and name in stack.models
@@ -987,6 +1307,27 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
                 "databases",
             ),
         )
+    if session.target == VECTOR_STORE_SETUP_TARGET:
+        store_name = str(session.answers.get("store_entry_name", "embeddings"))
+        database_name = str(session.answers.get("store_database_name", "embedding_db"))
+        return (
+            EffectRef(
+                session.operation.value,
+                session.target,
+                "embedding database",
+                ConfigTarget(ConfigTargetKind.DATABASE, database_name, database_name),
+                "databases",
+            ),
+            EffectRef(
+                session.operation.value,
+                session.target,
+                "embedding store",
+                ConfigTarget(
+                    ConfigTargetKind.VECTOR_STORE, store_name, store_name
+                ),
+                "vector_stores",
+            ),
+        )
     if session.target == LLM_SETUP_TARGET:
         provider_name = str(session.answers.get("llm_provider_name", "chat_provider"))
         model_name = str(session.answers.get("llm_model_entry_name", "chat_model"))
@@ -1021,6 +1362,171 @@ def _required_revision(value: str | None) -> str:
     return value
 
 
+PREFIX_CONVENTION_NONE: Final = "none"
+PREFIX_CONVENTION_CUSTOM: Final = "custom"
+
+_PREFIX_CONVENTIONS: Final = (
+    (
+        PREFIX_CONVENTION_NONE,
+        "No prefixes (symmetric model)",
+        None,
+        None,
+        (),
+    ),
+    (
+        "nomic",
+        "search_document: / search_query:  (Nomic)",
+        "search_document: ",
+        "search_query: ",
+        ("nomic",),
+    ),
+    (
+        "e5",
+        "passage: / query:  (E5, multilingual-e5)",
+        "passage: ",
+        "query: ",
+        ("e5",),
+    ),
+    (
+        "query_only",
+        "query:  on queries only (Snowflake Arctic Embed 2.0)",
+        None,
+        "query: ",
+        ("arctic-embed",),
+    ),
+    (
+        "bge",
+        "Query-only instruction (BGE)",
+        None,
+        "Represent this sentence for searching relevant passages: ",
+        ("bge", "mxbai"),
+    ),
+    (
+        PREFIX_CONVENTION_CUSTOM,
+        "Enter prefixes manually",
+        None,
+        None,
+        (),
+    ),
+)
+"""Prefix pairs for asymmetric embedding models, keyed by convention.
+
+``omop_llm`` publishes the recognised prefixes as a flat set, but they are only
+correct in matched pairs: indexing with ``search_document: `` and querying with
+``query: `` produces embeddings that look fine and retrieve badly, with nothing
+raised at any point. Offering the pairs, rather than two free-text boxes, is
+what removes that failure mode. ``test_offered_prefixes_are_the_ones_omop_llm_
+recognises`` keeps this table honest against the upstream set.
+
+The trailing tuple holds model-name fragments used only to preselect a
+convention. It never decides anything on its own: the choice is on a step the
+operator has to pass through, and the resulting prefixes are named on the
+review, so a wrong guess is visible and correctable before it is written.
+
+Fragments are deliberately narrow. Arctic Embed is the reason: 1.0 used the BGE
+instruction, 2.0 uses a bare ``query: `` on queries only, and neither is the
+Nomic pair its name sits next to in most listings. A family whose convention is
+not unambiguous from the name is better left unmatched -- an operator choosing
+from the list has the model card in front of them, and a confident wrong default
+is the exact failure this step exists to prevent.
+"""
+
+
+def _prefix_pair(convention: str) -> tuple[str | None, str | None]:
+    for key, _label, document, query, _fragments in _PREFIX_CONVENTIONS:
+        if key == convention:
+            return document, query
+    return None, None
+
+
+def _default_prefix_convention(model_name: str | None) -> str:
+    """Preselect the convention the chosen model is usually trained with."""
+    lowered = (model_name or "").lower()
+    for key, _label, _document, _query, fragments in _PREFIX_CONVENTIONS:
+        if any(fragment in lowered for fragment in fragments):
+            return key
+    return PREFIX_CONVENTION_NONE
+
+
+def _convention_for_stored_prefixes(
+    document_prefix: str | None,
+    query_prefix: str | None,
+) -> str | None:
+    """Recognise prefixes already in the config so an update does not reset them."""
+    if document_prefix is None and query_prefix is None:
+        return None
+    for key, _label, document, query, _fragments in _PREFIX_CONVENTIONS:
+        if key == PREFIX_CONVENTION_CUSTOM:
+            continue
+        if (document, query) == (document_prefix, query_prefix):
+            return key
+    return PREFIX_CONVENTION_CUSTOM
+
+
+def _prefix_convention_field(model_name: str | None, *, default: str | None) -> FieldSpec:
+    return FieldSpec(
+        "prefix_convention",
+        "Prefix convention",
+        kind=FieldKind.CHOICE,
+        default=default or _default_prefix_convention(model_name),
+        choices=tuple(
+            ChoiceOption(key, label) for key, label, _d, _q, _f in _PREFIX_CONVENTIONS
+        ),
+        help=(
+            "Asymmetric models embed documents and queries with different "
+            "prefixes. The wrong pair retrieves badly without any error, and "
+            "changing it later means re-embedding everything."
+        ),
+    )
+
+
+def _model_name_issues(
+    proposed: Mapping[str, object],
+    *,
+    kind_key: str,
+    model_key: str,
+) -> tuple[ValidationIssue, ...]:
+    """Apply the provider's own naming rules before the entry can be written.
+
+    ``omop_llm`` refuses names that would make stored vectors untrustworthy --
+    an Ollama ``:latest`` tag being the case that matters, since re-pulling the
+    model silently changes what the stored embeddings mean. That rule used to
+    fire only when something downstream built a backend, which is far too late:
+    the entry is already saved and the operator sees a failure on an unrelated
+    screen. Raising it here attaches it to the field that caused it.
+
+    The provider's message is forwarded verbatim. These are authored rule
+    explanations naming a model and a tag, not the provider-endpoint errors
+    elsewhere in this module that are withheld for carrying credentials.
+    """
+    kind = _optional_text(proposed.get(kind_key))
+    model = _optional_text(proposed.get(model_key))
+    if kind is None or model is None:
+        return ()
+    try:
+        canonical_model_name(kind, model)
+    except ValueError as exc:
+        return (ValidationIssue(str(exc), field_key=model_key),)
+    except Exception:
+        # Broad except: an unsupported provider is already reported by the
+        # provider step, and no naming rule exists to apply here.
+        return ()
+    return ()
+
+
+def _prefix_text(value: object) -> str | None:
+    """Keep an embedding prefix exactly as typed, trailing space included.
+
+    ``_optional_text`` strips, which is right for a name and wrong here:
+    ``"search_document: "`` and ``"search_document:"`` are different prefixes,
+    and losing the space silently changes what every stored vector means.
+    """
+    if value is None:
+        return None
+    text = str(value)
+    return text or None
+
+
 def _optional_text(value: object) -> str | None:
     if value is None:
         return None
@@ -1038,8 +1544,58 @@ def _no_model_discovery(
 
 
 
-_LLM_PROVIDERS: Final = {
+# Derived from omop-llm rather than hand-listed. A hardcoded list previously
+# offered "openai-compatible", which any-llm does not recognise, so a chat
+# provider configured through the console failed at runtime with
+# UnsupportedProviderError instead of at the point of choosing it.
+_PROVIDER_LABELS: Final = {
     "ollama": "Ollama",
-    "openai-compatible": "OpenAI-compatible",
+    "openai": "OpenAI-compatible",
+    "vllm": "vLLM",
+    "llamacpp": "llama.cpp",
+    "anthropic": "Anthropic",
+    "gemini": "Gemini",
 }
-_DEFAULT_LLM_ENDPOINT: Final = "http://localhost:11434/v1"
+
+
+def _provider_choices() -> tuple[ChoiceOption, ...]:
+    return tuple(
+        ChoiceOption(key, _PROVIDER_LABELS.get(key, key))
+        for key in supported_providers()
+    )
+
+
+def supported_provider_keys() -> frozenset[str]:
+    return frozenset(supported_providers())
+
+
+# Endpoints a provider serves at by default. Only providers that run locally on
+# a well-known port get one; a hosted provider's own default is better than any
+# guess, and omop-llm falls back to it when base_url is unset.
+_PROVIDER_ENDPOINT_DEFAULTS: Final = {
+    "ollama": "http://localhost:11434/v1",
+}
+
+
+def _default_endpoint(provider_kind: str | None, stored: str | None) -> str | None:
+    if stored:
+        return stored
+    return _PROVIDER_ENDPOINT_DEFAULTS.get(provider_kind or "")
+
+
+def _registry_summary(store: EmbeddingStoreSnapshot) -> str:
+    """One line describing what the embedding store holds, for the choice's help."""
+    if store.state is EmbeddingStoreState.UNCONFIGURED:
+        return (
+            "No embedding store is configured, so nothing is registered yet. "
+            "Configure one from the Databases table."
+        )
+    if not store.reachable:
+        return "The embedding store could not be reached, so its registry is unknown."
+    if not store.models:
+        return "The embedding store is reachable but has no registered models yet."
+    return "Registered: " + "; ".join(
+        f"{model.model_name} ({model.dimensions}d, "
+        f"{'has vectors' if model.has_embeddings else 'no vectors yet'})"
+        for model in store.models
+    )

@@ -24,16 +24,19 @@ from groundworkers.application.setup.configuration_provider import (
     CDM_SETUP_TARGET,
     LLM_SETUP_TARGET,
     MODEL_SETUP_TARGET,
+    VECTOR_STORE_SETUP_TARGET,
     GroundworkersConfigMutationService,
     cdm_setup_workflow,
     llm_setup_workflow,
     model_setup_workflow,
+    vector_store_setup_workflow,
 )
 from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
 )
 from groundworkers.application.setup.model_inventory import discover_provider_models
+from groundworkers.application.setup.models import ConfigurationState
 from groundworkers.application.setup.runtime_setup import (
     load_chat_configuration,
     load_graph_configuration,
@@ -43,17 +46,27 @@ from groundworkers.application.setup.runtime_setup import (
 from groundworkers.tui.pages.base import GroundworkersPage
 from groundworkers.tui.presenters.base import key_value_detail
 from groundworkers.tui.presenters.chat import ChatPresenter
-from groundworkers.tui.presenters.database import DatabasePresenter
+from groundworkers.tui.presenters.configuration import ConfigurationPresenter
+from groundworkers.tui.presenters.database import (
+    EMBEDDING_TARGET_KEY,
+    DatabasePresenter,
+)
 from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.state import SetupSession
+from groundworkers.tui.wizards.config_location import ConfigLocationWizardController
+from groundworkers.tui.wizards.graph_maintenance import GraphMaintenanceWizardController
 
 DATABASE_SECTION = "setup.database"
 GRAPH_SECTION = "setup.graph"
 LLM_PROVIDER_SECTION = "setup.llm_provider"
 EMBEDDINGS_SECTION = "setup.embeddings"
 CHAT_SECTION = "setup.chat"
+CONFIGURATION_SECTION = "setup.configuration"
+
+# The database target whose diagnostics decide the Graph section's status.
+GRAPH_READINESS_TARGET = "database.graph"
 
 SECTION_TITLES = {
     DATABASE_SECTION: "Database Setup",
@@ -77,6 +90,7 @@ class SetupPage(GroundworkersPage):
         llm_provider: LlmProviderPresenter,
         embeddings: EmbeddingsPresenter,
         chat: ChatPresenter,
+        configuration: ConfigurationPresenter,
     ) -> None:
         super().__init__(route)
         self._session = session
@@ -85,11 +99,37 @@ class SetupPage(GroundworkersPage):
         self._llm_provider = llm_provider
         self._embeddings = embeddings
         self._chat = chat
+        self._configuration = configuration
+        self._config_location_offered = False
         self._selected_section = DATABASE_SECTION
         self._selected_database_target_key: str | None = None
 
     def activate(self, context: PageContext) -> None:
+        if self._should_choose_config_location():
+            # Once per mount: with no configuration on disk there is nothing to
+            # show and nowhere to write, so settle the path first. Every actual
+            # configuration journey is unchanged and picks up from there.
+            self._config_location_offered = True
+            context.open_wizard(ConfigLocationWizardController(self._session))
+            return
         self._show_section_detail(context)
+
+    def _graph_readiness(self):
+        """The connection check that already probes everything the graph needs."""
+        return next(
+            (
+                result
+                for result in self._session.connection_results
+                if result.target_key == GRAPH_READINESS_TARGET
+            ),
+            None,
+        )
+
+    def _should_choose_config_location(self) -> bool:
+        return (
+            not self._config_location_offered
+            and self._session.configuration.state is ConfigurationState.MISSING
+        )
 
     def build_navigation(self, context: PageContext) -> SectionNavigation:
         graph = load_graph_configuration(self._session.configuration)
@@ -114,6 +154,7 @@ class SetupPage(GroundworkersPage):
                     status=self._graph.status(
                         database_ready=database_ready,
                         configuration=graph,
+                        readiness=self._graph_readiness(),
                     ),
                 ),
                 SectionItem(
@@ -137,6 +178,11 @@ class SetupPage(GroundworkersPage):
                     "Chat",
                     status=self._chat.status(chat),
                 ),
+                SectionItem(
+                    CONFIGURATION_SECTION,
+                    "View Configuration",
+                    status=self._configuration.status(self._session.configuration),
+                ),
             ),
         )
 
@@ -146,6 +192,7 @@ class SetupPage(GroundworkersPage):
             return self._graph.landing(
                 database_ready=database_ready,
                 configuration=load_graph_configuration(self._session.configuration),
+                readiness=self._graph_readiness(),
             )
         if self._selected_section == LLM_PROVIDER_SECTION:
             return self._llm_provider.landing(
@@ -160,6 +207,8 @@ class SetupPage(GroundworkersPage):
                 selected_all=self._session.embedding_vocabulary_selection_all,
                 selected_vocabularies=self._session.embedding_selected_vocabularies,
             )
+        if self._selected_section == CONFIGURATION_SECTION:
+            return self._configuration.landing(self._session.configuration)
         if self._selected_section == CHAT_SECTION:
             provider = load_llm_provider_configuration(self._session.configuration)
             return self._chat.landing(load_chat_configuration(provider))
@@ -212,7 +261,21 @@ class SetupPage(GroundworkersPage):
         self._set_embedding_vocabulary_selection(row_key, selected_keys, context)
 
     def action_selected(self, action_key: str, context: PageContext) -> None:
+        if action_key == "graph.prepare":
+            context.open_wizard(
+                GraphMaintenanceWizardController(
+                    self._session, self._graph_readiness()
+                )
+            )
+            return
         if action_key == "database.configure":
+            if self._selected_database_target_key == EMBEDDING_TARGET_KEY:
+                self._open_config_wizard(
+                    context,
+                    VECTOR_STORE_SETUP_TARGET,
+                    vector_store_setup_workflow,
+                )
+                return
             if self._selected_database_target_key == "database.groundworkers":
                 context.notify(
                     "Groundworkers tuning is derived from the CDM database, embedding model, and vector store; configure those entries directly.",
@@ -245,29 +308,17 @@ class SetupPage(GroundworkersPage):
                 self._start_embedding_coverage_refresh(context)
                 context.notify("Refreshing embedding coverage before population.")
                 return
-            if (
-                not self._session.embedding_vocabulary_selection_all
-                and not self._session.embedding_selected_vocabularies
-            ):
-                context.notify(
-                    "Select all missing vocabularies or at least one incomplete vocabulary before populating.",
-                    severity="warning",
-                )
-                return
             from groundworkers.tui.wizards.embeddings import (
                 EmbeddingPopulationWizardController,
             )
 
+            # Scope is the wizard's first step, so nothing has to be chosen on
+            # the page before it opens. The gate that used to stand here asked
+            # for a table selection the detail view never offered.
             context.open_wizard(
                 EmbeddingPopulationWizardController(
                     self._session,
                     coverage=self._session.embedding_coverage,
-                    vocabulary_mode=(
-                        "all"
-                        if self._session.embedding_vocabulary_selection_all
-                        else "selected"
-                    ),
-                    vocabularies=self._session.embedding_selected_vocabularies,
                 )
             )
             return

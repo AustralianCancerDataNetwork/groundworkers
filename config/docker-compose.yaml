@@ -1,0 +1,40 @@
+services:
+  groundworkers-db:
+    image: pgvector/pgvector:pg18
+    env_file:
+      - groundworkers_db.env
+    environment:
+      POSTGRES_USER: ${VECTOR_DB_UID:-groundworkers}
+      POSTGRES_PASSWORD: ${VECTOR_DB_PWD:-groundworkers}
+      POSTGRES_DB: ${VECTOR_DB:-groundworkers_vector}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${VECTOR_DB_UID:-groundworkers}", "-d", "${VECTOR_DB:-groundworkers_vector}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    volumes:
+      - groundworkers_db:/var/lib/postgresql
+    ports:
+      - "${VECTOR_DB_PORT:-19530}:5432"
+    shm_size: ${PG_SHM_SIZE:-256m}
+    command: >
+      postgres
+      -c shared_buffers=${PG_SHARED_BUFFERS:-4GB}
+      -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-20GB}
+      -c work_mem=${PG_WORK_MEM:-32MB}
+      -c maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-1GB}
+      -c wal_buffers=${PG_WAL_BUFFERS:-64MB}
+      -c wal_compression=${PG_WAL_COMPRESSION:-lz4}
+      -c full_page_writes=${PG_FULL_PAGE_WRITES:-on}
+      -c checkpoint_timeout=${PG_CHECKPOINT_TIMEOUT:-15min}
+      -c checkpoint_completion_target=0.9
+      -c max_wal_size=${PG_MAX_WAL_SIZE:-8GB}
+      -c min_wal_size=${PG_MIN_WAL_SIZE:-1GB}
+      -c synchronous_commit=off
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c max_connections=${PG_MAX_CONNECTIONS:-100}
+
+volumes:
+  groundworkers_db:

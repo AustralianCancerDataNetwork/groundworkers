@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import os
+import re
 import shutil
-import subprocess
 from collections.abc import Mapping
-from datetime import UTC, datetime
 from pathlib import Path
 
-from oa_configurator import ResolvedVectorStore, Resolver
+from oa_configurator import ResolvedVectorStore, Resolver, safe_endpoint
 from omop_emb import EmbeddingBackend
 from omop_emb.backends import resolve_backend_from_resolved_vector_store
 from omop_llm import canonical_model_name
@@ -16,6 +14,7 @@ from sqlalchemy.engine import Engine
 
 from groundworkers.application.setup.embedding_coverage import calculate_coverage
 from groundworkers.application.setup.embedding_setup import load_embedding_configuration
+from groundworkers.application.setup.maintenance import launch_maintenance_command
 from groundworkers.application.setup.models import (
     ConfigurationSnapshot,
     CoverageScope,
@@ -30,6 +29,8 @@ from groundworkers.application.setup.models import (
 from groundworkers.base.results import enum_value
 from groundworkers.base.sql import quote_identifier
 from groundworkers.config import GroundworkersConfig
+
+_URL_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)
 
 DEFAULT_EMBEDDING_BATCH_SIZE = 100
 DEFAULT_EMBEDDING_BACKFILL_LIMIT = 1000
@@ -112,10 +113,7 @@ def load_embedding_coverage_report(
         coverage = CoverageSnapshot(
             scope=scope,
             available=False,
-            blocker=(
-                "Embedding coverage could not be loaded because setup failed with "
-                f"{type(exc).__name__}."
-            ),
+            blocker=_coverage_blocker(exc),
         )
         index = EmbeddingIndexSnapshot(
             model_name=configuration.model_name,
@@ -126,6 +124,41 @@ def load_embedding_coverage_report(
         coverage=coverage,
         index=index,
     )
+
+
+def _coverage_blocker(exc: Exception) -> str:
+    """Say why coverage failed, without handing a driver's DSN to the screen.
+
+    ``ValueError`` here is a configuration verdict: the required references are
+    missing, or a provider has refused the model name it was given. Those
+    messages are authored for an operator and are the whole point of the
+    failure, so withholding them -- as this used to, naming only the exception
+    class -- turned an actionable answer into a dead end.
+
+    Every other exception is an operational failure raised by a driver or an
+    engine, and those routinely quote the connection string that failed. They
+    keep the class-name-only form. URLs are scrubbed from whatever is shown, so
+    a message that does carry one cannot leak a credential either way.
+    """
+    if isinstance(exc, ValueError):
+        detail = _scrub_urls(str(exc).strip())
+        if detail:
+            return f"Embedding coverage could not be loaded. {detail}"
+    return (
+        "Embedding coverage could not be loaded because setup failed with "
+        f"{type(exc).__name__}."
+    )
+
+
+def _scrub_urls(text: str) -> str:
+    """Mask credentials in any URL the text carries.
+
+    Delegates the definition of a safe URL to ``oa_configurator.safe_endpoint``,
+    the same primitive its logging filter uses. Only the regex is local, because
+    oa-configurator keeps its copy private to the logging module; see the
+    upstream ticket to have it export the scrub itself.
+    """
+    return _URL_RE.sub(lambda match: safe_endpoint(match.group(0)) or "***", text)
 
 
 def build_embedding_population_command(
@@ -168,23 +201,8 @@ def launch_embedding_population(
 ) -> EmbeddingPopulationLaunch:
     """Start an omop-emb population command and return immediately."""
 
-    log_path = Path(log_dir) / (
-        f"groundworkers-omop-emb-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.log"
-    )
-    env = os.environ.copy()
-    env.update(dict(command.environment))
-    with log_path.open("ab") as log_file:
-        process = subprocess.Popen(
-            command.argv,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
-        )
-    return EmbeddingPopulationLaunch(
-        command=command,
-        pid=process.pid,
-        log_path=log_path,
+    return launch_maintenance_command(
+        command, log_prefix="omop-emb", log_dir=log_dir
     )
 
 

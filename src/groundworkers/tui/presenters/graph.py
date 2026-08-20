@@ -6,20 +6,47 @@ from groundskeeping.contracts import (
     SurfaceView,
     TableRow,
     TableView,
+    ViewAction,
 )
 
-from groundworkers.application.setup.models import GraphConfiguration
+from groundworkers.application.setup.models import (
+    ConnectionResult,
+    DiagnosticSeverity,
+    GraphConfiguration,
+)
 from groundworkers.tui.presenters.base import SetupPresenterBase
 
 
 class GraphPresenter(SetupPresenterBase):
     def status(
-        self, *, database_ready: bool, configuration: GraphConfiguration | None
+        self,
+        *,
+        database_ready: bool,
+        configuration: GraphConfiguration | None,
+        readiness: ConnectionResult | None = None,
     ) -> SemanticStatus:
-        return SemanticStatus.WARNING
+        """Report the graph's own readiness, not just that a config exists.
+
+        The readiness target already checks everything the graph needs --
+        vocabulary tables, relationship-classification tables, full-text and
+        functional indexes -- so this reflects that result rather than assuming
+        the worst. A clean run is OK; an unrun one is IDLE rather than a warning,
+        because nothing is known to be wrong yet.
+        """
+        if configuration is None:
+            return SemanticStatus.WARNING
+        if readiness is None:
+            return SemanticStatus.IDLE
+        if not readiness.connected:
+            return SemanticStatus.ERROR
+        return _diagnostic_status(readiness)
 
     def landing(
-        self, *, database_ready: bool, configuration: GraphConfiguration | None
+        self,
+        *,
+        database_ready: bool,
+        configuration: GraphConfiguration | None,
+        readiness: ConnectionResult | None = None,
     ) -> SurfaceView:
         if configuration is None:
             return EmptyView(
@@ -64,10 +91,26 @@ class GraphPresenter(SetupPresenterBase):
                     ),
                 ),
             ),
-            status=SemanticStatus.WARNING,
+            status=self.status(
+                database_ready=database_ready,
+                configuration=configuration,
+                readiness=readiness,
+            ),
+            actions=(
+                ViewAction("graph.prepare", "Prepare graph", variant="primary"),
+            ),
             message=(
                 "Graph traversal uses the verified CDM and vocabulary database."
                 if database_ready
                 else "Configuration is visible, but the CDM database is not verified."
             ),
         )
+
+
+def _diagnostic_status(result: ConnectionResult) -> SemanticStatus:
+    severities = {diagnostic.severity for diagnostic in result.diagnostics}
+    if DiagnosticSeverity.ERROR in severities:
+        return SemanticStatus.ERROR
+    if DiagnosticSeverity.WARNING in severities:
+        return SemanticStatus.WARNING
+    return SemanticStatus.OK

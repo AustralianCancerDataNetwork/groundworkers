@@ -29,6 +29,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Initial Local Setup: from-scratch.md
   - Architecture: architecture.md
   - Getting Started:
       - Installation: usage/installation.md

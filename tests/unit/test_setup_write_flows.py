@@ -32,7 +32,7 @@ from groundworkers.application.setup.configuration_provider import (
 from groundworkers.config import GroundworkersConfig
 from tests.support.stack_config import build_cdm_stack
 
-DISCOVERED_MODELS = ("first-model", "second-model")
+DISCOVERED_MODELS = ("first-model:v1", "second-model:v1")
 
 
 def _stack_path(tmp_path: Path, stack=None) -> Path:
@@ -69,7 +69,7 @@ def _drive_llm_to_review(controller, *, api_key: str | None = "provider-secret")
             "llm_api_key": api_key,
         }
     )
-    return controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"})
+    return controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model:v1"})
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ def test_chat_setup_creates_then_updates_the_same_target(tmp_path: Path) -> None
     stack = load_stack_config_from_path(path)
     saved = GroundworkersConfig.validate_candidate(stack)
     assert saved.llm_model_name == "chat_model"
-    assert stack.models["chat_model"].model == "second-model"
+    assert stack.models["chat_model"].model == "second-model:v1"
     assert stack.providers["chat_provider"].provider == "ollama"
 
     # A second pass over an existing entry is an update, not a duplicate create.
@@ -128,13 +128,13 @@ def test_chat_setup_creates_then_updates_the_same_target(tmp_path: Path) -> None
             "llm_api_key": None,
         }
     )
-    controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model"})
+    controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model:v1"})
     assert controller.apply().status.value == "applied"
 
     updated_stack = load_stack_config_from_path(path)
     updated = GroundworkersConfig.validate_candidate(updated_stack)
     assert updated.llm_model_name == "chat_model"
-    assert updated_stack.models["chat_model"].model == "first-model"
+    assert updated_stack.models["chat_model"].model == "first-model:v1"
 
 
 def test_blank_api_key_on_update_preserves_the_stored_credential(
@@ -155,7 +155,7 @@ def test_blank_api_key_on_update_preserves_the_stored_credential(
             "llm_api_key": "",
         }
     )
-    controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model"})
+    controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model:v1"})
     controller.apply()
 
     stack = load_stack_config_from_path(path)
@@ -320,7 +320,7 @@ def test_review_shows_only_the_fields_the_journey_changed(tmp_path: Path) -> Non
             "llm_base_url": "http://localhost:11434/v1",
         },
     )
-    service.submit(draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"})
+    service.submit(draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model:v1"})
 
     entries = service.plan(draft).diff.entries
 
@@ -360,7 +360,7 @@ def test_staging_the_current_values_produces_an_empty_diff(tmp_path: Path) -> No
             "llm_base_url": "http://localhost:11434/v1",
         },
     )
-    service.submit(draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"})
+    service.submit(draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model:v1"})
 
     assert service.plan(draft).diff.entries == ()
 
@@ -458,7 +458,7 @@ def test_embedding_model_name_is_never_reused_as_the_chat_model(
     stack = load_stack_config_from_path(path)
     saved = GroundworkersConfig.validate_candidate(stack)
     assert saved.llm_model_name == "chat_model"
-    assert stack.models["chat_model"].model == "second-model"
+    assert stack.models["chat_model"].model == "second-model:v1"
     assert saved.embedding_model_name is None
 
 
@@ -486,7 +486,7 @@ def test_review_diff_masks_secrets_by_declaration_not_by_field_name(
         },
     )
     service.submit(
-        draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model"}
+        draft, "model", {"llm_model_entry_name": "chat_model", "llm_model_choice": "second-model:v1"}
     )
 
     diff = service.plan(draft).diff

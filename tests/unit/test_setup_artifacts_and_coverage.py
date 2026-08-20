@@ -9,6 +9,7 @@ from groundworkers.application.setup.embedding_coverage import (
     calculate_coverage,
     load_coverage,
 )
+from groundworkers.application.setup.embedding_population import _coverage_blocker
 from groundworkers.application.setup.models import ArtifactMetadata, CoverageScope
 
 
@@ -101,3 +102,33 @@ def test_mismatched_counts_are_rejected() -> None:
 
     assert result.available is False
     assert "exceeds eligible" in (result.blocker or "")
+
+
+def test_a_configuration_verdict_reaches_the_operator_intact() -> None:
+    """A rejected model name is the answer, so it must not be reduced to a class name."""
+    blocker = _coverage_blocker(
+        ValueError(
+            "Ollama model name 'arctic:latest' uses the mutable ':latest' tag."
+        )
+    )
+
+    assert "':latest' tag" in blocker
+    assert "arctic:latest" in blocker
+
+
+def test_operational_failures_stay_class_named_and_urls_never_survive() -> None:
+    """Drivers quote the DSN that failed; neither path may put one on screen."""
+    operational = _coverage_blocker(
+        OSError("could not connect to postgresql://user:hunter2@db.internal:5432/cdm")
+    )
+
+    assert operational.endswith("failed with OSError.")
+    assert "hunter2" not in operational
+    assert "db.internal" not in operational
+
+    leaky = _coverage_blocker(
+        ValueError("bad endpoint postgresql://user:hunter2@db.internal:5432/cdm here")
+    )
+
+    assert "hunter2" not in leaky
+    assert "bad endpoint" in leaky
