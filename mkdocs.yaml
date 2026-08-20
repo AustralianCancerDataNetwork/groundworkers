@@ -73,7 +73,6 @@ nav:
 
 plugins:
   - search
-  - mermaid2
   - mkdocstrings:
       handlers:
         python:
@@ -86,12 +85,15 @@ plugins:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
-  - attr_list
-  - tables
-  - pymdownx.highlight
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
           class: mermaid
           format: !!python/name:mermaid2.fence_mermaid
+  - attr_list
+  - tables
+  - pymdownx.highlight
+
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+  - js/mermaid-init.js

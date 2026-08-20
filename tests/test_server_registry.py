@@ -252,7 +252,6 @@ def test_main_routes_rest_startup_to_rest_transport(
                 "mcp_transport": "streamable-http",
                 "mcp_host": "127.0.0.1",
                 "mcp_port": 18080,
-                "rest_enabled": True,
                 "rest_host": "127.0.0.1",
                 "rest_port": 18181,
                 "rest_base_path": "/v1",

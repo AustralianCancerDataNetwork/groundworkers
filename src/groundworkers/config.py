@@ -99,10 +99,9 @@ class GroundworkersConfig(PackageConfigBase):
 
     # -- REST transport ------------------------------------------------------
 
-    rest_enabled: bool = Field(
-        default=False,
-        description="Whether the REST API is offered alongside MCP.",
-    )
+    # REST is selected explicitly with ``--transport rest``.  There is no
+    # alongside-MCP enable flag: keeping one would imply startup behaviour the
+    # CLI does not implement.
     rest_host: str = Field(
         default="127.0.0.1",
         description="Bind host for the REST API.",

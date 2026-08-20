@@ -1,6 +1,6 @@
 # groundworkers example config — oa-configurator 1.x StackConfig format
 #
-# Copy to groundworkers.local.toml and fill in your values.
+# Copy to a path selected by the setup console and fill in your values.
 # Full reference: https://oa-configurator.readthedocs.io (or run omop-config --help)
 #
 # The shape is: physical connections and providers carry credentials, logical
@@ -106,7 +106,6 @@ mcp_transport = "stdio"
 # mcp_port    = 8000
 
 # REST API (enables HTTP access alongside MCP stdio, e.g. for study-agent-mcp)
-rest_enabled     = false
 # rest_host      = "127.0.0.1"
 # rest_port      = 18080
 # rest_base_path = "/v1"

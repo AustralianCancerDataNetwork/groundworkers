@@ -29,7 +29,6 @@ def test_groundworkers_config_reads_plain_package_mapping() -> None:
             "mcp_transport": "streamable-http",
             "mcp_host": "0.0.0.0",
             "mcp_port": 18080,
-            "rest_enabled": True,
             "rest_host": "127.0.0.1",
             "rest_port": 18181,
             "rest_base_path": "/api/",
@@ -45,7 +44,6 @@ def test_groundworkers_config_reads_plain_package_mapping() -> None:
     assert config.mcp_transport == "streamable-http"
     assert config.mcp_host == "0.0.0.0"
     assert config.mcp_port == 18080
-    assert config.rest_enabled is True
     assert config.rest_base_path == "/api"
     assert config.llm_model_name is None
     assert config.grounding_min_fulltext_overlap == 0.25

@@ -174,7 +174,7 @@ mirror the full MCP tool surface.
 from groundworkers.app import build_application
 from groundworkers.bootstrap import build_app_config
 
-config = build_app_config(profile="local")
+    config = build_app_config(config_path="/path/to/config.toml")
 app = build_application(config)
 
 mapping = app.services.mapping

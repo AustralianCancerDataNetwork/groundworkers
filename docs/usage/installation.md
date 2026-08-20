@@ -16,7 +16,6 @@ Use extras to match the capabilities you plan to run:
 
 | Extra | Enables |
 |---|---|
-| `llm` | LLM-backed text and domain services |
 | `embedding-pgvector` | pgvector embedding backend support |
 | `embedding-faiss` | FAISS sidecar acceleration for embedding search |
 | `xlsx` | XLSX source-planning input support |
@@ -28,7 +27,7 @@ Use extras to match the capabilities you plan to run:
 Examples:
 
 ```bash
-pip install "groundworkers[llm,embedding-pgvector]"
+pip install "groundworkers[tui,embedding-pgvector]"
 pip install "groundworkers[all_source]"
 ```
 

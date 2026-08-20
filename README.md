@@ -56,7 +56,7 @@ pip install groundworkers
 Optional extras:
 
 ```bash
-pip install "groundworkers[llm,embedding-pgvector]"
+pip install "groundworkers[tui,embedding-pgvector]"
 ```
 
 ### Configure the shared stack

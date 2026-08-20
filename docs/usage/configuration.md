@@ -11,7 +11,7 @@ from groundworkers.bootstrap import build_app_config, build_app_config_from_stac
 ```
 
 - `build_app_config()` loads the active shared stack config from disk
-- `build_app_config(config_path=..., profile=...)` overrides the file or profile
+- `build_app_config(config_path=...)` loads an explicit shared-stack file
 - `build_app_config_from_stack(stack)` is useful in tests and programmatic tooling
 
 Then construct the application container:
@@ -97,7 +97,6 @@ mcp_transport = "streamable-http"
 mcp_host = "127.0.0.1"
 mcp_port = 8000
 
-rest_enabled = true
 rest_host = "127.0.0.1"
 rest_port = 8080
 rest_base_path = "/v1"
@@ -147,11 +146,11 @@ Default MCP startup settings used when you do not override them on the CLI.
 
 ### REST transport (`rest_*`)
 
-Default REST startup settings.
+REST is selected explicitly with `--transport rest`; it is not started alongside
+MCP. These settings provide defaults when that transport is selected.
 
 | Field | Type | Default |
 |---|---|---|
-| `rest_enabled` | `bool` | `false` |
 | `rest_host` | `str` | `127.0.0.1` |
 | `rest_port` | `int` | `8080` |
 | `rest_base_path` | `str` | `/v1` |
@@ -234,6 +233,8 @@ my-knowledge/
 ```
 
 If a configured pack has the same `layer` and `name` as a bundled baseline pack, the configured copy wins.
+
+<a id="semantic_projection"></a>
 
 ### Semantic projection (`semantic_projection_*`)
 
