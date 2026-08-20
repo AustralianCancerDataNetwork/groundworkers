@@ -49,7 +49,6 @@ VOCABULARY_MODE_SELECTED: str = "selected"
 
 INTENT_POPULATE = "populate"
 INTENT_BACKFILL = "backfill"
-INTENT_RECONCILE = "reconcile"
 
 
 class EmbeddingPopulationWizardController:
@@ -264,12 +263,7 @@ class EmbeddingPopulationWizardController:
         return self._coverage.incomplete_vocabularies
 
     def _selected_or_incomplete(self) -> tuple[str, ...]:
-        """Prefill the list with what is actually missing, not with everything.
-
-        Re-embedding a vocabulary that is already complete is the expensive
-        mistake here, so the box opens on the vocabularies with concepts still
-        pending and the operator narrows from there.
-        """
+        """Prefill the list with vocabularies that still have missing vectors."""
         return self._request.vocabularies or self._incomplete_vocabularies()
 
     def _apply_scope(
@@ -277,7 +271,7 @@ class EmbeddingPopulationWizardController:
         parsed: Mapping[str, object],
     ) -> tuple[ValidationIssue, ...]:
         intent = str(parsed["intent"])
-        if intent not in {INTENT_POPULATE, INTENT_BACKFILL, INTENT_RECONCILE}:
+        if intent not in {INTENT_POPULATE, INTENT_BACKFILL}:
             return (ValidationIssue("Choose the embedding intent.", "intent"),)
         self._intent = intent
         concept_scope = str(parsed["concept_scope"])
@@ -348,7 +342,6 @@ class EmbeddingPopulationWizardController:
                     choices=(
                         ChoiceOption(INTENT_POPULATE, "Populate from scratch"),
                         ChoiceOption(INTENT_BACKFILL, "Backfill selected vocabularies"),
-                        ChoiceOption(INTENT_RECONCILE, "Reconcile after vocabulary update"),
                     ),
                     required=False,
                     default=self._intent,

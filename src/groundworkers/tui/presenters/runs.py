@@ -40,10 +40,24 @@ class RunsPresenter(SetupPresenterBase):
         if not runs:
             return EmptyView(
                 title="No maintenance runs",
-                message="Ordered graph and embedding work will appear here and survive a TUI restart.",
+                message="Graph and embedding maintenance runs will appear here.",
                 status=SemanticStatus.IDLE,
                 actions=(ViewAction("runs.refresh", "Refresh"),),
             )
+        selected = next(
+            (run for run in runs if run.run_id == selected_run_id),
+            None,
+        )
+        active = selected is not None and selected.status in {
+            RunStatus.PENDING,
+            RunStatus.RUNNING,
+        }
+        retryable = selected is not None and selected.status in {
+            RunStatus.FAILED,
+            RunStatus.INTERRUPTED,
+            RunStatus.CANCELLED,
+        }
+        has_postflight = selected is not None and bool(selected.postflight)
         return TableView(
             title="Maintenance runs",
             columns=("Kind", "Status", "Progress", "Message"),
@@ -51,10 +65,18 @@ class RunsPresenter(SetupPresenterBase):
             status=self.status(),
             actions=(
                 ViewAction("runs.refresh", "Refresh"),
-                ViewAction("runs.cancel", "Cancel selected"),
-                ViewAction("runs.retry", "Retry selected"),
-                ViewAction("runs.postflight", "Rerun postflight"),
-                ViewAction("runs.export", "Export commands"),
+                ViewAction("runs.cancel", "Cancel selected", disabled=not active),
+                ViewAction("runs.retry", "Retry selected", disabled=not retryable),
+                ViewAction(
+                    "runs.postflight",
+                    "Rerun postflight",
+                    disabled=not has_postflight,
+                ),
+                ViewAction(
+                    "runs.export",
+                    "Export commands",
+                    disabled=selected is None,
+                ),
             ),
             message="Run records and logs are stored in the local Groundworkers state directory.",
         )

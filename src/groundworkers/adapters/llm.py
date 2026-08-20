@@ -71,7 +71,7 @@ class LLMAdapter:
                 "provider": None,
                 "default_model": None,
                 "structured_output_supported": None,
-                "detail": repr(exc),
+                "detail": f"LLM status failed with {type(exc).__name__}.",
             }
 
     def complete_text(
@@ -100,7 +100,9 @@ class LLMAdapter:
                 timeout=_COMPLETION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
-            raise GroundworkersError("BACKEND_UNAVAIL", f"LLM call failed: {exc}") from exc
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", f"LLM call failed with {type(exc).__name__}."
+            ) from exc
         return {
             "text": response.choices[0].message.content,
             "model": response.model,
@@ -150,12 +152,16 @@ class LLMAdapter:
                 timeout=_COMPLETION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
-            raise GroundworkersError("BACKEND_UNAVAIL", f"LLM call failed: {exc}") from exc
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", f"LLM call failed with {type(exc).__name__}."
+            ) from exc
         content = response.choices[0].message.content or ""
         try:
             return json.loads(content)
         except json.JSONDecodeError as exc:
-            raise GroundworkersError("QUERY_ERROR", f"LLM response was not valid JSON: {exc}") from exc
+            raise GroundworkersError(
+                "QUERY_ERROR", "LLM response was not valid JSON."
+            ) from exc
 
     def _get_backend(self) -> ModelBackend:
         if self._backend is None:
@@ -163,7 +169,8 @@ class LLMAdapter:
                 self._backend = self._backend_factory()
             except Exception as exc:
                 raise GroundworkersError(
-                    "BACKEND_UNAVAIL", f"LLM backend could not be initialised: {exc}"
+                    "BACKEND_UNAVAIL",
+                    f"LLM backend could not be initialised ({type(exc).__name__}).",
                 ) from exc
         return self._backend
 

@@ -58,7 +58,12 @@ class DatabasePresenter(SetupPresenterBase):
                 ),
                 status=SemanticStatus.WARNING,
                 actions=(
-                    ViewAction("database.configure", "Configure", variant="primary"),
+                    ViewAction(
+                        "database.configure",
+                        "Configure",
+                        variant="primary",
+                        disabled=not snapshot.ownership.editable,
+                    ),
                     ViewAction("database.refresh", "Refresh"),
                 ),
             )
@@ -83,7 +88,12 @@ class DatabasePresenter(SetupPresenterBase):
                 status=SemanticStatus.ERROR,
                 message=str(snapshot.path),
                 actions=(
-                    ViewAction("database.configure", "Configure", variant="primary"),
+                    ViewAction(
+                        "database.configure",
+                        "Configure",
+                        variant="primary",
+                        disabled=not snapshot.ownership.editable,
+                    ),
                     ViewAction("database.refresh", "Refresh"),
                 ),
             )
@@ -104,7 +114,10 @@ class DatabasePresenter(SetupPresenterBase):
             rows=tuple(rows),
             status=_connection_status(results),
             message=f"{snapshot.path}  |  {snapshot.ownership.mode.value}",
-            actions=_database_actions(selected_target_key),
+            actions=_database_actions(
+                selected_target_key,
+                editable=snapshot.ownership.editable,
+            ),
         )
 
     def loading(self) -> LoadingView:
@@ -135,8 +148,7 @@ def _unconfigured_embedding_row() -> TableRow:
         detail=(
             detail_row(
                 "warn",
-                "No vector store is configured, so embedding search and the "
-                "embedding grounding tier are unavailable.",
+                "Configure a vector store to enable embedding search.",
             ),
             detail_row(
                 "unknown",
@@ -172,13 +184,17 @@ def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> Tabl
     )
 
 
-def _database_actions(selected_target_key: str | None) -> tuple[ViewAction, ...]:
+def _database_actions(
+    selected_target_key: str | None,
+    *,
+    editable: bool,
+) -> tuple[ViewAction, ...]:
     return (
         ViewAction(
             "database.configure",
             "Configure",
             variant="primary",
-            disabled=selected_target_key == "database.groundworkers",
+            disabled=(not editable or selected_target_key == "database.groundworkers"),
         ),
         ViewAction(
             "database.test_connections",

@@ -63,7 +63,7 @@ Typical pattern:
 ## Adding an MCP tool
 
 Add an MCP tool when the capability should participate in tool discovery or be
-available to agentic callers.
+available to remote clients.
 
 Tool expectations:
 
@@ -125,4 +125,4 @@ When a new capability is ready, check:
 - the adapter is config-agnostic
 - the service is transport-agnostic
 - MCP and REST wrappers stay thin
-- docs describe the steady-state interface, not the migration path that got us there
+- docs describe the current interface and a real use case

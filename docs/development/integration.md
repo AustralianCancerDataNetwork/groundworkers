@@ -116,7 +116,7 @@ raw flag at its adapter boundary so callers get the distinction.
 ## Writing configuration
 
 Configuration writes are a local console concern, not part of the integration
-surface. If you are embedding the setup journey in another host application, drive
+surface. If you are embedding the setup console in another host application, drive
 `GroundworkersConfigMutationService` through Groundskeeping's
 `ConfigWizardController`:
 

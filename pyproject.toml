@@ -17,7 +17,7 @@ dependencies = [
   "oa-configurator>=1.2.1,<2",
   "omop-alchemy>=1,<2",
   "omop-graph>=2,<3",
-  "omop-emb>=2,<3",
+  "omop-emb>=2.1,<3",
   "omop-llm>=1,<2",
   "omop-semantics>=0.6,<1",
   "uvicorn[standard]>=0.29,<1.0",
@@ -50,10 +50,10 @@ all_source = [
   "python-docx>=1.0",
 ]
 embedding-pgvector = [
-  "omop-emb[pgvector]>=2,<3",
+  "omop-emb[pgvector]>=2.1,<3",
 ]
 embedding-faiss = [
-  "omop-emb[faiss-cpu]>=2,<3",
+  "omop-emb[faiss-cpu]>=2.1,<3",
 ]
 dev = [
   "httpx>=0.27,<1",

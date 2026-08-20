@@ -65,7 +65,7 @@ def build_adapters(config: AppConfig) -> Adapters:
         nonlocal shared_backend
         if shared_backend is None:
             if resolved_store is None:
-                raise RuntimeError("No vector store is configured for Groundworkers.")
+                raise RuntimeError("No vector store is configured.")
             from omop_emb.backends import (
                 resolve_backend_from_resolved_vector_store,
             )
@@ -108,11 +108,8 @@ def build_adapters(config: AppConfig) -> Adapters:
             "Configure groundworkers.vector_store_name to enable embedding operations."
         )
 
-    # The graph runs off the resolved CDM database, so it is available whenever a CDM
-    # engine is. It is deliberately not gated on another package's [tools.omop_graph]
-    # section: omop-graph 2.x reshaped that config and marked it internal, so gating on
-    # it left a valid CDM-only 1.x stack with no graph and no lexical grounding unless
-    # the operator added an otherwise-meaningless empty section.
+    # Graph and lexical services use the resolved CDM database directly. A CDM
+    # configuration is therefore sufficient; no separate graph section is needed.
     complete_embedding = resolved_store is not None and resolved_model is not None
     adapters.omop_graph = OmopGraphAdapter(
         engine=config.cdm_engine,

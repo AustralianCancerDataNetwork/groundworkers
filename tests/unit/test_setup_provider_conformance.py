@@ -45,7 +45,7 @@ CASES = {
         MutationOperation.UPDATE,
         (
             ("connection", {"connection_name": "warehouse", "dialect": "sqlite"}),
-            ("database", {"database_name": "/tmp/conformance-warehouse.db"}),
+            ("database", {"database_name": __file__}),
             (
                 "cdm",
                 {

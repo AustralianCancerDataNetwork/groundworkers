@@ -62,9 +62,9 @@ provider   = "local_ollama"
 model      = "bge-small-en-v1.5"
 embeddings = true
 
-# Chat model, referenced by llm_model_name below. A separate entry from the
-# embedding model, and free to sit on a different provider. Capabilities are
-# opt-in: declare structured_output so the JSON-mode tool path is available.
+# Chat model, referenced by llm_model_name below. It may share a provider with
+# the embedding model or use a different one. Capabilities are opt-in: declare
+# structured_output so the JSON-mode tool path is available.
 # [models.chat_model]
 # provider          = "local_ollama"
 # model             = "qwen3:8b"
@@ -78,7 +78,7 @@ embeddings = true
 # is an optional query-time cache layered over either (install the
 # "embedding-faiss" extra to use it) — FAISS is not itself a backend value.
 [vector_stores.embeddings]
-backend_type    = "sqlitevec"
+backend_type    = "pgvector"
 database        = "emb_db"
 faiss_cache_dir = "/absolute/path/to/omop_emb-cache"
 
@@ -105,7 +105,7 @@ mcp_transport = "stdio"
 # mcp_host    = "127.0.0.1"
 # mcp_port    = 8000
 
-# REST API (enables HTTP access alongside MCP stdio, e.g. for study-agent-mcp)
+# REST API defaults (used when `--transport rest` is selected instead of MCP)
 # rest_host      = "127.0.0.1"
 # rest_port      = 18080
 # rest_base_path = "/v1"

@@ -23,10 +23,10 @@ The MCP surface in `groundworkers` is grouped by workflow rather than by underly
 - **Concept** tools return deterministic OMOP facts from known identifiers.
 - **Resolver** tools take free text and try to ground it to ranked concepts.
 - **Search** tools expose lexical retrieval with raw retrieval signals.
-- **Mapping** tools assemble multi-channel evidence for review and adjudication workflows.
+- **Mapping** tools assemble multi-channel evidence for review and mapping decisions.
 - **Embedding** tools expose the embedding index directly.
 - **Source planning** tools prepare source artifacts into neutral pre-ingest structures.
-- **Knowledge** tools expose the bundled baseline pack catalogue and any configured site/localisation packs that apply to a job context.
+- **Knowledge** tools expose the bundled baseline catalogue and any configured site/localisation packs that match a context.
 - **Text** tools normalize or decompose free text before retrieval.
 - **Domain** tools classify structured labels into OMOP domains.
 - **System** tools expose runtime availability and vocabulary catalogue metadata.

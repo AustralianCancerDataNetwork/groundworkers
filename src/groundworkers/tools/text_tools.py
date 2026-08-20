@@ -33,8 +33,6 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("text_mapping_cleanup")
     def text_mapping_cleanup(
@@ -64,8 +62,6 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("text_decompose")
     def text_decompose(
@@ -93,8 +89,6 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("text_disambiguate")
     def text_disambiguate(
@@ -125,8 +119,6 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
 
 def register_text_prompts(server: GroundworkersMCPServer) -> None:

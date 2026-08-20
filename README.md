@@ -2,11 +2,11 @@
 
 `groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source planning, and knowledge-pack discovery.
 
-You can use it in three ways:
+It is available through three interfaces:
 
-- as an **MCP service** for agentic clients and tool discovery
+- as an **MCP service** for discoverable tool clients
 - as a **REST service** for fixed workflow applications
-- as a **direct Python library** for in-process orchestration
+- as a **direct Python library** for in-process applications
 
 No patient-level writes. No session state. No transport-specific business logic.
 
@@ -19,7 +19,7 @@ No patient-level writes. No session state. No transport-specific business logic.
 - bundled baseline knowledge packs for reusable mapping and planning context
 - LLM-backed text normalization and domain classification
 
-## Knowledge Packs
+## Knowledge packs
 
 `groundworkers` ships with bundled baseline knowledge packs inside the package. These packs are available by default and provide reusable guidance and rules that apply broadly across deployments.
 
@@ -105,7 +105,7 @@ bundle = mapping.concept_candidate_bundle(
 
 | Surface | Best for |
 |---|---|
-| MCP tools | Tool discovery, agent interoperability, shared capability services |
+| MCP tools | Discoverable tools and shared remote capabilities |
 | REST routes | Typed HTTP workflows such as candidate bundles and assisted source planning |
 | `app.services.*` | In-process Python applications and batch workflows |
 | `app.adapters.*` | Backend wrappers used when you intentionally need dependency-shaped primitives |

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,7 @@ from groundworkers.application.setup.maintenance_runs import (
     safe_command_display,
 )
 from groundworkers.application.setup.models import MaintenanceCommand
+from groundworkers.tui.presenters.runs import RunsPresenter
 
 
 def _command(*code: str) -> MaintenanceCommand:
@@ -80,6 +83,22 @@ def test_failed_run_retries_from_first_incomplete_step(tmp_path: Path) -> None:
     assert retry.retry_of == created.run_id
 
 
+def test_runner_retry_preserves_lineage_on_the_started_record(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    created = MaintenanceRunner(store).start(
+        MaintenancePlan(
+            kind="retry-lineage",
+            steps=(MaintenanceStep("bad", _command("raise SystemExit(3)")),),
+        )
+    )
+    _wait(store, created.run_id)
+
+    retry = MaintenanceRunner(store).retry(created.run_id)
+
+    assert retry.retry_of == created.run_id
+    assert store.get(retry.run_id, recover=False).retry_of == created.run_id
+
+
 def test_postflight_is_persisted_and_can_be_rerun(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
     plan = MaintenancePlan(
@@ -136,6 +155,41 @@ def test_interrupted_supervisor_is_recovered_on_reopen(tmp_path: Path) -> None:
     assert recovered.failure == "interrupted"
 
 
+def test_orphaned_pending_run_is_recovered_after_launch_grace(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    run = store.create(
+        MaintenancePlan(
+            kind="orphaned-pending",
+            steps=(MaintenanceStep("one", _command("pass")),),
+        )
+    )
+    run = store.save(
+        replace(
+            run,
+            created_at=(datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+        )
+    )
+
+    recovered = store.get(run.run_id)
+
+    assert recovered.status is RunStatus.INTERRUPTED
+
+
+def test_pending_cancellation_is_terminal(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    run = store.create(
+        MaintenancePlan(
+            kind="pending-cancel",
+            steps=(MaintenanceStep("one", _command("pass")),),
+        )
+    )
+
+    cancelled = store.cancel(run.run_id)
+
+    assert cancelled.status is RunStatus.CANCELLED
+    assert cancelled.finished_at is not None
+
+
 def test_command_display_redacts_credentials() -> None:
     command = MaintenanceCommand(
         argv=("tool", "postgresql://user:password@example/db"),
@@ -147,3 +201,41 @@ def test_command_display_redacts_credentials() -> None:
     assert "password" not in display
     assert "secret" not in display
     assert "OA_CONFIG_PATH=/tmp/config.toml" in display
+
+
+def test_state_files_are_private_and_corrupt_records_do_not_hide_valid_runs(
+    tmp_path: Path,
+) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    valid = store.create(
+        MaintenancePlan(
+            kind="valid",
+            steps=(MaintenanceStep("one", _command("pass")),),
+        )
+    )
+    corrupt = store.root / "corrupt"
+    corrupt.mkdir(mode=0o700)
+    (corrupt / "run.json").write_text("{partial", encoding="utf-8")
+
+    listed = store.list()
+
+    assert [run.run_id for run in listed] == [valid.run_id]
+    assert (valid.root.stat().st_mode & 0o777) == 0o700
+    assert ((valid.root / "run.json").stat().st_mode & 0o777) == 0o600
+
+
+def test_run_controls_match_the_selected_plan_and_state(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    run = store.create(
+        MaintenancePlan(
+            kind="no-postflight",
+            steps=(MaintenanceStep("one", _command("pass")),),
+        )
+    )
+    view = RunsPresenter(store).landing(selected_run_id=run.run_id)
+    actions = {action.key: action for action in view.actions}
+
+    assert actions["runs.cancel"].disabled is False
+    assert actions["runs.retry"].disabled is True
+    assert actions["runs.postflight"].disabled is True
+    assert actions["runs.export"].disabled is False

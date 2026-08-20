@@ -107,7 +107,7 @@ grounding_max_depth = 5
 source_planning_llm_assisted_enabled = true
 ```
 
-Settings are flat, grouped by name prefix - e.g. `omop-config configure groundworkers --grounding-max-depth 6` updates that one field and leaves its neighbours untouched. 
+Settings are flat, grouped by name prefix. For example, `omop-config configure groundworkers --grounding-max-depth 6` updates that field without changing its neighbours.
 
 A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name` and every lexical feature still works. See [Runtime combinations](#what-becomes-available-at-runtime).
 
@@ -120,7 +120,12 @@ A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name` a
 | `llm_model_name` | a `[models.*]` entry | no |
 | `vector_store_name` | a `[vector_stores.*]` entry | no |
 
-`embedding_model_name` is the **embedding** model and `llm_model_name` is the **chat** model. Both name `[models.*]` entries and the two are never interchanged; they may point at different providers, or one may be unset. There is no separate on/off flag: chat is available exactly when `llm_model_name` resolves.
+`embedding_model_name` is the model used for concept-document embeddings and
+compatible query encoding; `llm_model_name` is the chat model. Both name
+`[models.*]` entries. They may share a provider or model entry when that entry
+declares the required capabilities, may point at different providers, or one may
+be unset. There is no separate on/off flag: chat is available exactly when
+`llm_model_name` resolves.
 
 ## groundworkers-owned fields
 
@@ -176,7 +181,7 @@ structured_output = true
 llm_model_name = "chat_model"
 ```
 
-`structured_output = true` declares that the model can honour the JSON-mode request `complete_structured` makes; omop-llm treats every capability as opt-in. Chat is configured through the setup console's Chat section, which writes the provider and model entries through the same configuration provider as every other setup journey.
+`structured_output = true` declares that the model can honour the JSON-mode request `complete_structured` makes; omop-llm treats every capability as opt-in. Chat is configured through the setup console's Chat section, using the same configuration workflow as the other setup sections.
 
 ### Grounding (`grounding_*`)
 
@@ -273,7 +278,7 @@ You additionally get:
 
 Both references are required. With only one configured, status reports an actionable incomplete-configuration message and embedding features stay off rather than guessing a default.
 
-The store must be populated before the embedding tier can return anything; population is an explicit operator action (see the Embeddings setup section) and never starts implicitly at query time. The server holds the graph read-only (`write=False`), so it never writes vectors — Groundworkers encodes the query text itself for the embedding tier.
+The store must be populated before the embedding tier can return anything. Population is explicit (see the Embeddings setup section) and never starts at query time. The server holds the graph read-only (`write=False`), so Groundworkers encodes query text for the embedding tier but never writes vectors.
 
 ### With `groundworkers.llm_model_name` configured
 

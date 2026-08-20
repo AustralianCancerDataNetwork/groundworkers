@@ -107,7 +107,6 @@ def test_scope_is_the_first_thing_asked_and_lists_the_real_vocabularies() -> Non
     assert tuple(option.label for option in intents.choices) == (
         "Populate from scratch",
         "Backfill selected vocabularies",
-        "Reconcile after vocabulary update",
     )
 
 

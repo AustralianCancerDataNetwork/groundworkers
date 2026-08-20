@@ -112,7 +112,7 @@ class OmopGraphAdapter:
         except GroundworkersError as exc:
             return False, exc.message
         except Exception as exc:
-            return False, repr(exc)
+            return False, f"Graph probe failed with {type(exc).__name__}."
 
     def close(self) -> None:
         self._kg = None
@@ -143,28 +143,10 @@ class OmopGraphAdapter:
     def raw_standard_flags(self, concept_ids: Sequence[int]) -> dict[int, str | None]:
         """Batch-fetch the raw OMOP ``concept.standard_concept`` flag per concept_id.
 
-        This is Groundworkers behaviour, not a temporary shim. omop-graph 2.x
-        projects omop-alchemy's *combined* standardness expression
-        (``standard_concept in ('S', 'C')``) into ``ConceptView.standard_concept``
-        as a single boolean, and exposes no raw-flag or classification
-        discriminator. Groundworkers' public contract distinguishes standard
-        (``'S'``) from classification (``'C'``), so the raw flag is read directly
-        from the CDM through the adapter's own engine — the supported local query
-        sanctioned by the migration plan when the upstream discriminator is
-        unavailable.
-
-        Returns a mapping of concept_id to the normalized flag: ``'S'``, ``'C'``,
-        any other non-blank value as stored, or ``None`` when the flag is unset
-        (NULL, blank, or whitespace-only). Concept ids that are absent from the
-        result are unknown to the vocabulary.
-
-        Consumed by the grounding surface only. Hierarchy, neighbourhood, edge,
-        and standard-mapping payloads still report omop-graph's combined flag; see
-        the R4 notes in the stack 1.0 migration plan.
-
-        Runs against the adapter's own CDM engine rather than the graph session, so
-        it stays available for lexical grounding on a CDM that has no
-        relationship-classification sidecar.
+        ``omop-graph`` exposes ``S`` and ``C`` as one combined boolean. Groundworkers
+        keeps those flags distinct for grounding, so this method reads the raw
+        value from the CDM engine. It returns ``S``, ``C``, another non-blank value,
+        or ``None`` for an unset flag; unknown concept IDs are omitted.
         """
         if not concept_ids:
             return {}
@@ -540,7 +522,10 @@ class OmopGraphAdapter:
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
         except Exception as exc:
-            raise GroundworkersError("BACKEND_UNAVAIL", f"Cannot connect to database: {exc}") from exc
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                f"Cannot connect to database ({type(exc).__name__}).",
+            ) from exc
 
         emb_config: KnowledgeGraphEmbeddingConfiguration | None = None
         if (
@@ -678,4 +663,7 @@ class OmopGraphAdapter:
                 "BACKEND_UNAVAIL",
                 "omop-graph setup incomplete — run: omop-graph relationship-classification",
             )
-        return GroundworkersError(default_code, msg or repr(exc))
+        return GroundworkersError(
+            default_code,
+            f"omop-graph operation failed with {type(exc).__name__}.",
+        )

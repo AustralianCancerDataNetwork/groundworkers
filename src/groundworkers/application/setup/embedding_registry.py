@@ -3,7 +3,7 @@
 The registry is the list of models the embedding store actually holds vectors
 for. It is distinct from the models a provider endpoint can serve: a provider
 lists what it *could* embed with, the registry lists what has *been* embedded.
-Grounding needs the latter, which is why the model journey offers both.
+Grounding needs the latter, so model setup records both values.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def list_registered_models(snapshot: ConfigurationSnapshot) -> EmbeddingStoreSna
 
     Returns an ``UNCONFIGURED`` snapshot rather than raising when no vector
     store is configured yet, since that is the ordinary state before the store
-    journey has been run.
+setup has been run.
     """
     if not snapshot.usable or snapshot.stack is None:
         return EmbeddingStoreSnapshot(

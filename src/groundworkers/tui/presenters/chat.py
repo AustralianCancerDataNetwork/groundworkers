@@ -33,7 +33,7 @@ class ChatPresenter(SetupPresenterBase):
                 ),
                 TableRow(
                     key="chat.completion",
-                    cells=("Bounded completion", configuration.provider, "Not tested"),
+                    cells=("Chat completion", configuration.provider, "Not tested"),
                 ),
                 TableRow(
                     key="chat.structured",
@@ -41,5 +41,5 @@ class ChatPresenter(SetupPresenterBase):
                 ),
             ),
             status=self.status(configuration),
-            message="Chat checks use bounded prompts; this is not a general chat playground.",
+            message="Checks use the selected model's configured capabilities.",
         )

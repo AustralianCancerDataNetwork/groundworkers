@@ -174,7 +174,7 @@ def test_backend_failure_without_embedding_configuration_still_raises(monkeypatc
 
     available, detail = adapter.probe()
     assert available is False
-    assert detail == "graph unavailable"
+    assert detail == "omop-graph operation failed with RuntimeError."
     assert adapter.embedding_resolver_active is False
 
 
@@ -199,4 +199,6 @@ def test_wrap_graph_error_does_not_special_case_parentless_not_implemented():
     )
 
     assert wrapped.code == "QUERY_ERROR"
-    assert wrapped.message == "Grounding without parent_ids is not supported."
+    assert wrapped.message == (
+        "omop-graph operation failed with NotImplementedError."
+    )

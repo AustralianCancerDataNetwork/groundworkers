@@ -2,7 +2,8 @@
 
 `SemanticProjectionService` deterministically projects a grounded OMOP concept
 into one or more CDM rows. It wraps [`omop-semantics`](https://australiancancerdatanetwork.github.io/omop-semantics/)'s
-`OutputDefinitionRuntime`: no LLM call, no database access. The same input always produces the same output.
+`OutputDefinitionRuntime`; it makes no LLM or database calls, and the same input
+always produces the same output.
 
 It exists for cases a single grounded `concept_id` can't express on its own — a diagnosis paired with a separately-collected role/status field, a family- history statement where the grounded condition belongs in the OMOP value slot, or a Yes/No field whose negative answer should produce no record at all. Ordinary single-concept mappings don't need it.
 
@@ -60,12 +61,13 @@ service.project(request: SemanticProjectionRequest) -> SemanticProjectionResult
 `context` carries whatever the selected definition needs beyond the grounded concept itself:
 
 - `raw_value` — the grounded field's own raw source code. Consulted by a `SpecialValuePolicy` (e.g. `criteria_gate_condition`'s Yes/No check) or a `DerivationRule` (e.g. `yes_no_observation`'s Yes/No answer mapping).
-- `raw_source_fields` — a mapping of well-known slot name to raw value, for definitions that resolve a row's slot from a *different* source field via a `DerivationRule` (e.g. `condition_with_status_from_secondary_field`'s role field). 
+- `raw_source_fields` — a mapping of well-known slot name to raw value, for definitions that resolve a row's slot from a *different* source field via a `DerivationRule` (e.g. `condition_with_status_from_secondary_field`'s role field).
 - `numeric_value` — a literal numeric reading for quantitative projections such as `measurement_numeric_with_unit_from_context`.
 
 ### Selecting a definition
 
-Pass `definition_hint` to explicitly select a definition otherwise the service will fall back to matching on `grounded_domain` alone. 
+Pass `definition_hint` to select a definition explicitly; otherwise the service
+matches on `grounded_domain` alone.
 
 ### Result
 

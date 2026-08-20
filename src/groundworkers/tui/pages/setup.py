@@ -36,6 +36,9 @@ from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
 )
+from groundworkers.application.setup.embedding_capability import (
+    embedding_capability_state,
+)
 from groundworkers.application.setup.integration import build_integration_output
 from groundworkers.application.setup.maintenance_runs import (
     MaintenanceRunner,
@@ -122,9 +125,8 @@ class SetupPage(GroundworkersPage):
 
     def activate(self, context: PageContext) -> None:
         if self._should_choose_config_location():
-            # A fresh default install already has a safe destination. Take the
-            # operator straight into the CDM workflow and keep path selection
-            # for an explicitly supplied or rejected location.
+            # The default path is safe to use. Ask for a location only when the
+            # caller supplied or rejected a different path.
             self._config_location_offered = True
             if (
                 self._session.configuration.state is ConfigurationState.MISSING
@@ -141,13 +143,7 @@ class SetupPage(GroundworkersPage):
         self._show_section_detail(context)
 
     def _config_path_was_rejected(self) -> bool:
-        """Whether OA_CONFIG_PATH named a file Groundworkers could not use.
-
-        It is dropped before oa-configurator can refuse to start on it, which
-        leaves the console reading the default instead. That is the right thing
-        to keep running on and the wrong thing to do silently: the operator asked
-        for somewhere else.
-        """
+        """Whether OA_CONFIG_PATH named a file that could not be used."""
         return rejected_config_path() is not None
 
     def _graph_readiness(self):
@@ -184,7 +180,9 @@ class SetupPage(GroundworkersPage):
                     status=self._overview.status(
                         self._session.configuration,
                         connections=self._session.connection_results,
+                        embedding_configuration=embeddings,
                         embedding_coverage=self._session.embedding_coverage,
+                        embedding_reconciliation=self._session.embedding_reconciliation,
                         llm_result=self._session.llm_provider_result,
                         graph_ready=self._graph_is_ready(),
                         integration_ready=self._integration_ready(),
@@ -220,7 +218,8 @@ class SetupPage(GroundworkersPage):
                     "Embeddings",
                     status=self._embeddings.status(
                         database_ready=database_ready,
-                        configured=embeddings is not None,
+                        configuration=embeddings,
+                        coverage=self._session.embedding_coverage,
                         reconciliation=self._session.embedding_reconciliation,
                     ),
                 ),
@@ -248,7 +247,11 @@ class SetupPage(GroundworkersPage):
             return self._overview.landing(
                 self._session.configuration,
                 connections=self._session.connection_results,
+                embedding_configuration=load_embedding_configuration(
+                    self._session.configuration
+                ),
                 embedding_coverage=self._session.embedding_coverage,
+                embedding_reconciliation=self._session.embedding_reconciliation,
                 llm_result=self._session.llm_provider_result,
                 graph_ready=self._graph_is_ready(),
                 integration_ready=self._integration_ready(),
@@ -266,6 +269,7 @@ class SetupPage(GroundworkersPage):
                 load_chat_configuration(
                     load_llm_provider_configuration(self._session.configuration)
                 ),
+                editable=self._session.ownership.editable,
             )
         if self._selected_section == EMBEDDINGS_SECTION:
             return self._embeddings.landing(
@@ -275,6 +279,7 @@ class SetupPage(GroundworkersPage):
                 reconciliation=self._session.embedding_reconciliation,
                 selected_all=self._session.embedding_vocabulary_selection_all,
                 selected_vocabularies=self._session.embedding_selected_vocabularies,
+                editable=self._session.ownership.editable,
             )
         if self._selected_section == CONFIGURATION_SECTION:
             return self._configuration.landing(self._session.configuration)
@@ -342,7 +347,7 @@ class SetupPage(GroundworkersPage):
         if action_key == "overview.integration":
             output = self._integration_output() if self._session.databases_connected else None
             if output is None:
-                context.notify("Verify the required CDM capability before exporting integration output.", severity="warning")
+                context.notify("Verify the CDM before showing integration commands.", severity="warning")
             else:
                 context.notify(f"stdio: {output.stdio_command}\nHTTP: {output.http_command}")
             return
@@ -414,13 +419,24 @@ class SetupPage(GroundworkersPage):
                 self._start_embedding_coverage_refresh(context)
                 context.notify("Refreshing embedding coverage before population.")
                 return
+            capability = embedding_capability_state(
+                load_embedding_configuration(self._session.configuration),
+                self._session.embedding_coverage,
+                self._session.embedding_reconciliation,
+            )
+            if not capability.can_populate:
+                context.notify(
+                    capability.blockers[0]
+                    if capability.blockers
+                    else "Embedding population prerequisites are incomplete.",
+                    severity="warning",
+                )
+                return
             from groundworkers.tui.wizards.embeddings import (
                 EmbeddingPopulationWizardController,
             )
 
-            # Scope is the wizard's first step, so nothing has to be chosen on
-            # the page before it opens. The gate that used to stand here asked
-            # for a table selection the detail view never offered.
+            # The wizard starts by choosing the population scope.
             context.open_wizard(
                 EmbeddingPopulationWizardController(
                     self._session,
@@ -435,14 +451,14 @@ class SetupPage(GroundworkersPage):
         target: ConfigTarget,
         workflow: Callable[[MutationOperation], ConfigWorkflowSpec],
     ) -> None:
-        """Open a setup journey through the one generic write flow.
-
-        Every supported Groundworkers write goal — CDM database, embedding model,
-        chat model — goes through this path: the shared mutation provider decides
-        create-versus-update from the current configuration, and Groundskeeping's
-        reusable controller owns the wizard, preview, redaction, and apply
-        lifecycle. There is no second writer.
-        """
+        """Open a configuration wizard backed by the shared write flow."""
+        if not self._session.ownership.editable:
+            context.notify(
+                f"{self._session.ownership.source_label}: "
+                f"{self._session.ownership.guidance}",
+                severity="warning",
+            )
+            return
         service = GroundworkersConfigMutationService(
             self._session.configuration.path,
             ownership=self._session.ownership,
@@ -489,11 +505,13 @@ class SetupPage(GroundworkersPage):
                 self._session.configuration,
                 standard_only=self._session.embedding_standard_only,
             )
+            reconciliation = verify_embedding_model(self._session.configuration)
             self.app.call_from_thread(
                 self._finish_verify_all,
                 connections,
                 llm,
                 coverage,
+                reconciliation,
                 context,
             )
 
@@ -504,11 +522,13 @@ class SetupPage(GroundworkersPage):
         connections,
         llm,
         coverage,
+        reconciliation,
         context: PageContext,
     ) -> None:
         self._session.connection_results = tuple(connections)
         self._session.llm_provider_result = llm
         self._session.embedding_coverage = coverage
+        self._session.embedding_reconciliation = reconciliation
         self._sync_embedding_vocabulary_selection()
         self._show_current_state(context)
 
@@ -649,13 +669,33 @@ class SetupPage(GroundworkersPage):
                 ),
                 None,
             )
-            context.surface.show_detail(
-                self.route.key,
-                key_value_detail(
-                    "Maintenance run",
-                    run.run_id if run else "Select a run",
-                ),
-            )
+            if run is None:
+                detail = TextView(
+                    title="Maintenance run",
+                    body="Select a run to inspect its current step and recent log output.",
+                )
+            else:
+                step_index = _selected_log_step(run)
+                tail = (
+                    self._runs.store.tail_log(run.run_id, step=step_index)
+                    if step_index is not None
+                    else ""
+                )
+                step_label = (
+                    f"{step_index + 1}/{run.total} · "
+                    f"{run.steps[step_index].spec.key}"
+                    if step_index is not None
+                    else "No step has started"
+                )
+                detail = TextView(
+                    title=f"Maintenance run · {run.run_id}",
+                    body=(
+                        f"Status: {run.status.value}\n"
+                        f"Step: {step_label}\n\n"
+                        f"{tail or 'No log output for this step.'}"
+                    ),
+                )
+            context.surface.show_detail(self.route.key, detail)
             return
         context.surface.show_detail(
             self.route.key,
@@ -751,7 +791,7 @@ class SetupPage(GroundworkersPage):
 
 
 def load_embedding_configuration(snapshot):
-    """Keep CDM setup available while the embedding runtime is being migrated."""
+    """Load embedding configuration when the optional embedding support exists."""
 
     try:
         from groundworkers.application.setup.embedding_setup import (
@@ -771,8 +811,7 @@ def load_embedding_coverage_report(snapshot, *, standard_only: bool):
 
 
 def verify_embedding_model(snapshot):
-    """Imported the same lazily-guarded way as the coverage report above, so a
-    stack without the embedding extras still reaches CDM setup."""
+    """Check the embedding model when the optional embedding support exists."""
 
     try:
         from groundworkers.application.setup.embedding_reconciliation import (
@@ -781,3 +820,16 @@ def verify_embedding_model(snapshot):
     except ImportError:
         return None
     return verify(snapshot)
+
+
+def _selected_log_step(run) -> int | None:
+    if run.current_step is not None:
+        return run.current_step
+    return next(
+        (
+            index
+            for index in range(len(run.steps) - 1, -1, -1)
+            if run.steps[index].log_path is not None
+        ),
+        None,
+    )

@@ -50,14 +50,15 @@ class GroundworkersConfig(PackageConfigBase):
     embedding_model_name: Annotated[str | None, RefTo(ModelConfig)] = Field(
         default=None,
         description=(
-            "Name of a [models.*] entry used to embed query text. Optional."
+            "Name of a [models.*] entry used for concept-document embeddings and "
+            "compatible query encoding. Optional."
         ),
     )
     llm_model_name: Annotated[str | None, RefTo(ModelConfig)] = Field(
         default=None,
         description=(
-            "Name of a [models.*] entry used for chat. Never the same entry as "
-            "embedding_model_name, and free to sit on a different provider. "
+            "Name of a [models.*] entry used for chat. It may sit on the same or "
+            "a different provider from the embedding model. "
             "Unset means text, domain, and LLM-assisted source planning are off. "
             "There is no separate enabled flag."
         ),

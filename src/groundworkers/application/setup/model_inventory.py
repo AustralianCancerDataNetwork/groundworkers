@@ -1,6 +1,6 @@
 """Provider-neutral live model inventory for the setup write flows.
 
-Both setup journeys that choose a model — the embedding model and the chat LLM —
+Both setup sections that choose a model — the embedding model and the chat LLM —
 need the list of models a provider endpoint actually serves, so the wizard can
 offer real choices instead of a free-text field.
 

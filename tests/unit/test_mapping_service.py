@@ -1,5 +1,7 @@
 
 
+import pytest
+
 from groundworkers.services import MappingService
 from groundworkers.services.vocab import (
     ConceptMatch,
@@ -334,6 +336,20 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
     non_standard = next(row for row in result["candidate_union"] if row["concept_id"] == 102)
     assert non_standard["mapped_standard_concepts"][0]["concept_id"] == 201
     assert "ancestor_preview" in non_standard
+
+
+@pytest.mark.parametrize(
+    "limits",
+    (
+        {"per_channel_limit": 0},
+        {"per_channel_limit": 21},
+        {"overall_limit": 0},
+        {"overall_limit": 101},
+    ),
+)
+def test_candidate_bundle_bounds_are_enforced_by_the_service(limits):
+    with pytest.raises(ValueError, match="limit must be between"):
+        build_service().concept_candidate_bundle("diabetes", **limits)
 
 
 def test_embedding_only_candidate_backfilled_with_identity_metadata():

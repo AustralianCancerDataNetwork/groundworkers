@@ -108,5 +108,5 @@ class TextService:
         except ValidationError as exc:
             raise GroundworkersError(
                 "QUERY_ERROR",
-                f"LLM response did not match expected structure: {exc}",
+                "LLM response did not match the expected structure.",
             ) from exc

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.responses import JSONResponse
 
 from groundworkers.app import GroundworkersApp
-from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.errors import (
+    GroundworkersError,
+    internal_error_response,
+    scrub_error_message,
+)
 from groundworkers.services.source_planning.serialisation import (
     decode_content,
     serialize_pre_ingest_bundle,
@@ -17,6 +23,8 @@ from groundworkers.transports.rest.models import (
     ErrorResponse,
     HealthResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def create_rest_app(
@@ -35,15 +43,30 @@ def create_rest_app(
     async def handle_groundworkers_error(_, exc: GroundworkersError) -> JSONResponse:
         return JSONResponse(
             status_code=_status_code_for_error(exc.code),
-            content=ErrorResponse(code=exc.code, message=exc.message).model_dump(),
+            content=ErrorResponse(
+                code=exc.code,
+                message=scrub_error_message(exc.message),
+            ).model_dump(),
         )
 
     @api.exception_handler(ValueError)
     async def handle_value_error(_, exc: ValueError) -> JSONResponse:
         return JSONResponse(
             status_code=400,
-            content=ErrorResponse(code="INVALID_INPUT", message=str(exc)).model_dump(),
+            content=ErrorResponse(
+                code="INVALID_INPUT",
+                message=scrub_error_message(str(exc)),
+            ).model_dump(),
         )
+
+    @api.exception_handler(Exception)
+    async def handle_unexpected_error(_, exc: Exception) -> JSONResponse:
+        payload = internal_error_response(
+            exc,
+            logger=logger,
+            boundary="rest",
+        )
+        return JSONResponse(status_code=500, content=payload)
 
     prefix = "" if base_path == "/" else base_path
     router = APIRouter(prefix=prefix, dependencies=[Depends(_rest_auth_dependency)])
@@ -132,4 +155,5 @@ def _status_code_for_error(code: str) -> int:
         "BACKEND_UNAVAIL": 503,
         "MISSING_DEPENDENCY": 503,
         "QUERY_ERROR": 500,
+        "INTERNAL_ERROR": 500,
     }.get(code, 500)

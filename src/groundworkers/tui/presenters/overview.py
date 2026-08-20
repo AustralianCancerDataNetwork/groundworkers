@@ -9,11 +9,16 @@ from groundskeeping.contracts import (
     ViewAction,
 )
 
+from groundworkers.application.setup.embedding_capability import (
+    embedding_capability_state,
+)
 from groundworkers.application.setup.models import (
     ConfigurationSnapshot,
     ConnectionResult,
+    EmbeddingConfiguration,
     EmbeddingCoverageReport,
     LlmProviderCheckResult,
+    ModelReconciliation,
 )
 from groundworkers.tui.presenters.base import SetupPresenterBase
 
@@ -30,6 +35,8 @@ class OverviewPresenter(SetupPresenterBase):
         llm_result: LlmProviderCheckResult | None,
         graph_ready: bool,
         integration_ready: bool,
+        embedding_configuration: EmbeddingConfiguration | None = None,
+        embedding_reconciliation: ModelReconciliation | None = None,
     ) -> SemanticStatus:
         if not snapshot.usable:
             return SemanticStatus.WARNING
@@ -44,6 +51,8 @@ class OverviewPresenter(SetupPresenterBase):
         llm_result: LlmProviderCheckResult | None,
         graph_ready: bool,
         integration_ready: bool,
+        embedding_configuration: EmbeddingConfiguration | None = None,
+        embedding_reconciliation: ModelReconciliation | None = None,
     ) -> SurfaceView:
         if not snapshot.usable:
             return EmptyView(
@@ -53,10 +62,22 @@ class OverviewPresenter(SetupPresenterBase):
                     "Choose a location, then configure the required CDM connection."
                 ),
                 status=SemanticStatus.WARNING,
-                actions=(ViewAction("database.configure", "Configure CDM", variant="primary"),),
+                actions=(
+                    ViewAction(
+                        "database.configure",
+                        "Configure CDM",
+                        variant="primary",
+                        disabled=not snapshot.ownership.editable,
+                    ),
+                ),
             )
         cdm_ready = bool(connections) and all(result.connected for result in connections)
-        embedding_ready = embedding_coverage is not None and embedding_coverage.coverage.available
+        embedding_state = embedding_capability_state(
+            embedding_configuration,
+            embedding_coverage,
+            embedding_reconciliation,
+        )
+        embedding_ready = embedding_state.ready
         chat_ready = llm_result is not None and llm_result.ready
         rows = (
             _row("required.cdm", "CDM vocabulary", "Ready" if cdm_ready else "Needs verification", cdm_ready),
@@ -73,13 +94,29 @@ class OverviewPresenter(SetupPresenterBase):
             status=overall,
             actions=(
                 ViewAction("overview.verify_all", "Verify all", variant="primary"),
-                ViewAction("database.configure", "Configure CDM"),
+                ViewAction(
+                    "database.configure",
+                    "Configure CDM",
+                    disabled=not snapshot.ownership.editable,
+                ),
                 ViewAction("graph.prepare", "Prepare graph"),
-                ViewAction("embeddings.configure_model", "Set up embeddings"),
-                ViewAction("llm_provider.configure", "Set up chat model"),
+                ViewAction(
+                    "embeddings.configure_model",
+                    "Set up embeddings",
+                    disabled=not snapshot.ownership.editable,
+                ),
+                ViewAction(
+                    "llm_provider.configure",
+                    "Set up chat model",
+                    disabled=not snapshot.ownership.editable,
+                ),
                 ViewAction("overview.integration", "Show integration output"),
             ),
-            message="Optional capabilities remain neutral until configured; they do not make the core CDM service fail.",
+            message=(
+                "Optional capabilities remain neutral until configured; they do not make the core CDM service fail. "
+                f"Configuration source: {snapshot.ownership.source_label}. "
+                f"{snapshot.ownership.guidance}"
+            ),
         )
 
 

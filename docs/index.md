@@ -1,16 +1,16 @@
 # groundworkers
 
-`groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source-planning, and knowledge-pack discovery. You can use it in three ways:
+`groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source planning, and knowledge-pack discovery. It is available through three interfaces:
 
-- as an **MCP service** for agentic clients and tool discovery
+- as an **MCP service** for discoverable tool clients
 - as a **REST service** for controlled workflow applications
-- as a **direct Python library** when you want in-process orchestration
+- as a **direct Python library** for in-process applications
 
 ## Choose the interface that fits your application
 
 | Use case | Recommended interface |
 |---|---|
-| Agentic clients, tool discovery, shared remote service | MCP |
+| Discoverable tools or a shared remote service | MCP |
 | Fixed request/response workflows, typed HTTP clients, OpenAPI | REST |
 | In-process Python applications, batch evaluation, custom orchestration | Direct Python |
 
@@ -35,14 +35,14 @@ flowchart TD
     A --> LLM[LLM API]
 ```
 
-This is the conceptual shape of the package: transport choices stay thin, reusable workflow logic lives in `services/`, and concrete dependencies are isolated behind `adapters/`. Configuration and startup wiring are described in [Architecture](architecture.md); the home page keeps the focus on the layer boundaries that matter to most users.
+The transport is thin, reusable workflow logic lives in `services/`, and concrete dependencies are isolated behind `adapters/`. See [Architecture](architecture.md) for configuration and startup wiring.
 
 ## What groundworkers provides
 
 - **Vocabulary and hierarchy lookup** over OMOP concepts
 - **Multi-channel mapping workflows** combining exact, normalized, full-text, and embedding retrieval
 - **Source planning** for stateless pre-ingest analysis
-- **Knowledge-pack discovery** over bundled baseline packs plus optional configured site/localisation packs
+- **Knowledge-pack discovery** over bundled baseline packs plus optional site or localisation packs
 - **LLM-backed text normalization and domain classification**
 - **Thin transports** over the same service layer
 
@@ -61,6 +61,5 @@ This is the conceptual shape of the package: transport choices stay thin, reusab
 - `groundworkers` owns reusable stateless capabilities
 - `groundcrew` owns orchestration, session state, and job lifecycle
 
-In the usual deployment shape, `groundcrew` talks to `groundworkers` over MCP.
-If you are building your own Python application, you can call the same service
-layer directly through `build_application(...)`.
+In the usual deployment, `groundcrew` talks to `groundworkers` over MCP. A Python
+application can use the same service layer directly through `build_application(...)`.

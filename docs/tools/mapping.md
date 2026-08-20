@@ -1,15 +1,14 @@
 # Mapping Tools
 
-These tools are for mapping and review workflows where the caller usually wants
-more than a single "best guess". They help you gather evidence, inspect context,
-and compare candidates.
+These tools support mapping review when a single best result is not enough. They
+gather evidence, add context, and make candidate comparisons explicit.
 
 ## When to use these tools
 
 Use the mapping tools when you want to:
 
 - compare exact, normalized, full-text, and embedding retrieval side by side
-- build a reviewer or LLM-facing candidate packet
+- build a candidate packet for a reviewer or downstream mapping service
 - ask for broader parent concepts when a hit is too specific
 - assemble one context object for a chosen concept
 - expand simple concept expressions
@@ -33,7 +32,7 @@ flowchart TD
 
 ## `concept_ground` vs mapping tools
 
-`concept_ground` is still the simplest choice when you want one good answer fast.
+`concept_ground` is the simplest choice for a single ranked grounding result.
 
 The mapping tools are better when you want to inspect evidence and make an explicit
 selection.

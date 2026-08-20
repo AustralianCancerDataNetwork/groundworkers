@@ -14,7 +14,7 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
     a fact — they are deterministic lookups, not text matching.
 
     For free-text grounding see resolver_tools.py.
-    For agent-composable search primitives see search_tools.py.
+    For direct lexical search with retrieval signals see search_tools.py.
     """
 
     @server.tool("concept_get")
@@ -29,8 +29,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return concept
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_by_code")
     def concept_by_code(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
@@ -50,8 +48,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return {"concepts": concepts}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_ancestors")
     def concept_ancestors(concept_id: int, max_depth: int = 5) -> dict[str, Any]:
@@ -64,8 +60,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return {"concept_id": concept_id, "ancestors": ancestors}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_descendants")
     def concept_descendants(concept_id: int, max_depth: int = 3) -> dict[str, Any]:
@@ -78,8 +72,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return {"concept_id": concept_id, "descendants": descendants}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_relationships")
     def concept_relationships(concept_id: int) -> dict[str, Any]:
@@ -91,8 +83,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return {"concept_id": concept_id, **edges}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_equivalency_path")
     def concept_equivalency_path(
@@ -129,8 +119,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return {"source_id": source_id, "target_id": target_id, **result}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_path")
     def concept_path(
@@ -164,8 +152,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return {"source_id": source_id, "target_id": target_id, **result}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_neighbors")
     def concept_neighbors(
@@ -219,8 +205,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_associations")
     def concept_associations(
@@ -263,8 +247,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_extended_inheritance")
     def concept_extended_inheritance(
@@ -314,8 +296,6 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_map_to_standard")
     def concept_map_to_standard(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
@@ -328,5 +308,3 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return graph_service.map_to_standard(vocabulary_id, concept_code)
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

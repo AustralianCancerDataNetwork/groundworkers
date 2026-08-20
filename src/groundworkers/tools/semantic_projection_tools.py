@@ -76,5 +76,3 @@ def register_semantic_projection_tools(server: GroundworkersMCPServer, service: 
             return result.model_dump()
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

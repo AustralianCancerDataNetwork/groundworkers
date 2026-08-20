@@ -106,7 +106,7 @@ def test_semantic_project_tool_returns_invalid_input_for_bad_request_shape() -> 
     assert service.calls == []
 
 
-def test_semantic_project_tool_returns_query_error_for_unexpected_exception() -> None:
+def test_semantic_project_tool_returns_internal_error_for_unexpected_exception() -> None:
     service = StubSemanticProjectionService(error=RuntimeError("boom"))
     server = GroundworkersMCPServer("test-server")
     register_semantic_projection_tools(server, service)
@@ -114,5 +114,6 @@ def test_semantic_project_tool_returns_query_error_for_unexpected_exception() ->
     result = server.call("semantic_project", grounded_concept_id=1, grounded_domain="Condition")
 
     assert result["error"] is True
-    assert result["code"] == "QUERY_ERROR"
-    assert "boom" in result["message"]
+    assert result["code"] == "INTERNAL_ERROR"
+    assert "Incident ID" in result["message"]
+    assert "boom" not in result["message"]

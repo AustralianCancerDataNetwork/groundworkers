@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from groundworkers.app import Adapters, GroundworkersApp, Services
@@ -75,6 +76,7 @@ def _client(
     mapping=None,
     source_planning=None,
     base_path: str = "/v1",
+    raise_server_exceptions: bool = True,
 ) -> TestClient:
     config = build_app_config_from_stack(build_cdm_stack())
     app = GroundworkersApp(
@@ -85,7 +87,10 @@ def _client(
             source_planning=source_planning,
         ),
     )
-    return TestClient(create_rest_app(app, base_path=base_path), raise_server_exceptions=True)
+    return TestClient(
+        create_rest_app(app, base_path=base_path),
+        raise_server_exceptions=raise_server_exceptions,
+    )
 
 
 def test_candidate_bundle_endpoint_calls_mapping_service() -> None:
@@ -167,6 +172,48 @@ def test_candidate_bundle_endpoint_returns_backend_unavailable_when_service_miss
         "code": "BACKEND_UNAVAIL",
         "message": "mapping service is unavailable because the OMOP vocabulary backend is not configured",
     }
+
+
+@pytest.mark.parametrize(
+    "limits",
+    (
+        {"per_channel_limit": 21},
+        {"overall_limit": 101},
+    ),
+)
+def test_candidate_bundle_rest_bounds_reject_unbounded_work(limits) -> None:
+    client = _client(
+        mapping=FakeMappingService(),
+        source_planning=FakeSourcePlanningService(),
+    )
+
+    response = client.post(
+        "/v1/mapping/candidate-bundle",
+        json={"query": "diabetes", **limits},
+    )
+
+    assert response.status_code == 422
+
+
+def test_unexpected_rest_error_returns_correlation_safe_internal_error() -> None:
+    class FailingMappingService:
+        def concept_candidate_bundle(self, query: str, **kwargs):
+            raise RuntimeError("postgresql://user:password@db/omop")
+
+    client = _client(
+        mapping=FailingMappingService(),
+        source_planning=FakeSourcePlanningService(),
+        raise_server_exceptions=False,
+    )
+
+    response = client.post(
+        "/v1/mapping/candidate-bundle",
+        json={"query": "diabetes"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "INTERNAL_ERROR"
+    assert "password" not in response.text
 
 
 def test_value_error_is_exposed_as_invalid_input() -> None:

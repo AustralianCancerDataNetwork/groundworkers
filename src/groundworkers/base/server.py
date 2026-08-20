@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from collections.abc import Callable
+from functools import wraps
 from typing import Any, Literal
+
+from groundworkers.base.errors import (
+    ERROR_CODES,
+    GroundworkersError,
+    internal_error_response,
+    scrub_error_message,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _callable_name(func: Callable[..., Any]) -> str:
@@ -25,8 +36,25 @@ class GroundworkersMCPServer:
     def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or _callable_name(func)
-            self._tools[tool_name] = func
-            return func
+
+            @wraps(func)
+            def guarded(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    result = func(*args, **kwargs)
+                except GroundworkersError as exc:
+                    return exc.to_dict()
+                except ValueError as exc:
+                    return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                except Exception as exc:
+                    return internal_error_response(
+                        exc,
+                        logger=logger,
+                        boundary=f"mcp.tool.{tool_name}",
+                    )
+                return _sanitise_tool_result(result, tool_name=tool_name)
+
+            self._tools[tool_name] = guarded
+            return guarded
 
         return decorator
 
@@ -134,3 +162,18 @@ class GroundworkersMCPServer:
         for uri, (func, description) in self._resources.items():
             app.resource(uri, description=description or "")(func)
         app.run(transport=transport)
+
+
+def _sanitise_tool_result(result: Any, *, tool_name: str) -> Any:
+    if not isinstance(result, dict) or result.get("error") is not True:
+        return result
+    code = result.get("code")
+    if code not in ERROR_CODES:
+        return internal_error_response(
+            RuntimeError(f"Tool returned unknown error code {code!r}"),
+            logger=logger,
+            boundary=f"mcp.tool.{tool_name}",
+        )
+    safe = dict(result)
+    safe["message"] = scrub_error_message(str(result.get("message", "Request failed.")))
+    return safe

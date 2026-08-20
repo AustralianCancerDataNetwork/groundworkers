@@ -41,8 +41,6 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_candidate_bundle")
     def concept_candidate_bundle(
@@ -74,8 +72,6 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
         the specified concept_ids; the embedding channel does not apply this filter.
         active_only filters out retired (invalid) concepts.
         """
-        channel_limit = max(1, min(per_channel_limit, 20))
-        safe_union_limit = max(1, min(overall_limit, 100))
         try:
             return mapping_service.concept_candidate_bundle(
                 query,
@@ -91,16 +87,14 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
                 include_hierarchy_context=include_hierarchy_context,
                 include_relationship_summary=include_relationship_summary,
                 parent_ids=parent_ids,
-                per_channel_limit=channel_limit,
-                overall_limit=safe_union_limit,
+                per_channel_limit=per_channel_limit,
+                overall_limit=overall_limit,
                 model_name=model_name,
             )
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_nearest_standard_ancestor")
     def concept_nearest_standard_ancestor(
@@ -135,8 +129,6 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_mapping_context")
     def concept_mapping_context(
@@ -178,8 +170,6 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_map_to_value")
     def concept_map_to_value(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
@@ -190,8 +180,6 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_resolve_mapping_expression")
     def concept_resolve_mapping_expression(
@@ -218,8 +206,6 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("mapping_evaluate_candidates")
     def mapping_evaluate_candidates(
@@ -247,5 +233,3 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

@@ -33,8 +33,6 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return emb_adapter.index_status()
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("embedding_neighbours")
     def embedding_neighbours(concept_id: int, limit: int = 10, model_name: str | None = None) -> dict[str, Any]:
@@ -52,8 +50,6 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("embedding_search")
     def embedding_search(
@@ -83,8 +79,6 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("embedding_encode")
     def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
@@ -97,5 +91,3 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return emb_adapter.encode(text=text, model_name=model_name)
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

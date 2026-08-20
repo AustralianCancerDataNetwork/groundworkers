@@ -1,7 +1,6 @@
-TEMPORARY — a verbatim copy of omop-graph's `config/` predicate CSVs.
+These files are copies of omop-graph's `config/` predicate CSVs.
 
-omop-graph's own copies live at its repo root, outside `src/omop_graph/`, so hatchling never puts them in its wheel. `omop-graph relationship-classification` therefore cannot run from a normal install: the command is present, the reference data it reads is not.
+omop-graph keeps its copies at the repository root, outside `src/omop_graph/`, so hatchling does not include them in its wheel. Packaging them here lets `omop-graph relationship-classification` run from an installed Groundworkers environment.
 
-Bundled here so the setup console's "Prepare graph" wizard can offer a working default instead of asking every operator to fetch two files from GitHub.
-
-REMOVE THIS DIRECTORY once omop-graph ships them, along with `packaged_predicate_csv_dir()` in application/setup graph_maintenance.py and the wizard default that uses it. Upstream issue: omop-graph packaging of predicate_classification.csv / predicate_mapping.csv.
+The setup console uses these files as the default source for **Prepare graph**;
+callers can still provide another directory when needed.

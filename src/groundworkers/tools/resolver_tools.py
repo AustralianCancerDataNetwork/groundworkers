@@ -27,7 +27,7 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
 
     For deterministic lookups from known identifiers (concept_id, vocab+code,
     hierarchy traversal) see concept_tools.py.
-    For agent-composable primitive search operations see search_tools.py.
+    For direct lexical search with retrieval signals see search_tools.py.
     """
 
     @server.tool("concept_ground")
@@ -81,9 +81,9 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
           lookup to that class.
           When omitted the search runs without an ancestry constraint.
 
-        For finer control over resolver selection and quality thresholds, use the
-        agent-composable primitives: concept_search_exact, concept_search_fulltext,
-        embedding_search, and concept_navigate_to_standard.
+        For finer control over resolver selection and quality thresholds, use
+        concept_search_exact, concept_search_fulltext, embedding_search, or
+        concept_navigate_to_standard.
         """
         stripped = query.strip()
         if not stripped:
@@ -145,11 +145,3 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
                 exc.message,
             )
             return exc.to_dict()
-        except Exception as exc:
-            duration_ms = (time.perf_counter() - started) * 1000.0
-            logger.exception(
-                "concept_ground tool unexpected error query=%r duration_ms=%.1f",
-                _short_text(stripped),
-                duration_ms,
-            )
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

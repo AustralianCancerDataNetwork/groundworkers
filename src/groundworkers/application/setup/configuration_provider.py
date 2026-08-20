@@ -80,7 +80,7 @@ MODEL_SETUP_TARGET: Final = ConfigTarget(
 # Chat is a named `[models.*]` entry reached through `llm_model_name`, the same
 # shape as the embedding model above and written through this same provider
 # boundary. `embedding_model_name` is never repurposed as the chat model: the two
-# journeys write independent entries and may point at different providers.
+# Setup sections write independent entries and may point at different providers.
 VECTOR_STORE_SETUP_TARGET: Final = ConfigTarget(
     ConfigTargetKind.TOOL,
     "groundworkers.vector-store",
@@ -426,9 +426,9 @@ class GroundworkersConfigMutationService:
 
         # Both sides must come from the same projection or the diff is misleading:
         # `plan_configure` returns a validated candidate with every package default
-        # materialised, while a hand-written base carries only the keys an operator
-        # actually wrote. Comparing them directly reported each unset default as a
-        # change (`mcp.port: None -> 8000`), burying the fields the journey touched.
+        # materialised, while a hand-written base carries only explicitly written
+        # keys. Normalising both sides prevents unset defaults from appearing as
+        # changes and keeps the review focused on the submitted fields.
         original = _flatten_stack(_normalise_for_diff(session.base))
         planned = _flatten_stack(_normalise_for_diff(candidate))
         diff = build_config_diff(
@@ -586,7 +586,7 @@ class GroundworkersConfigMutationService:
         proposed: Mapping[str, object],
         submitted: Mapping[str, object],
     ) -> tuple[ValidationIssue, ...]:
-        """Validate one step's answers against the journey and the stack.
+        """Validate one step's answers against the workflow and the stack.
 
         Takes the session rather than the target alone: some answers are only
         wrong in the context of what the stack already holds, e.g. a backend the
@@ -613,6 +613,25 @@ class GroundworkersConfigMutationService:
                 issues.append(
                     ValidationIssue("A database host is required.", field_key="host")
                 )
+            if step_key == "database" and dialect == "sqlite":
+                sqlite_path = _optional_text(proposed.get("database_name"))
+                if sqlite_path == ":memory:":
+                    issues.append(
+                        ValidationIssue(
+                            "An in-memory SQLite database cannot be used as an OMOP CDM.",
+                            field_key="database_name",
+                        )
+                    )
+                elif sqlite_path and not _existing_sqlite_path(
+                    sqlite_path,
+                    stack=session.base,
+                ):
+                    issues.append(
+                        ValidationIssue(
+                            "Choose an existing SQLite CDM file.",
+                            field_key="database_name",
+                        )
+                    )
         elif target == MODEL_SETUP_TARGET:
             if step_key == "provider" and not _optional_text(
                 proposed.get("provider_name")
@@ -663,7 +682,7 @@ class GroundworkersConfigMutationService:
                     issues.append(
                         ValidationIssue(
                             "There is no CDM database to store vectors in yet. "
-                            "Run the CDM journey first, or choose somewhere else.",
+                            "Configure the CDM database first, or choose somewhere else.",
                             field_key="store_location",
                         )
                     )
@@ -740,7 +759,7 @@ class GroundworkersConfigMutationService:
 def cdm_setup_workflow(
     operation: MutationOperation,
 ) -> ConfigWorkflowSpec:
-    """Describe the reusable Groundworkers CDM setup journey."""
+    """Describe the reusable Groundworkers CDM setup workflow."""
 
     return ConfigWorkflowSpec(
         key="groundworkers-cdm",
@@ -903,21 +922,30 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     database = stack.databases.get(cdm_name)
     connection_name = getattr(database, "connection", "cdm_main")
     connection = stack.connections.get(connection_name)
-    dialect = getattr(connection, "dialect", "sqlite")
+    fresh = connection is None
+    dialect = getattr(connection, "dialect", "postgresql+psycopg")
     return (
-        FieldSpec("connection_name", "Connection name", default=connection_name),
+        FieldSpec(
+            "connection_name",
+            "Connection name (Advanced)",
+            default=connection_name,
+            help="Keep the generated name unless reusing or resolving a collision.",
+        ),
         FieldSpec(
             "dialect",
             "Database type",
             kind=FieldKind.CHOICE,
             default=dialect,
             choices=(
-                ChoiceOption("postgresql+psycopg", "PostgreSQL"),
-                ChoiceOption("sqlite", "SQLite"),
+                ChoiceOption("postgresql+psycopg", "PostgreSQL (recommended)"),
+                ChoiceOption("sqlite", "SQLite (Advanced: existing file)"),
             ),
         ),
         FieldSpec(
-            "host", "Host", required=False, default=getattr(connection, "host", None)
+            "host",
+            "Host",
+            required=False,
+            default=getattr(connection, "host", "localhost"),
         ),
         FieldSpec(
             "port",
@@ -926,7 +954,7 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             required=False,
             minimum=1,
             maximum=65535,
-            default=getattr(connection, "port", None),
+            default=getattr(connection, "port", 5432),
         ),
         FieldSpec(
             "user", "User", required=False, default=getattr(connection, "user", None)
@@ -942,13 +970,22 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
         FieldSpec(
             "database_name",
             "Database name or SQLite path",
-            default=getattr(connection, "database_name", ":memory:"),
+            default=getattr(connection, "database_name", None),
+            help=(
+                "Enter the PostgreSQL database containing populated OMOP vocabulary tables. "
+                "For SQLite, select an existing CDM file."
+            ),
         ),
-        FieldSpec("cdm_db_name", "CDM database entry", default=cdm_name),
+        FieldSpec(
+            "cdm_db_name",
+            "CDM database entry (Advanced)",
+            default=cdm_name,
+            help="Keep the generated name unless reusing or resolving a collision.",
+        ),
         FieldSpec(
             "schema_name",
             "CDM schema",
-            default=getattr(database, "schema_name", "main"),
+            default=getattr(database, "schema_name", "public" if fresh else "main"),
         ),
         FieldSpec(
             "vocab_schema",
@@ -965,6 +1002,13 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     )
 
 
+def _existing_sqlite_path(value: str, *, stack: StackConfig) -> bool:
+    path = Path(value).expanduser()
+    if not path.is_absolute() and stack.loaded_path is not None:
+        path = stack.loaded_path.parent / path
+    return path.is_file()
+
+
 def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     tool = stack.tools.get(GroundworkersConfig.tool_name, {})
     model_name = _optional_text(tool.get("embedding_model_name"))
@@ -979,7 +1023,12 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
         getattr(model, "query_prefix", None),
     )
     return (
-        FieldSpec("provider_name", "Provider entry", default=provider_name),
+        FieldSpec(
+            "provider_name",
+            "Provider entry (Advanced)",
+            default=provider_name,
+            help="Keep the generated name unless reusing or resolving a collision.",
+        ),
         FieldSpec(
             "provider_kind",
             "Provider",
@@ -1019,7 +1068,10 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             help="Populated from the store once the provider step is accepted.",
         ),
         FieldSpec(
-            "model_entry_name", "Model entry", default=model_name or "embedding_model"
+            "model_entry_name",
+            "Model entry (Advanced)",
+            default=model_name or "embedding_model",
+            help="Keep the generated name unless reusing or resolving a collision.",
         ),
         FieldSpec(
             "model_choice",
@@ -1061,7 +1113,10 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     return (
         location,
         FieldSpec(
-            "store_entry_name", "Store entry", default=store_name or "embeddings"
+            "store_entry_name",
+            "Store entry (Advanced)",
+            default=store_name or "embeddings",
+            help="Keep the generated name unless reusing or resolving a collision.",
         ),
         FieldSpec(
             "backend_type",
@@ -1073,7 +1128,10 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             choices=_BACKEND_CHOICES,
         ),
         FieldSpec(
-            "store_database_name", "Database entry", default=database_name
+            "store_database_name",
+            "Database entry (Advanced)",
+            default=database_name,
+            help="Keep the generated name unless reusing or resolving a collision.",
         ),
         FieldSpec(
             "store_connection_name",
@@ -1083,7 +1141,7 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             or getattr(cdm, "connection", None)
             or connections[0],
             choices=tuple(ChoiceOption(name, name) for name in connections),
-            help="An existing connection. Add one through the CDM journey or omop-config.",
+            help="An existing connection. Add one through CDM setup or omop-config.",
         ),
         FieldSpec(
             "store_schema_name",
@@ -1122,7 +1180,7 @@ def _store_location_field(
 ) -> FieldSpec:
     """Offer the CDM database first, and only offer it when there is one.
 
-    Preselects what the stored store already does, so re-running the journey on
+    Preselects what the stored store already does, so rerunning setup on
     a configured stack does not silently propose to move the vectors.
     """
 
@@ -1138,7 +1196,7 @@ def _store_location_field(
             default=STORE_LOCATION_SEPARATE,
             choices=(separate,),
             help=(
-                "No CDM database is configured yet. Run the CDM journey first to "
+                "No CDM database is configured yet. Configure the CDM database first to "
                 "store vectors alongside it."
             ),
         )
@@ -1259,7 +1317,12 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     existing_model = getattr(model, "model", None)
     pending = existing_model or "pending"
     return (
-        FieldSpec("llm_provider_name", "Provider entry", default=provider_name),
+        FieldSpec(
+            "llm_provider_name",
+            "Provider entry (Advanced)",
+            default=provider_name,
+            help="Keep the generated name unless reusing or resolving a collision.",
+        ),
         FieldSpec(
             "llm_provider_kind",
             "Provider",
@@ -1283,7 +1346,10 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             help="Leave blank to preserve an existing key.",
         ),
         FieldSpec(
-            "llm_model_entry_name", "Model entry", default=model_name or "chat_model"
+            "llm_model_entry_name",
+            "Model entry (Advanced)",
+            default=model_name or "chat_model",
+            help="Keep the generated name unless reusing or resolving a collision.",
         ),
         FieldSpec(
             "llm_model_choice",
@@ -1325,8 +1391,8 @@ def _vector_store_set_dict(
 ) -> dict[str, object]:
     """Create the store, its generic database, and the reference to it.
 
-    The connection is named rather than defined: a vector store sits on a server
-    that is already configured, and creating connections is the CDM journey's job.
+    The connection is named rather than defined: a vector store uses a server
+    that is already configured, and CDM setup creates connections.
     """
     store: dict[str, object] = {
         "name": str(answers["store_entry_name"]),

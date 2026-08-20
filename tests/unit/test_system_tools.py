@@ -328,7 +328,7 @@ def test_vocabulary_catalogue_returns_data_when_graph_configured():
     assert "concept_classes" in result
 
 
-def test_vocabulary_catalogue_returns_query_error_on_adapter_exception():
+def test_vocabulary_catalogue_returns_internal_error_on_adapter_exception():
     class FailingGraphAdapter(StubGraphAdapter):
         def get_vocabulary_catalogue(self) -> dict:
             raise RuntimeError("db timeout")
@@ -336,4 +336,5 @@ def test_vocabulary_catalogue_returns_query_error_on_adapter_exception():
     server = _server(graph=FailingGraphAdapter())
     result = server.call("system_vocabulary_catalogue")
     assert result["error"] is True
-    assert result["code"] == "QUERY_ERROR"
+    assert result["code"] == "INTERNAL_ERROR"
+    assert "Incident ID" in result["message"]

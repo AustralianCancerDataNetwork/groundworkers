@@ -41,5 +41,3 @@ def register_domain_tools(server: GroundworkersMCPServer, domain_service: Domain
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

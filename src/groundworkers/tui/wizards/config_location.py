@@ -28,13 +28,7 @@ from groundworkers.tui.state import SetupSession
 
 
 class ConfigLocationWizardController:
-    """Choose where the stack configuration lives, before anything is written.
-
-    Deliberately the smallest possible wizard: it settles a path and nothing
-    else. Every actual configuration journey -- the CDM database, the embedding
-    model, the chat model -- already exists behind the setup page's own
-    workflows, and this hands straight back to them once the location is known.
-    """
+    """Choose the stack configuration path before writing any settings."""
 
     spec = WizardSpec(
         key="groundworkers.config-location",

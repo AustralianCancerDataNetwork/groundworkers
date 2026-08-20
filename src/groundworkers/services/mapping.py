@@ -15,6 +15,9 @@ from groundworkers.services.vocab import (
     serialise_standard_mapping,
 )
 
+MAX_CANDIDATES_PER_CHANNEL = 20
+MAX_CANDIDATE_UNION = 100
+
 
 class MappingService:
     """Direct Python API for mapping-oriented vocabulary workflows."""
@@ -113,6 +116,14 @@ class MappingService:
             raise ValueError("query must be a non-empty string")
         if parent_ids is not None and any(pid <= 0 for pid in parent_ids):
             raise ValueError("all parent_ids must be positive integers")
+        if not 1 <= per_channel_limit <= MAX_CANDIDATES_PER_CHANNEL:
+            raise ValueError(
+                f"per_channel_limit must be between 1 and {MAX_CANDIDATES_PER_CHANNEL}"
+            )
+        if not 1 <= overall_limit <= MAX_CANDIDATE_UNION:
+            raise ValueError(
+                f"overall_limit must be between 1 and {MAX_CANDIDATE_UNION}"
+            )
 
         warnings: list[str] = []
         channels: dict[str, dict[str, Any]] = {}

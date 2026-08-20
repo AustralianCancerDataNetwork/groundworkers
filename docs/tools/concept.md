@@ -4,8 +4,8 @@ These graph-backed tools provide read-only access to OMOP concepts, hierarchy,
 relationships, neighborhoods, paths, and standard mappings. They are backed by
 `GraphService` and require the omop-graph backend.
 
-For free-text grounding see [Resolver Tools](resolver.md). For agent-composable
-lexical search primitives see [Search Tools](search.md).
+For free-text grounding see [Resolver Tools](resolver.md). For direct lexical
+search with retrieval signals see [Search Tools](search.md).
 
 ---
 

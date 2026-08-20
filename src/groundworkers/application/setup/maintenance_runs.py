@@ -18,7 +18,7 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
@@ -138,9 +138,10 @@ class MaintenanceRunStore:
     ) -> MaintenanceRun:
         _validate_plan(plan)
         self.root.mkdir(parents=True, exist_ok=True)
+        _ensure_private_directory(self.root)
         run_id = uuid4().hex
         run_root = self.root / run_id
-        run_root.mkdir()
+        run_root.mkdir(mode=0o700)
         run = MaintenanceRun(
             run_id=run_id,
             kind=plan.kind,
@@ -161,7 +162,7 @@ class MaintenanceRunStore:
         if not path.is_file():
             raise KeyError(f"Unknown maintenance run: {run_id}")
         run = _run_from_json(json.loads(path.read_text(encoding="utf-8")), self.root / run_id)
-        if recover and run.status in {RunStatus.RUNNING, RunStatus.CANCELLING}:
+        if recover and _run_needs_recovery(run):
             if not _process_matches(run.supervisor_pid, run.supervisor_start_time):
                 run = self.save(
                     replace(
@@ -203,18 +204,22 @@ class MaintenanceRunStore:
         return tuple(sorted(runs, key=lambda item: item.created_at, reverse=True))
 
     def save(self, run: MaintenanceRun) -> MaintenanceRun:
-        run.root.mkdir(parents=True, exist_ok=True)
+        run.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        _ensure_private_directory(run.root)
         target = run.root / "run.json"
         temporary = run.root / f".run-{uuid4().hex}.tmp"
-        temporary.write_text(
-            json.dumps(_run_to_json(run), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(_run_to_json(run), indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temporary, target)
+        target.chmod(0o600)
         return run
 
     def acquire(self, run: MaintenanceRun, resources: Iterable[str]) -> tuple[Path, ...]:
         self.lock_root.mkdir(parents=True, exist_ok=True)
+        _ensure_private_directory(self.lock_root)
         acquired: list[Path] = []
         try:
             for resource in dict.fromkeys(resources):
@@ -256,6 +261,7 @@ class MaintenanceRunStore:
         run = self.get(run_id)
         if run.status not in {RunStatus.PENDING, RunStatus.RUNNING}:
             return run
+        was_pending = run.status is RunStatus.PENDING
         run = self.save(
             replace(run, status=RunStatus.CANCELLING, last_message="Cancellation requested.")
         )
@@ -265,8 +271,15 @@ class MaintenanceRunStore:
                 _terminate_process_group(current.process_pid, current.process_start_time)
         if _process_matches(run.supervisor_pid, run.supervisor_start_time):
             _terminate_process_group(run.supervisor_pid, run.supervisor_start_time)
-        elif run.status is RunStatus.PENDING:
-            return self.save(replace(run, status=RunStatus.CANCELLED, finished_at=_now()))
+        if was_pending:
+            return self.save(
+                replace(
+                    run,
+                    status=RunStatus.CANCELLED,
+                    finished_at=_now(),
+                    last_message="Cancelled before execution started.",
+                )
+            )
         return run
 
     def retry(self, run_id: str) -> MaintenanceRun:
@@ -297,9 +310,11 @@ class MaintenanceRunStore:
         """Read a bounded tail for the Runs surface without loading a whole log."""
 
         run = self.get(run_id)
-        if step < 0 or step >= len(run.log_paths):
+        if step < 0 or step >= len(run.steps):
             raise IndexError(f"Unknown maintenance step: {step}")
-        path = run.log_paths[step]
+        path = run.steps[step].log_path
+        if path is None:
+            return ""
         if not path.is_file():
             return ""
         with path.open("rb") as handle:
@@ -320,8 +335,16 @@ class MaintenanceRunner:
     def __init__(self, store: MaintenanceRunStore | None = None) -> None:
         self.store = store or MaintenanceRunStore()
 
-    def start(self, plan: MaintenancePlan) -> MaintenanceRun:
-        run = self.store.create(plan)
+    def start(
+        self,
+        plan: MaintenancePlan,
+        *,
+        retry_of: str | None = None,
+    ) -> MaintenanceRun:
+        run = self.store.create(plan, retry_of=retry_of)
+        return self._start_created(run)
+
+    def _start_created(self, run: MaintenanceRun) -> MaintenanceRun:
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -371,14 +394,10 @@ class MaintenanceRunner:
         """Create and start a retry from the first incomplete safe step."""
 
         pending = self.store.retry(run_id)
-        plan = MaintenancePlan(
-            kind=pending.kind,
-            steps=tuple(step.spec for step in pending.steps),
-            postflight=pending.postflight,
-        )
-        (pending.root / "run.json").unlink(missing_ok=True)
-        pending.root.rmdir()
-        return self.start(plan)
+        # ``store.retry`` owns the exact safe-resume calculation and persists
+        # the lineage. Start that record directly instead of deleting it and
+        # creating an unrelated run.
+        return self._start_created(pending)
 
 
 _ACTIVE_CHILD: subprocess.Popen[bytes] | None = None
@@ -388,6 +407,17 @@ _CANCEL_REQUESTED = False
 def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
     global _ACTIVE_CHILD, _CANCEL_REQUESTED
     run = store.get(run_id, recover=False)
+    # The supervisor records its own identity before publishing RUNNING. This
+    # closes the launch race where the child could become live before the
+    # parent had attached the PID, causing a reopening TUI to "recover" active
+    # work as interrupted.
+    run = store.save(
+        replace(
+            run,
+            supervisor_pid=os.getpid(),
+            supervisor_start_time=_process_start_time(os.getpid()),
+        )
+    )
     locks: tuple[Path, ...] = ()
     _CANCEL_REQUESTED = False
 
@@ -399,7 +429,7 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
 
     previous_handler = signal.signal(signal.SIGTERM, request_cancel)
     try:
-        if run.status is RunStatus.CANCELLING:
+        if run.status in {RunStatus.CANCELLING, RunStatus.CANCELLED}:
             return store.save(
                 replace(run, status=RunStatus.CANCELLED, finished_at=_now(), last_message="Cancelled before execution started.")
             )
@@ -501,6 +531,7 @@ def _run_command(command: MaintenanceCommand, log_path: Path) -> tuple[int, int 
     env = os.environ.copy()
     env.update(dict(command.environment))
     with log_path.open("ab") as log_file:
+        log_path.chmod(0o600)
         process = subprocess.Popen(
             command.argv,
             stdout=log_file,
@@ -532,6 +563,29 @@ def resolve_state_root(root: str | Path | None = None) -> Path:
         return Path(root).expanduser()
     configured = os.getenv("GROUNDWORKERS_STATE_HOME") or os.getenv("XDG_STATE_HOME")
     return Path(configured).expanduser() / "groundworkers" if configured else Path.home() / ".local" / "state" / "groundworkers"
+
+
+_PENDING_RECOVERY_GRACE = timedelta(seconds=5)
+
+
+def _run_needs_recovery(run: MaintenanceRun) -> bool:
+    if run.status in {RunStatus.RUNNING, RunStatus.CANCELLING}:
+        return True
+    if run.status is not RunStatus.PENDING:
+        return False
+    if run.supervisor_pid is not None:
+        return True
+    try:
+        created = datetime.fromisoformat(run.created_at)
+    except ValueError:
+        return True
+    return datetime.now(UTC) - created >= _PENDING_RECOVERY_GRACE
+
+
+def _ensure_private_directory(path: Path) -> None:
+    """Keep local run metadata private even under a permissive process umask."""
+
+    path.chmod(0o700)
 
 
 def _now() -> str:

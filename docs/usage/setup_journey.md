@@ -1,24 +1,18 @@
-# Setup journey
+# Setup console
 
-The setup console is organized around outcomes rather than raw configuration
-sections:
+The setup console is organized by the capability being configured:
 
-1. **Overview** — required CDM readiness, optional capability status, Verify all,
-   and integration output;
-2. **Database** — physical connection and logical CDM database entries;
-3. **Graph** — CDM-backed search/graph preparation;
-4. **Chat Model** — provider and model entries for optional LLM capabilities;
-5. **Embeddings** — provider/model, vector store, coverage, population, and index
-   work;
-6. **Chat** — bounded chat diagnostics;
-7. **View Configuration** — redacted shared-stack topology for inspection; and
-8. **Runs** — durable local maintenance progress and history.
+1. **Overview** — CDM readiness, optional capabilities, and integration output;
+2. **Database** — physical connections and logical CDM database entries;
+3. **Graph** — CDM-backed search and graph preparation;
+4. **Chat Model** — provider and model entries for LLM-backed features;
+5. **Embeddings** — vector-store setup, coverage, and population;
+6. **Chat** — checks for the selected chat model;
+7. **View Configuration** — redacted stack configuration; and
+8. **Runs** — progress and history for durable maintenance work.
 
-The required path is **Overview → Configure CDM → Test connections**. Optional
-capabilities stay neutral until configured. Every write uses the generic
-oa-configurator workflow and shows canonical redacted per-entry changes before
-apply. Raw topology is available under View Configuration, not required first-run
-knowledge.
+For a minimal local setup, use **Overview → Configure CDM → Test connections**.
+Optional capabilities can be configured later. Configuration changes show the
+redacted entries that will be written before they are applied.
 
-See [Initial local setup](../from-scratch.md) for the complete acceptance
-journey.
+See [Initial local setup](../from-scratch.md) for a complete example.

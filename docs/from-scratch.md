@@ -1,7 +1,7 @@
 # Initial local setup
 
-This is the supported fresh-local journey for Groundworkers 1.x. It assumes an
-OMOP CDM database whose vocabulary tables are already populated. Groundworkers
+This is the supported fresh-local setup for Groundworkers. It assumes an OMOP
+CDM database whose vocabulary tables are already populated. Groundworkers
 does not load vocabulary data or silently create embedding stores.
 
 ## Install
@@ -12,9 +12,9 @@ Install the setup console and the capabilities you intend to use:
 uv pip install "groundworkers[tui,embedding-pgvector]"
 ```
 
-Use `embedding-faiss` instead of `embedding-pgvector` only when your deployment
-has that supported backend. Add `all_source` when source-planning file formats
-are needed.
+Add `embedding-faiss` when you also want the optional FAISS query cache; it is
+not a replacement vector-store backend. Add `all_source` when source-planning
+file formats are needed.
 
 ## Run the setup console
 
@@ -22,10 +22,9 @@ are needed.
 groundworkers tui
 ```
 
-With no configuration, the console states the default destination and opens the
-CDM setup workflow. The Overview remains the landing page after each journey;
-it separates required CDM readiness from optional graph, embeddings, chat, and
-integration outcomes.
+With no configuration, the console shows the default destination and opens CDM
+setup. The Overview separates required CDM readiness from optional graph,
+embedding, chat, and integration status.
 
 ### Required: CDM database
 
@@ -44,30 +43,29 @@ embeddings or chat remain neutral and do not make the core service fail.
 Select **Graph → Prepare graph** when readiness diagnostics identify missing
 relationship, full-text, or functional indexes. The operation is an ordered,
 persistent local maintenance run. Open **Runs** to follow progress, inspect a
-safe log tail, cancel, retry, or run postflight verification.
+safe log tail, cancel active work, retry a safe failed step, or export commands.
+Postflight is shown only for plans that actually define postflight checks.
 
 ### Optional: embeddings
 
-The **Embeddings** journey keeps the model, provider, vector store, coverage,
-population, and index operations distinct while presenting them together:
+Embedding operations are currently separate setup actions:
 
-1. configure the embedding provider and model;
-2. configure or explicitly initialize the vector store;
-3. refresh coverage to see pending concepts by vocabulary;
-4. start a persistent population run with one of these intents:
-   **Populate from scratch**, **Backfill selected vocabularies**, or
-   **Reconcile after vocabulary update**;
-5. rebuild or verify indexes when the run's postflight requires it.
+1. select the unconfigured embedding row under **Database** and configure the
+   vector store;
+2. open **Embeddings** and configure the embedding provider and model;
+3. initialize the vector store explicitly;
+4. run **Check model**, then refresh coverage;
+5. start a persistent population run for the reviewed scope.
 
 A numeric limit caps a run; it does not define whether the intent is a backfill.
-Coverage and execution use the same selected scope.
+The Runs section exposes controls only when the selected run supports them.
+Index maintenance remains operator-managed guidance in this release.
 
 ### Optional: chat model
 
-The **Chat Model** journey composes provider and model setup while retaining
-separate named `[providers.*]` and `[models.*]` entries. The model is discovered
-from the configured endpoint and credentials remain redacted in reviews and
-diagnostics.
+The **Chat Model** section configures separate named `[providers.*]` and
+`[models.*]` entries. The model is discovered from the configured endpoint, and
+credentials remain redacted in reviews and diagnostics.
 
 ## Integration output
 

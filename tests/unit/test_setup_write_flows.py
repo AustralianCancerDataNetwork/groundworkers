@@ -167,9 +167,11 @@ def test_cdm_setup_creates_connection_and_database_entries(tmp_path: Path) -> No
     save_stack_config(build_cdm_stack(), path)
 
     controller, _ = _controller(path, CDM_SETUP_TARGET, cdm_setup_workflow)
+    sqlite_path = tmp_path / "warehouse.db"
+    sqlite_path.touch()
     controller.start()
     controller.submit({"connection_name": "warehouse", "dialect": "sqlite"})
-    controller.submit({"database_name": "/tmp/warehouse.db"})
+    controller.submit({"database_name": str(sqlite_path)})
     controller.submit(
         {
             "cdm_db_name": "warehouse_cdm",

@@ -155,8 +155,8 @@ def register_knowledge_tools(
                 "packs": [_manifest_payload(m) for m in results],
                 "total": len(results),
             }
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+        except Exception:
+            raise
 
     @server.tool("knowledge_pack")
     def knowledge_pack(name: str) -> dict[str, Any]:
@@ -189,7 +189,7 @@ def register_knowledge_tools(
             payload["rules"] = content.rules
             payload["examples"] = content.examples
             return payload
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+        except Exception:
+            raise
 
     return True

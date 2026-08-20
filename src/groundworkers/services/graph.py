@@ -200,19 +200,9 @@ class GraphService:
         }
 
     # ------------------------------------------------------------------
-    # Classified-edge traversal (association / extended inheritance)
-    #
-    # NOTE (temporary shim — should move into core omop-graph):
-    # These two traversals query the CDM directly (concept_relationship joined to
-    # the relationship_mapping classification sidecar) rather than going through
-    # OmopGraphAdapter, because the omop-graph KG edge view only *enumerates*
-    # IDENTITY / ATTRIBUTE / COMPOSITION edges. HIERARCHY is reachable only via the
-    # concept_ancestor closure (get_ancestors/get_descendants) and ASSOCIATION only
-    # via path-finding (find_path) — neither kind can be enumerated for a single
-    # concept through the adapter today. Once omop-graph grows a kind-filterable
-    # edge accessor, these should be re-backed by OmopGraphAdapter and this direct
-    # CDM dependency (and the _RELATIONSHIP_MAPPING table above) removed, so the
-    # service returns to composing adapter primitives only.
+    # Classified-edge traversal (association / extended inheritance). These
+    # queries use the CDM relationship table and its classification sidecar
+    # because the graph adapter does not expose these edge kinds directly.
     # ------------------------------------------------------------------
 
     def get_associations(
@@ -269,7 +259,7 @@ class GraphService:
     ) -> dict[str, Any]:
         if self._cdm is None:
             raise GroundworkersError(
-                "UNAVAILABLE",
+                "BACKEND_UNAVAIL",
                 "This tool needs a direct CDM connection, which is not configured.",
             )
         if self._adapter.get_concept(concept_id) is None:

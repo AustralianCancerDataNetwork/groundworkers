@@ -479,9 +479,7 @@ class MaintenanceLaunch:
     log_path: Path
 
 
-# Kept as names for the embedding journey, which was the first caller. The graph
-# remediation journey launches the same way, so the type is shared rather than
-# copied.
+# Both maintenance workflows use the same command and launch records.
 EmbeddingPopulationCommand = MaintenanceCommand
 EmbeddingPopulationLaunch = MaintenanceLaunch
 

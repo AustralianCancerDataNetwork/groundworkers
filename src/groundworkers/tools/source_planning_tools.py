@@ -59,8 +59,6 @@ def register_source_planning_tools(
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("source_plan_assisted")
     def source_plan_assisted(
@@ -90,8 +88,6 @@ def register_source_planning_tools(
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
 
 def register_source_planning_resources(server: GroundworkersMCPServer) -> None:

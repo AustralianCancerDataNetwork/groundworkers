@@ -46,7 +46,7 @@ CDM_SUBMISSIONS = (
             "dialect": "sqlite",
         },
     ),
-    ("database", {"database_name": ":memory:"}),
+    ("database", {"database_name": __file__}),
     (
         "cdm",
         {
@@ -157,6 +157,7 @@ def test_provider_updates_an_existing_cdm_configuration(tmp_path: Path) -> None:
     assert capabilities.supported
     controller.start()
     controller.submit({"connection_name": "cdm_main", "dialect": "sqlite"})
+    (tmp_path / "updated.db").touch()
     controller.submit({"database_name": "updated.db"})
     review = controller.submit(
         {
@@ -437,7 +438,7 @@ def _reach_cdm_review(controller: ConfigWizardController):
         {"connection_name": "cdm_main", "dialect": "sqlite"}
     ).snapshot
     assert database.step.key == "database"
-    cdm = controller.submit({"database_name": ":memory:"}).snapshot
+    cdm = controller.submit({"database_name": __file__}).snapshot
     assert cdm.step.key == "cdm"
     return controller.submit(
         {

@@ -42,6 +42,8 @@ class LlmProviderPresenter(SetupPresenterBase):
         configuration: LlmProviderConfiguration | None,
         result: LlmProviderCheckResult | None = None,
         chat: ChatConfiguration | None = None,
+        *,
+        editable: bool = True,
     ) -> SurfaceView:
         if configuration is None or not configuration.enabled:
             return EmptyView(
@@ -53,6 +55,7 @@ class LlmProviderPresenter(SetupPresenterBase):
                         "llm_provider.configure",
                         "Configure",
                         variant="primary",
+                        disabled=not editable,
                     ),
                 ),
             )
@@ -110,9 +113,14 @@ class LlmProviderPresenter(SetupPresenterBase):
                     "llm_provider.configure",
                     "Configure",
                     variant="primary",
+                    disabled=not editable,
                 ),
                 ViewAction("llm_provider.test", "Test provider"),
-                ViewAction("chat.configure", "Select chat model"),
+                ViewAction(
+                    "chat.configure",
+                    "Select chat model",
+                    disabled=not editable,
+                ),
             ),
         )
 

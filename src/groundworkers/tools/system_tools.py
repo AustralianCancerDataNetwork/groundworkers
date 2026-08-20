@@ -63,7 +63,13 @@ def register_system_resources(
         except GroundworkersError as exc:
             return json.dumps(exc.to_dict())
         except Exception as exc:
-            return json.dumps({"error": True, "code": "QUERY_ERROR", "message": repr(exc)})
+            return json.dumps(
+                {
+                    "error": True,
+                    "code": "INTERNAL_ERROR",
+                    "message": f"Vocabulary catalogue failed with {type(exc).__name__}.",
+                }
+            )
 
 
 def register_system_tools(
@@ -142,7 +148,7 @@ def register_system_tools(
                     "provider": None,
                     "default_model": None,
                     "structured_output_supported": None,
-                    "detail": repr(exc),
+                    "detail": f"LLM status failed with {type(exc).__name__}.",
                 }
 
         if not components:
@@ -169,5 +175,3 @@ def register_system_tools(
             return graph_adapter.get_vocabulary_catalogue()
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

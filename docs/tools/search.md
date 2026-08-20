@@ -1,12 +1,11 @@
 # Search Tools
 
-Three agent-composable primitives expose lexical concept search operations with raw
-quality signals. They are backed by `VocabService` and require shared OMOP
-vocabulary access.
+These tools expose lexical concept search with its retrieval signals. They are
+backed by `VocabService` and require shared OMOP vocabulary access.
 
-Unlike `concept_ground` (which runs a tiered pipeline and short-circuits on the first
-tier with results), these tools let the caller control which search strategy to use,
-inspect quality indicators directly, and decide how to act on non-standard candidates.
+Unlike `concept_ground`, which runs a tiered pipeline and stops at the first tier
+with results, these tools let the client choose a strategy, inspect its signals,
+and handle non-standard candidates explicitly.
 
 ---
 

@@ -2,7 +2,7 @@
 
 `groundworkers` supports three steady-state integration styles:
 
-1. **MCP** for agentic clients and tool discovery
+1. **MCP** for discoverable tools and shared services
 2. **REST** for fixed workflow applications
 3. **Direct Python** for in-process orchestration
 
@@ -12,7 +12,7 @@ All three reuse the same runtime config, adapters, and services.
 
 | If you need... | Use... |
 |---|---|
-| Tool discovery, agent interoperability, remote capability sharing | MCP |
+| Discoverable tools or a shared remote service | MCP |
 | Typed HTTP APIs, OpenAPI, fixed workflow contracts | REST |
 | Lowest overhead, batch jobs, library composition inside Python | Direct Python |
 
@@ -117,8 +117,8 @@ Representative response shape:
 }
 ```
 
-MCP is the right interface when the caller wants discoverability and can work in
-terms of tool names and JSON-ish payloads.
+MCP is useful when the client can work with discoverable tool names and structured
+payloads.
 
 ## REST integration
 
@@ -226,7 +226,7 @@ review-oriented orchestration, use `app.services.mapping`.
 
 It is reasonable to combine interfaces in one deployment:
 
-- use **MCP** for agentic callers
+- use **MCP** for clients that need discoverable tools
 - use **REST** for tightly controlled workflow applications
 - use **direct Python** for batch evaluation, tests, or internal orchestration
 

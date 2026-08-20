@@ -71,7 +71,7 @@ class AssistedColumnRoleClassifier:
         except ValidationError as exc:
             raise GroundworkersError(
                 "QUERY_ERROR",
-                f"LLM-assisted source-planning response did not match expected structure: {exc}",
+                "LLM-assisted source-planning response did not match the expected structure.",
             ) from exc
 
         return _merge_assisted_decisions(baseline, candidate_headers, result.decisions)

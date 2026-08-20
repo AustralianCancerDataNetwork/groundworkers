@@ -320,7 +320,7 @@ def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
     )
     populate = next(a for a in view.actions if a.key == "embeddings.populate")
     assert populate.label == "Populate"
-    assert populate.disabled is False
+    assert populate.disabled is True
     assert isinstance(detail, TableView)
     assert detail.title == "Vocabulary coverage"
     assert detail.columns == (
