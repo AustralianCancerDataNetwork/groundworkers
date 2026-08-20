@@ -6,6 +6,11 @@ from pathlib import Path
 from oa_configurator import Resolver
 from omop_emb.backends.index_config import FlatIndexConfig
 from omop_emb.model_registry import EmbeddingModelRecord
+from omop_emb.population import (
+    EmbeddingPopulationPlan,
+    PopulationScope,
+    VocabularyPopulationPlan,
+)
 from omop_llm import Capabilities
 
 from groundworkers.application.setup.embedding_population import (
@@ -458,17 +463,36 @@ def test_coverage_resolves_public_backend_and_canonical_model(
         def dispose(self) -> None:
             captured["cdm_disposed"] = True
 
+    class ReadOnlyStore:
+        def close(self) -> None:
+            captured["store_closed"] = True
+
+    store = ReadOnlyStore()
     monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population.resolve_backend_from_resolved_vector_store",
-        lambda store: captured.setdefault("store", store) or object(),
+        "groundworkers.application.setup.embedding_population.inspect_resolved_vector_store",
+        lambda resolved: captured.setdefault("store", resolved) and store,
     )
     monkeypatch.setattr(
         "groundworkers.application.setup.embedding_population._cdm_engine_and_schema",
         lambda _snapshot: (DisposableEngine(), "main"),
     )
     monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population._eligible_counts_by_vocabulary",
-        lambda *_args, **_kwargs: {"SNOMED": 10},
+        "groundworkers.application.setup.embedding_population.plan_population",
+        lambda *_args, **_kwargs: EmbeddingPopulationPlan(
+            model_name="canonical-model",
+            scope=PopulationScope(standard_only=True),
+            rows=(
+                VocabularyPopulationPlan(
+                    vocabulary="SNOMED",
+                    eligible_ids=frozenset(range(10)),
+                    compatible_ids=frozenset(range(4)),
+                    missing_ids=frozenset(range(4, 10)),
+                    stale_ids=frozenset(),
+                    metadata_changed_ids=frozenset(),
+                ),
+            ),
+            store_initialized=True,
+        ),
     )
 
     def canonical(model_name, *, provider_kind):
@@ -488,11 +512,6 @@ def test_coverage_resolves_public_backend_and_canonical_model(
             registry_metric="cosine",
         ),
     )
-    monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population._embedded_counts_by_vocabulary",
-        lambda **_kwargs: {"SNOMED": 4},
-    )
-
     report = load_embedding_coverage_report(snapshot)
 
     assert report is not None
@@ -501,6 +520,7 @@ def test_coverage_resolves_public_backend_and_canonical_model(
     assert report.coverage.scope.model_name == "canonical-model"
     assert captured["canonical"] == ("ollama", "qwen3-embedding:0.6b")
     assert captured["cdm_disposed"] is True
+    assert captured["store_closed"] is True
 
 
 def test_coverage_failure_does_not_expose_backend_secret(
@@ -513,7 +533,7 @@ def test_coverage_failure_does_not_expose_backend_secret(
         raise RuntimeError("database-password")
 
     monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population.resolve_backend_from_resolved_vector_store",
+        "groundworkers.application.setup.embedding_population.inspect_resolved_vector_store",
         fail,
     )
 

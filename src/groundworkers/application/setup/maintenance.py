@@ -13,13 +13,30 @@ import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from groundworkers.application.setup.models import (
     MaintenanceCommand,
     MaintenanceLaunch,
 )
 
-__all__ = ["launch_maintenance_command"]
+__all__ = [
+    "MaintenanceCommandError",
+    "launch_maintenance_command",
+    "run_maintenance_command",
+]
+
+
+class MaintenanceCommandError(RuntimeError):
+    """A synchronous maintenance command exited unsuccessfully."""
+
+    def __init__(self, launch: MaintenanceLaunch, returncode: int) -> None:
+        self.launch = launch
+        self.returncode = returncode
+        super().__init__(
+            f"Maintenance command exited with status {returncode}: "
+            f"{launch.command.display}. Log: {launch.log_path}"
+        )
 
 
 def launch_maintenance_command(
@@ -30,8 +47,8 @@ def launch_maintenance_command(
 ) -> MaintenanceLaunch:
     """Start *command* detached and return immediately with its log path."""
 
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    log_path = Path(log_dir) / f"groundworkers-{log_prefix}-{stamp}.log"
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    log_path = Path(log_dir) / f"groundworkers-{log_prefix}-{stamp}-{uuid4().hex[:8]}.log"
     env = os.environ.copy()
     env.update(dict(command.environment))
     with log_path.open("ab") as log_file:
@@ -43,3 +60,26 @@ def launch_maintenance_command(
             start_new_session=True,
         )
     return MaintenanceLaunch(command=command, pid=process.pid, log_path=log_path)
+
+
+def run_maintenance_command(
+    command: MaintenanceCommand,
+    *,
+    log_prefix: str,
+    log_dir: str | Path = "/tmp",
+) -> MaintenanceLaunch:
+    """Run one maintenance command to completion with a unique log."""
+
+    launch = launch_maintenance_command(
+        command,
+        log_prefix=log_prefix,
+        log_dir=log_dir,
+    )
+    # The detached launcher intentionally returns immediately for population.
+    # Graph preparation uses this synchronous boundary so the next prerequisite
+    # cannot race the previous one.
+    _, status = os.waitpid(launch.pid, 0)
+    returncode = os.waitstatus_to_exitcode(status)
+    if returncode != 0:
+        raise MaintenanceCommandError(launch, returncode)
+    return launch

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from groundworkers.application.setup.models import ConfigurationOwnership
 from groundworkers.tui.state import SetupSession, load_tui_state
 
 
 def build_groundworkers_tui_spec(
     *,
     config_path: str | None = None,
+    ownership: ConfigurationOwnership | None = None,
 ):
     """Build the Groundworkers console with setup as its first registered page."""
 
@@ -24,7 +26,7 @@ def build_groundworkers_tui_spec(
     from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
     from groundworkers.tui.routes import SETUP_ROUTE
 
-    session = load_tui_state(config_path=config_path)
+    session = load_tui_state(config_path=config_path, ownership=ownership)
 
     def setup_factory(_context: Any):
         return SetupPage(
@@ -99,10 +101,16 @@ def build_groundworkers_app():
 def run_groundworkers_tui(
     *,
     config_path: str | None = None,
+    ownership: ConfigurationOwnership | None = None,
 ) -> None:
     app_class = build_groundworkers_app()
 
-    app_class(build_groundworkers_tui_spec(config_path=config_path)).run()
+    app_class(
+        build_groundworkers_tui_spec(
+            config_path=config_path,
+            ownership=ownership,
+        )
+    ).run()
 
 
 __all__ = [

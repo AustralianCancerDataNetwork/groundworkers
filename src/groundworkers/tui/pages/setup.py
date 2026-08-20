@@ -315,6 +315,15 @@ class SetupPage(GroundworkersPage):
         if action_key == "embeddings.configure_model":
             self._open_config_wizard(context, MODEL_SETUP_TARGET, model_setup_workflow)
             return
+        if action_key == "embeddings.initialize_store":
+            from groundworkers.tui.wizards.embedding_store import (
+                EmbeddingStoreInitializationWizardController,
+            )
+
+            context.open_wizard(
+                EmbeddingStoreInitializationWizardController(self._session)
+            )
+            return
         if action_key == "embeddings.check_model":
             self._start_embedding_model_check(context)
             return

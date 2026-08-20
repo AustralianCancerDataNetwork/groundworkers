@@ -393,7 +393,7 @@ def test_logging_is_configured_before_the_stack_is_loaded(
     )
     monkeypatch.setattr("groundworkers.server.build_app_config", fail_to_load)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(SystemExit, match="groundworkers tui"):
         main(["-vv"])
 
     assert configured == [2]

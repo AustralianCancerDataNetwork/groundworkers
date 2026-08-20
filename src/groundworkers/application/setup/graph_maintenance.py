@@ -15,7 +15,10 @@ from enum import StrEnum
 from importlib import resources
 from pathlib import Path
 
-from groundworkers.application.setup.maintenance import launch_maintenance_command
+from groundworkers.application.setup.maintenance import (
+    MaintenanceCommandError,
+    run_maintenance_command,
+)
 from groundworkers.application.setup.models import (
     ConnectionResult,
     DiagnosticSeverity,
@@ -178,11 +181,25 @@ def launch_graph_remediation(
     *,
     log_dir: str | Path = "/tmp",
 ) -> tuple[MaintenanceLaunch, ...]:
-    """Start each command detached, in order, returning one launch per command."""
-    return tuple(
-        launch_maintenance_command(command, log_prefix="graph", log_dir=log_dir)
-        for command in commands
-    )
+    """Run graph prerequisites sequentially and stop at the first failure."""
+
+    launches: list[MaintenanceLaunch] = []
+    for index, command in enumerate(commands, start=1):
+        try:
+            launches.append(
+                run_maintenance_command(
+                    command,
+                    log_prefix=f"graph-{index}",
+                    log_dir=log_dir,
+                )
+            )
+        except MaintenanceCommandError as exc:
+            completed = ", ".join(str(item.pid) for item in launches) or "none"
+            raise RuntimeError(
+                f"Graph preparation stopped after step {index} failed; "
+                f"completed PIDs: {completed}. Failed log: {exc.launch.log_path}"
+            ) from exc
+    return tuple(launches)
 
 
 def _executable(name: str) -> str:

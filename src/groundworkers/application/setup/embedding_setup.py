@@ -35,6 +35,81 @@ ModelBackendFactory = Callable[[ResolvedModel], ModelBackend]
 ModelInventoryDiscoverer = Callable[[ResolvedModel], Sequence[str]]
 
 
+def initialize_embedding_store(
+    snapshot: ConfigurationSnapshot,
+    *,
+    initializer: Callable[[object], EmbeddingBackend] | None = None,
+) -> EmbeddingStoreSnapshot:
+    """Run the reviewed store-initialization operation.
+
+    This is the only setup service that is allowed to construct the writable
+    omop-emb backend. Coverage, model checks, and registry inspection use the
+    read-only omop-emb inspection API instead.
+    """
+
+    configuration = load_embedding_configuration(snapshot)
+    if configuration is None or snapshot.stack is None:
+        return EmbeddingStoreSnapshot(
+            state=EmbeddingStoreState.UNCONFIGURED,
+            backend=None,
+            reachable=False,
+        )
+    try:
+        groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
+        if groundworkers.vector_store_name is None:
+            raise ValueError("An embedding vector store is not configured.")
+        resolved = Resolver(snapshot.stack).resolve_vector_store(
+            groundworkers.vector_store_name
+        )
+        if initializer is None:
+            from omop_emb.backends import initialize_resolved_vector_store
+
+            initializer = initialize_resolved_vector_store
+        backend = initializer(resolved)
+        try:
+            records = backend.get_registered_models()
+            models = tuple(
+                RegisteredEmbeddingModel(
+                    model_name=record.model_name,
+                    provider=required_enum_value(record.provider_type),
+                    dimensions=int(record.dimensions),
+                    metric=(
+                        enum_value(record.metric_type)
+                        if record.metric_type is not None
+                        else None
+                    ),
+                    index_type=required_enum_value(record.index_type),
+                    has_embeddings=backend.has_any_embeddings(
+                        model_name=record.model_name,
+                        metric_type=record.metric_type or MetricType.COSINE,
+                        _model_record=record,
+                    ),
+                )
+                for record in records
+            )
+        finally:
+            engine = getattr(backend, "emb_engine", None)
+            if engine is not None:
+                engine.dispose()
+    except Exception as exc:
+        return EmbeddingStoreSnapshot(
+            state=EmbeddingStoreState.UNREACHABLE,
+            backend=configuration.backend,
+            reachable=False,
+            failure=classify_connection_error(exc),
+        )
+    return EmbeddingStoreSnapshot(
+        state=(
+            EmbeddingStoreState.POPULATED
+            if any(model.has_embeddings for model in models)
+            else EmbeddingStoreState.EMPTY
+        ),
+        backend=configuration.backend,
+        reachable=True,
+        models=models,
+    )
+
+
 def load_embedding_configuration(
     snapshot: ConfigurationSnapshot,
 ) -> EmbeddingConfiguration | None:
@@ -444,5 +519,3 @@ def _path_exists(value: str, *, base: Path | None) -> bool:
     if not path.is_absolute() and base is not None:
         path = base / path
     return path.exists()
-
-

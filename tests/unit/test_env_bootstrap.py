@@ -1,9 +1,9 @@
 """Getting OA_CONFIG_PATH into, and out of, the environment in time.
 
 oa-configurator computes ``CONFIG_PATH`` from the environment once, while
-:mod:`oa_configurator.loader` is being imported, and ``groundworkers.server``
-imports it at module level. Everything here therefore has to happen before that
-import, in ``groundworkers/__init__.py``, or it cannot happen at all.
+:mod:`oa_configurator.loader` is being imported. The CLI resolves the locator
+before importing the application modules; importing ``groundworkers`` itself
+must remain side-effect free.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from oa_configurator import save_stack_config
 
 from groundworkers import _env
@@ -84,38 +85,58 @@ print(CONFIG_PATH)
     assert result.stdout.strip() == str(explicit.resolve())
 
 
-def test_a_missing_config_path_does_not_kill_the_process_on_import() -> None:
-    """oa-configurator raises FileNotFoundError for it from a module-level
-    constant, so the server died before argparse ran and --config-path could not
-    rescue it."""
+def test_library_import_does_not_mutate_the_config_environment(tmp_path: Path) -> None:
+    """Locator resolution belongs to the CLI boundary, not package import."""
+    missing = tmp_path / "missing.toml"
     result = _run(
         """
-import groundworkers.server
-from groundworkers._env import rejected_config_path
-print(rejected_config_path())
+import os
+import groundworkers
+print(os.environ.get("OA_CONFIG_PATH"))
 """,
-        OA_CONFIG_PATH="/opt/.omop/config.toml",
+        OA_CONFIG_PATH=str(missing),
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "/opt/.omop/config.toml"
+    assert result.stdout.strip() == str(missing)
 
 
-def test_serving_refuses_a_silent_fallback_to_the_default() -> None:
-    """Dropping the variable keeps the console reachable. A server that went on
-    to answer from the default vocabulary instead would be worse than one that
-    did not start."""
+def test_serving_refuses_a_silent_fallback_to_the_default(tmp_path: Path) -> None:
+    """The server reports an unusable locator instead of reading another config."""
+    missing = tmp_path / "missing.toml"
     result = _run(
         """
 from groundworkers.server import main
 main(["--describe"])
 """,
-        OA_CONFIG_PATH="/opt/.omop/config.toml",
+        OA_CONFIG_PATH=str(missing),
     )
 
     assert result.returncode != 0
-    assert "OA_CONFIG_PATH points at /opt/.omop/config.toml" in result.stderr
+    assert f"OA_CONFIG_PATH points at {missing}" in result.stderr
     assert "--config-path" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("contents", "message"),
+    (("", "incomplete or invalid"), ("[", "not valid TOML")),
+)
+def test_cli_config_failures_are_actionable_without_traceback(
+    tmp_path: Path, contents: str, message: str
+) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(contents, encoding="utf-8")
+    result = _run(
+        f"""
+from groundworkers.server import main
+main(["--config-path", {str(config)!r}, "--describe"])
+"""
+    )
+
+    assert result.returncode != 0
+    assert message in result.stderr
+    assert f"groundworkers tui --config-path {config}" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def test_an_unusable_path_is_dropped_rather_than_left_to_raise(monkeypatch) -> None:

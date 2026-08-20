@@ -67,8 +67,12 @@ class SetupSession:
         )
 
 
-def load_tui_state(*, config_path: str | Path | None = None) -> SetupSession:
-    return SetupSession(config_path=config_path)
+def load_tui_state(
+    *,
+    config_path: str | Path | None = None,
+    ownership: ConfigurationOwnership | None = None,
+) -> SetupSession:
+    return SetupSession(config_path=config_path, ownership=ownership or ConfigurationOwnership())
 
 
 TuiState = SetupSession

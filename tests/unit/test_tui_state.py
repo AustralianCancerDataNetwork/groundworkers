@@ -10,6 +10,7 @@ from groundskeeping.contracts import TableView
 
 from groundworkers.application.setup.models import (
     ClassifiedFailure,
+    ConfigurationOwnership,
     ConfigurationState,
     ConnectionFailureKind,
     ConnectionResult,
@@ -23,6 +24,7 @@ from groundworkers.application.setup.models import (
     LlmModelMetadata,
     LlmProviderCheckResult,
     LlmProviderConfiguration,
+    OwnershipMode,
     ResourceDiagnostic,
     VocabularyCoverage,
 )
@@ -57,6 +59,20 @@ def test_setup_session_starts_with_missing_config() -> None:
 
     assert session.configuration.state is ConfigurationState.MISSING
     assert session.databases_connected is False
+
+
+def test_setup_session_accepts_explicit_read_only_ownership(tmp_path: Path) -> None:
+    ownership = ConfigurationOwnership(
+        mode=OwnershipMode.DERIVED_READ_ONLY,
+        source_label="Container supplied configuration",
+    )
+    session = SetupSession(
+        config_path=tmp_path / "config.toml",
+        ownership=ownership,
+    )
+
+    assert session.configuration.ownership.editable is False
+    assert session.configuration.ownership.source_label == "Container supplied configuration"
 
 
 def test_malformed_config_is_presented_without_secret(tmp_path: Path) -> None:
@@ -469,4 +485,3 @@ def test_llm_provider_detail_reports_inventory_failure() -> None:
     assert "Failure: Connection Refused" in detail.body
     assert "Check that Ollama is running." in detail.body
     assert "error: The provider endpoint did not respond." in detail.body
-

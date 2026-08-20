@@ -1,10 +1,26 @@
+# Imports below ``load_environment`` are intentionally delayed until the
+# application config locator has been resolved.
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
 import json
 from typing import Literal, cast, get_args
 
-from groundworkers._env import ENV_CONFIG_PATH, rejected_config_path
+from groundworkers._env import (
+    ENV_CONFIG_PATH,
+    load_environment,
+    rejected_config_path,
+)
+
+# oa-configurator reads its default path during import. Resolve the application
+# locator before importing any Groundworkers module that imports it, while
+# keeping ordinary ``import groundworkers`` side-effect free.
+load_environment()
+
+from oa_configurator import ConfigurationError
+
 from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.server import GroundcrewServer
 from groundworkers.bootstrap import build_app_config
@@ -113,6 +129,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Launch the interactive Groundworkers setup TUI and exit.",
     )
     parser.add_argument(
+        "--config-read-only",
+        action="store_true",
+        help=(
+            "Treat the supplied configuration as copied or container-managed; "
+            "TUI configuration edits are disabled."
+        ),
+    )
+    parser.add_argument(
         "command",
         nargs="?",
         choices=["serve", "tui"],
@@ -132,11 +156,20 @@ def main(argv: list[str] | None = None) -> None:
     if args.tui or args.command == "tui":
         # The console reports a rejected OA_CONFIG_PATH itself, by opening the
         # location wizard on it, so it is not an error here.
-        _launch_groundworkers_tui(config_path=args.config_path)
+        if args.config_read_only:
+            _launch_groundworkers_tui(
+                config_path=args.config_path,
+                read_only=True,
+            )
+        else:
+            _launch_groundworkers_tui(config_path=args.config_path)
         return
     if args.config_path is None:
         _require_usable_config_path()
-    config = build_app_config(config_path=args.config_path)
+    try:
+        config = build_app_config(config_path=args.config_path)
+    except (ConfigurationError, FileNotFoundError, OSError, TypeError, ValueError) as exc:
+        raise SystemExit(_configuration_failure(exc, config_path=args.config_path)) from None
     # Now that the stack is loaded, its [logging] section takes precedence, and
     # the namespaces GroundworkersConfig declares (omop_graph, omop_emb) are
     # configured alongside groundworkers' own.
@@ -195,10 +228,57 @@ def _require_usable_config_path() -> None:
     )
 
 
-def _launch_groundworkers_tui(*, config_path: str | None) -> None:
+def _launch_groundworkers_tui(
+    *, config_path: str | None, read_only: bool = False
+) -> None:
+    from groundworkers.application.setup.models import (
+        ConfigurationOwnership,
+        OwnershipMode,
+    )
     from groundworkers.tui import run_groundworkers_tui
 
-    run_groundworkers_tui(config_path=config_path)
+    ownership = ConfigurationOwnership(
+        mode=(
+            OwnershipMode.DERIVED_READ_ONLY
+            if read_only
+            else OwnershipMode.AUTHORITATIVE
+        ),
+        source_label=(
+            "Supplied copied/container configuration"
+            if read_only
+            else "Local stack configuration"
+        ),
+        guidance=(
+            "This configuration is supplied by its controlling container or deployment; "
+            "edit that source to change it."
+            if read_only
+            else "This file can be edited by the setup console."
+        ),
+    )
+
+    run_groundworkers_tui(config_path=config_path, ownership=ownership)
+
+
+def _configuration_failure(
+    exc: Exception,
+    *,
+    config_path: str | None,
+) -> str:
+    """Render a concise, secret-safe config error with the exact recovery path."""
+
+    selected = config_path or "the default configuration path"
+    recovery = "groundworkers tui"
+    if config_path is not None:
+        recovery += f" --config-path {config_path}"
+    if isinstance(exc, FileNotFoundError) or "Config file not found" in str(exc):
+        detail = f"Configuration file not found at {selected}."
+    elif "Malformed TOML" in str(exc):
+        detail = f"Configuration at {selected} is not valid TOML."
+    elif isinstance(exc, ConfigurationError):
+        detail = f"Configuration at {selected} is incomplete or invalid."
+    else:
+        detail = f"Configuration at {selected} could not be loaded."
+    return f"{detail} Run '{recovery}' to choose or repair it."
 
 
 def run_rest_api(

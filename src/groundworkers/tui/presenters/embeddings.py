@@ -172,6 +172,7 @@ def _configuration_view(
             ViewAction("embeddings.refresh_coverage", "Refresh coverage"),
             ViewAction("embeddings.populate", "Populate", disabled=True),
             ViewAction("embeddings.configure_model", "Configure model"),
+            ViewAction("embeddings.initialize_store", "Initialize embedding store"),
         ),
     )
 
@@ -211,6 +212,7 @@ def _setup_view_with_coverage(
                 ),
             ),
             ViewAction("embeddings.configure_model", "Configure model"),
+            ViewAction("embeddings.initialize_store", "Initialize embedding store"),
         ),
     )
 
