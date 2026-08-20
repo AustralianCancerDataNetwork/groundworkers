@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.graph import GraphService
 
 
-def register_concept_tools(server: GroundcrewServer, graph_service: GraphService) -> None:
+def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphService) -> None:
     """Register deterministic concept lookup tools against the MCP server.
 
     These tools take a known identifier (concept_id, vocabulary+code) and return

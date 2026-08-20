@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.grounding import ConceptGroundingService
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ def _short_text(value: str, *, limit: int = 120) -> str:
     return f"{compact[:limit - 3]}..."
 
 
-def register_resolver_tools(server: GroundcrewServer, grounding_service: ConceptGroundingService) -> None:
+def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: ConceptGroundingService) -> None:
     """Register free-text concept resolution tools against the MCP server.
 
     These tools map unstructured text (clinical terms, natural language, partial

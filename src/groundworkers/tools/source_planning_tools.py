@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.source_planning import (
     COLUMN_ROLE_DESCRIPTIONS,
     IngestionStrategy,
@@ -27,7 +27,7 @@ _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
 
 
 def register_source_planning_tools(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     source_planning_service: SourcePlanningService,
 ) -> None:
     @server.tool("source_plan")
@@ -94,7 +94,7 @@ def register_source_planning_tools(
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
 
-def register_source_planning_resources(server: GroundcrewServer) -> None:
+def register_source_planning_resources(server: GroundworkersMCPServer) -> None:
     @server.resource(
         "source-planning://canonical-headers",
         description=(

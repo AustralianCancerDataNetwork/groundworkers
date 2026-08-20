@@ -1,7 +1,7 @@
 
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.semantic_projection.models import (
     ProjectedRowModel,
     SemanticProjectionRequest,
@@ -41,7 +41,7 @@ def test_semantic_project_tool_returns_result_dict() -> None:
             ],
         )
     )
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_semantic_projection_tools(server, service)
 
     result = server.call(
@@ -66,7 +66,7 @@ def test_semantic_project_tool_defaults_context_to_empty_dict() -> None:
     service = StubSemanticProjectionService(
         result=SemanticProjectionResult(definition_name=None, role=None, status="no_match")
     )
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_semantic_projection_tools(server, service)
 
     server.call("semantic_project", grounded_concept_id=1, grounded_domain="Observation")
@@ -76,7 +76,7 @@ def test_semantic_project_tool_defaults_context_to_empty_dict() -> None:
 
 def test_semantic_project_tool_returns_groundworkers_error_dict() -> None:
     service = StubSemanticProjectionService(error=GroundworkersError("QUERY_ERROR", "definition compile failed"))
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_semantic_projection_tools(server, service)
 
     result = server.call("semantic_project", grounded_concept_id=1, grounded_domain="Condition")
@@ -92,7 +92,7 @@ def test_semantic_project_tool_returns_invalid_input_for_bad_request_shape() -> 
     service = StubSemanticProjectionService(
         result=SemanticProjectionResult(definition_name=None, role=None, status="no_match")
     )
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_semantic_projection_tools(server, service)
 
     result = server.call(
@@ -108,7 +108,7 @@ def test_semantic_project_tool_returns_invalid_input_for_bad_request_shape() -> 
 
 def test_semantic_project_tool_returns_query_error_for_unexpected_exception() -> None:
     service = StubSemanticProjectionService(error=RuntimeError("boom"))
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_semantic_projection_tools(server, service)
 
     result = server.call("semantic_project", grounded_concept_id=1, grounded_domain="Condition")

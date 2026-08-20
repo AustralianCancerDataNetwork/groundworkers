@@ -5,10 +5,10 @@ from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 
 
-def register_embedding_resources(server: GroundcrewServer, emb_adapter: OmopEmbAdapter) -> None:
+def register_embedding_resources(server: GroundworkersMCPServer, emb_adapter: OmopEmbAdapter) -> None:
     @server.resource(
         "embedding://models",
         description=(
@@ -25,7 +25,7 @@ def register_embedding_resources(server: GroundcrewServer, emb_adapter: OmopEmbA
         })
 
 
-def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapter) -> None:
+def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEmbAdapter) -> None:
     @server.tool("embedding_index_status")
     def embedding_index_status() -> dict[str, Any]:
         """Returns status of the embedding backend and registered models."""

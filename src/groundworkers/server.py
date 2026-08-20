@@ -22,7 +22,7 @@ load_environment()
 from oa_configurator import ConfigurationError
 
 from groundworkers.app import GroundworkersApp, build_application
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig, GroundworkersConfig
 from groundworkers.services.semantic_projection.service import SemanticProjectionService
@@ -50,7 +50,7 @@ from groundworkers.tools.system_tools import (
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
 from groundworkers.transports.rest import create_rest_app
 
-# Mirrors GroundcrewServer.run; `rest` is handled before this point and is not
+# Mirrors GroundworkersMCPServer.run; `rest` is handled before this point and is not
 # an MCP transport. mcp_transport is a free-form string, so a value that
 # never passed through argparse still has to be validated here.
 MCPTransport = Literal["stdio", "sse", "streamable-http"]
@@ -60,8 +60,8 @@ _MCP_TRANSPORTS: tuple[str, ...] = get_args(MCPTransport)
 def create_server(
     config: AppConfig,
     application: GroundworkersApp | None = None,
-) -> GroundcrewServer:
-    server = GroundcrewServer(config.groundworkers.app_name)
+) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer(config.groundworkers.app_name)
     app = application or build_application(config)
     if app.services.graph is not None:
         register_concept_tools(server, app.services.graph)

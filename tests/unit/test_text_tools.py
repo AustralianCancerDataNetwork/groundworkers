@@ -1,7 +1,7 @@
 
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.text import (
     DecomposeResult,
     DecomposeTerm,
@@ -64,8 +64,8 @@ class StubTextService:
         return self._mapping_cleanup
 
 
-def _server(service) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def _server(service) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_text_tools(server, service)
     return server
 
@@ -249,8 +249,8 @@ def test_text_disambiguate_passes_max_interpretations():
 # register_text_prompts
 # ---------------------------------------------------------------------------
 
-def _prompt_server() -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def _prompt_server() -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_text_prompts(server)
     return server
 

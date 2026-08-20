@@ -12,6 +12,7 @@ from groundskeeping.contracts import (
 )
 
 from groundworkers.application.setup.models import (
+    ChatConfiguration,
     DiagnosticSeverity,
     LlmModelMetadata,
     LlmProviderCheckResult,
@@ -40,6 +41,7 @@ class LlmProviderPresenter(SetupPresenterBase):
         self,
         configuration: LlmProviderConfiguration | None,
         result: LlmProviderCheckResult | None = None,
+        chat: ChatConfiguration | None = None,
     ) -> SurfaceView:
         if configuration is None or not configuration.enabled:
             return EmptyView(
@@ -87,6 +89,16 @@ class LlmProviderPresenter(SetupPresenterBase):
             ),
         ]
         rows.extend(_diagnostic_rows(result))
+        rows.append(
+            TableRow(
+                key="llm.chat_model",
+                cells=(
+                    "Chat model",
+                    chat.model_name if chat is not None else "Not selected",
+                    "Configured" if chat is not None else "Needs selection",
+                ),
+            )
+        )
         return TableView(
             title="LLM provider",
             columns=("Setting", "Value", "Status"),
@@ -100,6 +112,7 @@ class LlmProviderPresenter(SetupPresenterBase):
                     variant="primary",
                 ),
                 ViewAction("llm_provider.test", "Test provider"),
+                ViewAction("chat.configure", "Select chat model"),
             ),
         )
 

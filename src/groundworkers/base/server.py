@@ -15,7 +15,7 @@ def _callable_name(func: Callable[..., Any]) -> str:
     return getattr(func, "__name__", None) or repr(func)
 
 
-class GroundcrewServer:
+class GroundworkersMCPServer:
     def __init__(self, name: str) -> None:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}

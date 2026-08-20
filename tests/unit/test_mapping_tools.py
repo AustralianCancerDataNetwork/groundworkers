@@ -1,7 +1,7 @@
 
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.mapping_tools import register_mapping_tools
 
 
@@ -38,8 +38,8 @@ class StubMappingService:
         return {"summary_metrics": {"accuracy": 1.0}}
 
 
-def build_server(service=None) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def build_server(service=None) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_mapping_tools(server, service or StubMappingService())
     return server
 

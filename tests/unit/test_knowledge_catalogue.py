@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
 from groundworkers.services.knowledge.models import PackApplicability
 from groundworkers.tools.knowledge_tools import register_knowledge_tools
@@ -150,7 +150,7 @@ def test_get_pack_unknown_returns_none(tmp_path):
 
 def test_knowledge_pack_tool_returns_content(tmp_path):
     _build_packs(tmp_path)
-    server = GroundcrewServer("test")
+    server = GroundworkersMCPServer("test")
     assert register_knowledge_tools(server, packs_root=tmp_path) is True
 
     result = server.call("knowledge_pack", "standard-concept-preference")
@@ -163,7 +163,7 @@ def test_knowledge_pack_tool_returns_content(tmp_path):
 
 def test_knowledge_catalogue_tool_rejects_unknown_layer(tmp_path):
     _build_packs(tmp_path)
-    server = GroundcrewServer("test")
+    server = GroundworkersMCPServer("test")
     register_knowledge_tools(server, packs_root=tmp_path)
 
     result = server.call("knowledge_catalogue", layer="unknown")
@@ -177,7 +177,7 @@ def test_knowledge_catalogue_tool_rejects_unknown_layer(tmp_path):
 
 def test_knowledge_pack_tool_not_found(tmp_path):
     _build_packs(tmp_path)
-    server = GroundcrewServer("test")
+    server = GroundworkersMCPServer("test")
     register_knowledge_tools(server, packs_root=tmp_path)
 
     result = server.call("knowledge_pack", "nope")
@@ -187,13 +187,13 @@ def test_knowledge_pack_tool_not_found(tmp_path):
 
 
 def test_register_knowledge_tools_missing_configured_root_keeps_bundled_baseline(tmp_path):
-    server = GroundcrewServer("test")
+    server = GroundworkersMCPServer("test")
     assert register_knowledge_tools(server, packs_root=tmp_path / "missing") is True
     assert "knowledge_pack" in server.list_tools()
 
 
 def test_register_knowledge_tools_uses_default_baseline_root():
-    server = GroundcrewServer("test")
+    server = GroundworkersMCPServer("test")
 
     assert register_knowledge_tools(server) is True
     assert "knowledge_pack" in server.list_tools()
@@ -209,7 +209,7 @@ def test_register_knowledge_tools_keeps_bundled_baseline_when_configured_root_is
         "shareability: local\nscope_summary: Site-local guidance.\n"
         "mechanisms:\n  - context-inject\napplicability:\n  always: true\n",
     )
-    server = GroundcrewServer("test")
+    server = GroundworkersMCPServer("test")
 
     assert register_knowledge_tools(server, packs_root=tmp_path) is True
 

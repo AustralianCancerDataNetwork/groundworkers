@@ -24,6 +24,7 @@ def build_groundworkers_tui_spec(
     from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
     from groundworkers.tui.presenters.graph import GraphPresenter
     from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
+    from groundworkers.tui.presenters.overview import OverviewPresenter
     from groundworkers.tui.presenters.runs import RunsPresenter
     from groundworkers.tui.routes import SETUP_ROUTE
 
@@ -34,6 +35,7 @@ def build_groundworkers_tui_spec(
             SETUP_ROUTE,
             session,
             database=DatabasePresenter(),
+            overview=OverviewPresenter(),
             graph=GraphPresenter(),
             llm_provider=LlmProviderPresenter(),
             embeddings=EmbeddingsPresenter(),

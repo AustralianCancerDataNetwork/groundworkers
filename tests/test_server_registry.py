@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from groundworkers.app import build_adapters, build_application
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.server import create_server, main, parse_args, run_rest_api
 from tests.support.stack_config import (
@@ -143,7 +143,7 @@ def test_streamable_http_transport_runs_in_stateless_json_mode(
 
     monkeypatch.setattr("mcp.server.fastmcp.FastMCP", FakeFastMCP)
 
-    server = GroundcrewServer("groundworkers-test")
+    server = GroundworkersMCPServer("groundworkers-test")
     server.run(transport="streamable-http", host="0.0.0.0", port=18080)
 
     assert captured["name"] == "groundworkers-test"
@@ -178,7 +178,7 @@ def test_stdio_transport_runs_without_json_responses(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("mcp.server.fastmcp.FastMCP", FakeFastMCP)
 
-    server = GroundcrewServer("groundworkers-test")
+    server = GroundworkersMCPServer("groundworkers-test")
     server.run(transport="stdio", host="127.0.0.1", port=18080)
 
     assert captured["name"] == "groundworkers-test"

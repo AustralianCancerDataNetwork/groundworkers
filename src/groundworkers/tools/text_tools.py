@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.text import TextService
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
 
 
-def register_text_tools(server: GroundcrewServer, text_service: TextService) -> None:
+def register_text_tools(server: GroundworkersMCPServer, text_service: TextService) -> None:
     @server.tool("text_normalize")
     def text_normalize(
         text: str,
@@ -129,7 +129,7 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
             return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
 
-def register_text_prompts(server: GroundcrewServer) -> None:
+def register_text_prompts(server: GroundworkersMCPServer) -> None:
     """Register MCP prompt handlers for the text preprocessing operations.
 
     These prompts let MCP clients request the exact message sequences that would

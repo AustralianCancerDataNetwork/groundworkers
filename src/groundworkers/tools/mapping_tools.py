@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services import MappingService
 
 
-def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingService) -> None:
+def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: MappingService) -> None:
     @server.tool("concept_search_normalized")
     def concept_search_normalized(
         query: str,

@@ -1,7 +1,7 @@
 
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 
@@ -257,8 +257,8 @@ class StubGroundingService:
         }
 
 
-def build_server(adapter, grounding_service=None) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def build_server(adapter, grounding_service=None) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_concept_tools(server, adapter)
     register_resolver_tools(server, grounding_service or StubGroundingService())
     return server

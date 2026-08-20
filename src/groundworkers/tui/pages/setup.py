@@ -36,6 +36,7 @@ from groundworkers.application.setup.databases import (
     resolve_database_targets,
     verify_database_target,
 )
+from groundworkers.application.setup.integration import build_integration_output
 from groundworkers.application.setup.maintenance_runs import (
     MaintenanceRunner,
 )
@@ -58,11 +59,13 @@ from groundworkers.tui.presenters.database import (
 from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
+from groundworkers.tui.presenters.overview import OverviewPresenter
 from groundworkers.tui.presenters.runs import RunsPresenter
 from groundworkers.tui.state import SetupSession
 from groundworkers.tui.wizards.config_location import ConfigLocationWizardController
 from groundworkers.tui.wizards.graph_maintenance import GraphMaintenanceWizardController
 
+OVERVIEW_SECTION = "setup.overview"
 DATABASE_SECTION = "setup.database"
 GRAPH_SECTION = "setup.graph"
 LLM_PROVIDER_SECTION = "setup.llm_provider"
@@ -75,9 +78,10 @@ RUNS_SECTION = "setup.runs"
 GRAPH_READINESS_TARGET = "database.graph"
 
 SECTION_TITLES = {
+    OVERVIEW_SECTION: "Overview",
     DATABASE_SECTION: "Database Setup",
     GRAPH_SECTION: "Graph Setup",
-    LLM_PROVIDER_SECTION: "LLM Provider Setup",
+    LLM_PROVIDER_SECTION: "Chat Model Setup",
     EMBEDDINGS_SECTION: "Embeddings Setup",
     CHAT_SECTION: "Chat Setup",
     RUNS_SECTION: "Runs",
@@ -93,6 +97,7 @@ class SetupPage(GroundworkersPage):
         session: SetupSession,
         *,
         database: DatabasePresenter,
+        overview: OverviewPresenter | None = None,
         graph: GraphPresenter,
         llm_provider: LlmProviderPresenter,
         embeddings: EmbeddingsPresenter,
@@ -103,6 +108,7 @@ class SetupPage(GroundworkersPage):
         super().__init__(route)
         self._session = session
         self._database = database
+        self._overview = overview or OverviewPresenter()
         self._graph = graph
         self._llm_provider = llm_provider
         self._embeddings = embeddings
@@ -110,17 +116,27 @@ class SetupPage(GroundworkersPage):
         self._configuration = configuration
         self._runs = runs or RunsPresenter()
         self._config_location_offered = False
-        self._selected_section = DATABASE_SECTION
+        self._selected_section = OVERVIEW_SECTION
         self._selected_database_target_key: str | None = None
         self._selected_run_id: str | None = None
 
     def activate(self, context: PageContext) -> None:
         if self._should_choose_config_location():
-            # Once per mount: with no configuration on disk there is nothing to
-            # show and nowhere to write, so settle the path first. Every actual
-            # configuration journey is unchanged and picks up from there.
+            # A fresh default install already has a safe destination. Take the
+            # operator straight into the CDM workflow and keep path selection
+            # for an explicitly supplied or rejected location.
             self._config_location_offered = True
-            context.open_wizard(ConfigLocationWizardController(self._session))
+            if (
+                self._session.configuration.state is ConfigurationState.MISSING
+                and self._session.config_path is None
+                and not self._config_path_was_rejected()
+            ):
+                context.notify(
+                    f"No configuration found; it will be created at {self._session.configuration.path}."
+                )
+                self._open_config_wizard(context, CDM_SETUP_TARGET, cdm_setup_workflow)
+            else:
+                context.open_wizard(ConfigLocationWizardController(self._session))
             return
         self._show_section_detail(context)
 
@@ -163,6 +179,18 @@ class SetupPage(GroundworkersPage):
             title="Setup",
             items=(
                 SectionItem(
+                    OVERVIEW_SECTION,
+                    "Overview",
+                    status=self._overview.status(
+                        self._session.configuration,
+                        connections=self._session.connection_results,
+                        embedding_coverage=self._session.embedding_coverage,
+                        llm_result=self._session.llm_provider_result,
+                        graph_ready=self._graph_is_ready(),
+                        integration_ready=self._integration_ready(),
+                    ),
+                ),
+                SectionItem(
                     DATABASE_SECTION,
                     "Database",
                     status=self._database.status(
@@ -181,7 +209,7 @@ class SetupPage(GroundworkersPage):
                 ),
                 SectionItem(
                     LLM_PROVIDER_SECTION,
-                    "LLM Provider",
+                    "Chat Model",
                     status=self._llm_provider.status(
                         llm_provider,
                         self._session.llm_provider_result,
@@ -216,6 +244,15 @@ class SetupPage(GroundworkersPage):
 
     def landing_view(self, context: PageContext) -> SurfaceView:
         database_ready = self._session.databases_connected
+        if self._selected_section == OVERVIEW_SECTION:
+            return self._overview.landing(
+                self._session.configuration,
+                connections=self._session.connection_results,
+                embedding_coverage=self._session.embedding_coverage,
+                llm_result=self._session.llm_provider_result,
+                graph_ready=self._graph_is_ready(),
+                integration_ready=self._integration_ready(),
+            )
         if self._selected_section == GRAPH_SECTION:
             return self._graph.landing(
                 database_ready=database_ready,
@@ -226,6 +263,9 @@ class SetupPage(GroundworkersPage):
             return self._llm_provider.landing(
                 load_llm_provider_configuration(self._session.configuration),
                 self._session.llm_provider_result,
+                load_chat_configuration(
+                    load_llm_provider_configuration(self._session.configuration)
+                ),
             )
         if self._selected_section == EMBEDDINGS_SECTION:
             return self._embeddings.landing(
@@ -296,6 +336,16 @@ class SetupPage(GroundworkersPage):
         self._set_embedding_vocabulary_selection(row_key, selected_keys, context)
 
     def action_selected(self, action_key: str, context: PageContext) -> None:
+        if action_key == "overview.verify_all":
+            self._start_verify_all(context)
+            return
+        if action_key == "overview.integration":
+            output = self._integration_output() if self._session.databases_connected else None
+            if output is None:
+                context.notify("Verify the required CDM capability before exporting integration output.", severity="warning")
+            else:
+                context.notify(f"stdio: {output.stdio_command}\nHTTP: {output.http_command}")
+            return
         if action_key == "graph.prepare":
             context.open_wizard(
                 GraphMaintenanceWizardController(
@@ -337,6 +387,9 @@ class SetupPage(GroundworkersPage):
             return
         if action_key == "llm_provider.configure":
             self._open_config_wizard(context, LLM_SETUP_TARGET, llm_setup_workflow)
+            return
+        if action_key == "chat.configure":
+            self._open_config_wizard(context, MODEL_SETUP_TARGET, model_setup_workflow)
             return
         if action_key == "embeddings.configure_model":
             self._open_config_wizard(context, MODEL_SETUP_TARGET, model_setup_workflow)
@@ -423,9 +476,55 @@ class SetupPage(GroundworkersPage):
 
         self.run_worker(verify, thread=True, exclusive=True)
 
+    def _start_verify_all(self, context: PageContext) -> None:
+        """Run the required and configured capability checks as one action."""
+
+        context.notify("Verifying configured capabilities.")
+
+        def verify() -> None:
+            targets = resolve_database_targets(self._session.configuration)
+            connections = tuple(verify_database_target(target) for target in targets)
+            llm = verify_llm_provider(self._session.configuration)
+            coverage = load_embedding_coverage_report(
+                self._session.configuration,
+                standard_only=self._session.embedding_standard_only,
+            )
+            self.app.call_from_thread(
+                self._finish_verify_all,
+                connections,
+                llm,
+                coverage,
+                context,
+            )
+
+        self.run_worker(verify, thread=True, exclusive=True)
+
+    def _finish_verify_all(
+        self,
+        connections,
+        llm,
+        coverage,
+        context: PageContext,
+    ) -> None:
+        self._session.connection_results = tuple(connections)
+        self._session.llm_provider_result = llm
+        self._session.embedding_coverage = coverage
+        self._sync_embedding_vocabulary_selection()
+        self._show_current_state(context)
+
     def _finish_connection_checks(self, results, context: PageContext) -> None:
         self._session.connection_results = tuple(results)
         self._show_current_state(context)
+
+    def _graph_is_ready(self) -> bool:
+        result = self._graph_readiness()
+        return result is not None and result.connected and not result.has_warnings
+
+    def _integration_output(self):
+        return build_integration_output(self._session.configuration)
+
+    def _integration_ready(self) -> bool:
+        return self._session.databases_connected and self._integration_output() is not None
 
     def _start_llm_provider_check(self, context: PageContext) -> None:
         context.notify("Checking LLM provider endpoint and model.")
@@ -512,6 +611,15 @@ class SetupPage(GroundworkersPage):
             show_actions(view.actions)
 
     def _show_section_detail(self, context: PageContext) -> None:
+        if self._selected_section == OVERVIEW_SECTION:
+            context.surface.show_detail(
+                self.route.key,
+                TextView(
+                    title="Readiness",
+                    body="Verify all checks the CDM and any configured optional capabilities.",
+                ),
+            )
+            return
         if self._selected_section == LLM_PROVIDER_SECTION:
             context.surface.show_detail(
                 self.route.key,

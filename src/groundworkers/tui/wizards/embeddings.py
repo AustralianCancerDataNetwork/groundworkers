@@ -47,6 +47,10 @@ VOCABULARY_MODE_ALL: str = "all"
 VOCABULARY_MODE_INCOMPLETE: str = "incomplete"
 VOCABULARY_MODE_SELECTED: str = "selected"
 
+INTENT_POPULATE = "populate"
+INTENT_BACKFILL = "backfill"
+INTENT_RECONCILE = "reconcile"
+
 
 class EmbeddingPopulationWizardController:
     """Start an omop-emb concept embedding population run."""
@@ -75,6 +79,7 @@ class EmbeddingPopulationWizardController:
             session.configuration,
             standard_only=session.embedding_standard_only,
         )
+        self._intent = INTENT_BACKFILL
         self._launcher = launcher or (
             lambda command: start_embedding_population_run(
                 command,
@@ -191,6 +196,7 @@ class EmbeddingPopulationWizardController:
             return {}
         if step.key == "scope":
             return {
+                "intent": self._intent,
                 "concept_scope": SCOPE_STANDARD
                 if self._request.standard_only
                 else SCOPE_ALL,
@@ -270,6 +276,10 @@ class EmbeddingPopulationWizardController:
         self,
         parsed: Mapping[str, object],
     ) -> tuple[ValidationIssue, ...]:
+        intent = str(parsed["intent"])
+        if intent not in {INTENT_POPULATE, INTENT_BACKFILL, INTENT_RECONCILE}:
+            return (ValidationIssue("Choose the embedding intent.", "intent"),)
+        self._intent = intent
         concept_scope = str(parsed["concept_scope"])
         if concept_scope not in {SCOPE_STANDARD, SCOPE_ALL}:
             return (ValidationIssue("Choose a concept scope.", "concept_scope"),)
@@ -331,6 +341,19 @@ class EmbeddingPopulationWizardController:
             title="Concept scope",
             purpose="Choose which concepts this run should embed.",
             fields=(
+                FieldSpec(
+                    "intent",
+                    "Intent",
+                    kind=FieldKind.CHOICE,
+                    choices=(
+                        ChoiceOption(INTENT_POPULATE, "Populate from scratch"),
+                        ChoiceOption(INTENT_BACKFILL, "Backfill selected vocabularies"),
+                        ChoiceOption(INTENT_RECONCILE, "Reconcile after vocabulary update"),
+                    ),
+                    required=False,
+                    default=self._intent,
+                    help="A numeric limit caps a run; it does not define its intent.",
+                ),
                 FieldSpec(
                     "concept_scope",
                     "Concepts",
@@ -449,6 +472,7 @@ class EmbeddingPopulationWizardController:
             review=WizardReview(
                 changes=(
                     ReviewChange("scope", None, _scope_label(self._request)),
+                    ReviewChange("intent", None, self._intent),
                     ReviewChange(
                         "run size",
                         None,

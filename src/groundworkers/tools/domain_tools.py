@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.domain import DomainService
 
 
-def register_domain_tools(server: GroundcrewServer, domain_service: DomainService) -> None:
+def register_domain_tools(server: GroundworkersMCPServer, domain_service: DomainService) -> None:
     @server.tool("domain_classify")
     def domain_classify(
         label_values: dict[str, list[str]],

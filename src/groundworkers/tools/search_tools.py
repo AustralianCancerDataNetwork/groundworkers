@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.vocab import (
     VocabService,
     serialise_concept_match,
@@ -11,7 +11,7 @@ from groundworkers.services.vocab import (
 )
 
 
-def register_search_tools(server: GroundcrewServer, vocab_service: VocabService) -> None:
+def register_search_tools(server: GroundworkersMCPServer, vocab_service: VocabService) -> None:
     """Register agent-composable primitive search tools against the MCP server."""
 
     @server.tool("concept_search_exact")

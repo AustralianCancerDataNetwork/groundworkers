@@ -14,7 +14,7 @@ from groundworkers.tui.presenters.base import SetupPresenterBase
 
 class ChatPresenter(SetupPresenterBase):
     def status(self, configuration: ChatConfiguration | None) -> SemanticStatus:
-        return SemanticStatus.WARNING
+        return SemanticStatus.OK if configuration is not None else SemanticStatus.WARNING
 
     def landing(self, configuration: ChatConfiguration | None) -> SurfaceView:
         if configuration is None:
@@ -40,6 +40,6 @@ class ChatPresenter(SetupPresenterBase):
                     cells=("Structured output", configuration.provider, "Not tested"),
                 ),
             ),
-            status=SemanticStatus.WARNING,
+            status=self.status(configuration),
             message="Chat checks use bounded prompts; this is not a general chat playground.",
         )

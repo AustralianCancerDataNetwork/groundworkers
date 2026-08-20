@@ -8,14 +8,14 @@ from .results import (
     enum_value,
     required_enum_value,
 )
-from .server import GroundcrewServer
+from .server import GroundworkersMCPServer
 
 __all__ = [
     "ERROR_CODES",
     "DatasetStatus",
     "DetailResult",
-    "GroundcrewServer",
     "GroundworkersError",
+    "GroundworkersMCPServer",
     "ListResult",
     "SearchHit",
     "SearchResult",

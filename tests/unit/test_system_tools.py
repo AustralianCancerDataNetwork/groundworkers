@@ -1,6 +1,6 @@
 
 
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.system_tools import register_system_tools
 
 # ---------------------------------------------------------------------------
@@ -80,8 +80,8 @@ def _server(
     emb=None,
     llm=None,
     embedding_configuration_detail: str | None = None,
-) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_system_tools(
         server,
         graph_adapter=graph,

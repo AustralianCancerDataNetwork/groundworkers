@@ -22,12 +22,12 @@ from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.config import AppConfig
 
 
 def register_system_resources(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     config: AppConfig,
     graph_adapter: OmopGraphAdapter | None = None,
 ) -> None:
@@ -67,7 +67,7 @@ def register_system_resources(
 
 
 def register_system_tools(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     graph_adapter: OmopGraphAdapter | None = None,
     emb_adapter: OmopEmbAdapter | None = None,
     llm_adapter: LLMAdapter | None = None,

@@ -1,7 +1,7 @@
 
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.embedding_tools import register_embedding_tools
 
 
@@ -86,8 +86,8 @@ class StubEmbAdapter:
         }
 
 
-def build_server(adapter) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def build_server(adapter) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_embedding_tools(server, adapter)
     return server
 

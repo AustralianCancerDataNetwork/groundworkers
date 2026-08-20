@@ -1,7 +1,7 @@
 
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.domain import DomainService
 from groundworkers.tools.domain_tools import register_domain_tools
 
@@ -76,7 +76,7 @@ def test_domain_service_filters_null_and_invalid_domains() -> None:
 
 def test_domain_classify_tool_returns_classifications() -> None:
     service = StubDomainService()
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_domain_tools(server, service)  # type: ignore[arg-type]
 
     result = server.call(
@@ -99,7 +99,7 @@ def test_domain_classify_tool_returns_groundworkers_error_dict() -> None:
         def classify_attributes(self, label_values: dict[str, list[str]], model_name: str | None = None) -> dict[str, str]:
             raise GroundworkersError("BACKEND_UNAVAIL", "llm unavailable")
 
-    server = GroundcrewServer("test-server")
+    server = GroundworkersMCPServer("test-server")
     register_domain_tools(server, ErrorDomainService())  # type: ignore[arg-type]
 
     result = server.call("domain_classify", label_values={"haemoglobin": ["12.1"]})

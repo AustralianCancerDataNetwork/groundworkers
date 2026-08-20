@@ -79,15 +79,14 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             assert tabs.styles.display == "none"
             assert sections.styles.display == "block"
             assert catalogue.styles.display == "none"
-            assert sections.option_count == 7
+            assert sections.option_count == 8
             assert app.query_one("#result-panel").border_title == "Setup"
-            # A resolvable config lists its databases, so the context panel shows
-            # the highlighted row's detail rather than the setup placeholder.
-            assert app.query_one("#context-panel").border_title == "Database detail"
+            assert app.query_one("#context-panel").border_title == "Readiness"
             assert tuple(
                 sections.get_option_at_index(index).id
                 for index in range(sections.option_count)
             ) == (
+                "setup.overview",
                 "setup.database",
                 "setup.graph",
                 "setup.llm_provider",
@@ -98,7 +97,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             )
 
             sections.focus()
-            sections.highlighted = 2
+            sections.highlighted = 3
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
@@ -108,7 +107,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             assert app.query_one("#result-panel").border_title == "Setup"
             assert app.query_one("#context-panel").border_title == "Model inventory"
 
-            sections.highlighted = 1
+            sections.highlighted = 2
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#result-panel").border_title == "Setup"
@@ -151,6 +150,11 @@ cdm_db = "cdm_db"
         app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
 
         async with app.run_test(size=(100, 32)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 1
+            await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#catalogue").styles.display == "none"
             assert str(app.query_one("#view-action-0").label) == "Configure"
@@ -205,6 +209,11 @@ cdm_db = "cdm_db"
 
         async with app.run_test(size=(100, 32)) as pilot:
             await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 1
+            await pilot.press("enter")
+            await pilot.pause()
             table = app.query_one("#result-table")
             table.move_cursor(row=2, column=0, animate=False)
             await pilot.pause()
@@ -247,6 +256,11 @@ cdm_db = "cdm_db"
         app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
 
         async with app.run_test(size=(100, 32)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 1
+            await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-0")
             await pilot.pause()
@@ -319,7 +333,7 @@ structured_output = true
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 2
+            sections.highlighted = 3
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-0")
@@ -409,7 +423,7 @@ structured_output = true
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 2
+            sections.highlighted = 3
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-1")
@@ -456,7 +470,7 @@ def test_embedding_coverage_refresh_shows_loading_state(
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 4
             await pilot.press("enter")
             await pilot.pause()
 
@@ -546,7 +560,7 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 4
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-1")

@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
 from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
 
@@ -62,7 +62,7 @@ def _default_packs_roots(configured_root: Path | None) -> tuple[Path, ...]:
 
 
 def register_knowledge_tools(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     packs_root: Path | None = None,
 ) -> bool:
     """Register the knowledge catalogue tools if a packs root is available.

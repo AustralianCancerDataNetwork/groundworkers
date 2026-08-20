@@ -103,6 +103,12 @@ def test_scope_is_the_first_thing_asked_and_lists_the_real_vocabularies() -> Non
     # Prefilled with what is missing: re-embedding a finished vocabulary is the
     # expensive mistake, so LOINC is not offered up by default.
     assert listed.default == "SNOMED\nRxNorm"
+    intents = next(field for field in snapshot.step.fields if field.key == "intent")
+    assert tuple(option.label for option in intents.choices) == (
+        "Populate from scratch",
+        "Backfill selected vocabularies",
+        "Reconcile after vocabulary update",
+    )
 
 
 def test_named_vocabularies_reach_the_command_and_nothing_else_does() -> None:
