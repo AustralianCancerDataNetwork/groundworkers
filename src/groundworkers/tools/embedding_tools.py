@@ -52,7 +52,7 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return exc.to_dict()
 
     @server.tool("embedding_search")
-    def embedding_search(
+    async def embedding_search(
         query: str,
         limit: int = 10,
         domain: str | None = None,
@@ -66,7 +66,7 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
         safe_limit = max(1, min(limit, 50))
         try:
-            return emb_adapter.search(
+            return await emb_adapter.async_search(
                 query=query,
                 limit=safe_limit,
                 domain=domain,
@@ -81,13 +81,13 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return exc.to_dict()
 
     @server.tool("embedding_encode")
-    def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
+    async def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
         """Encodes free text into one embedding vector using the configured model client."""
         if not text.strip():
             return {"error": True, "code": "INVALID_INPUT", "message": "text must be a non-empty string"}
         if model_name is not None and not model_name.strip():
             return {"error": True, "code": "INVALID_INPUT", "message": "model_name must be a non-empty string"}
         try:
-            return emb_adapter.encode(text=text, model_name=model_name)
+            return await emb_adapter.async_encode(text=text, model_name=model_name)
         except GroundworkersError as exc:
             return exc.to_dict()

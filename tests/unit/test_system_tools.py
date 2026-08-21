@@ -47,6 +47,9 @@ class StubEmbAdapter:
             else (False, "embedding smoke probe failed")
         )
 
+    async def async_probe_live_query(self) -> tuple[bool, str | None]:
+        return self.probe_live_query()
+
     def index_status(self) -> dict:
         if self._raise_on_status:
             raise RuntimeError("backend unreachable")
@@ -82,6 +85,9 @@ class StubLLMAdapter:
         if self._detail is not None:
             result["detail"] = self._detail
         return result
+
+    async def async_status(self) -> dict:
+        return self.status()
 
 
 class StubVocabService:

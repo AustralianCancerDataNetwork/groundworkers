@@ -6,7 +6,20 @@ This is the supported fresh-local setup for Groundworkers. It assumes an OMOP CD
 
 The TUI is offered for convenience and should be considered experimental - we don't persist state centrally so you will probably notice that you need to re-test connections if you move around the interface.
 
-The examples below show the most thoroughly validated workflow at this time. FAISS and sqlite options for storage and anything other than ollama configuration is yours to experiment with.
+The examples below show the most thoroughly validated workflow at this time. FAISS and sqlite options for storage and anything other than ollama configuration are all yours to experiment with.
+
+### Known TODOs
+
+- **Plugin-backed optional capabilities:** Finalise the drafted plugin contract for adding backends without expanding the core composition root for every integration. A plugin should declare its configuration schema and adapter/service factories through an explicit entry point. Groundworkers should retain lifecycle, error, and transport policy. Backend-specific assumptions must remain inside the plugin rather than leaking into generic services.
+- **Async concurrency hardening:** Model-facing MCP tools use omop-llm's native async completion, embedding, and availability APIs. Before increasing request concurrency, cover lazy initialization, provider connection limits, cancellation, and shared-backend safety with load tests.
+- **Curated REST workflows:** Extend REST around stable, application-level workflows rather than mirroring every MCP tool. New endpoints need typed request/response models, the same validation and error semantics as the underlying services, explicit limits for expensive operations, and a deployment-level authentication decision before exposure outside a trusted network.
+
+### Key Dependency Details
+
+- **FastAPI** provides the curated REST transport, including request validation, exception mapping, OpenAPI generation, and application lifecycle hooks. REST is selected explicitly with `--transport rest`; it is not served alongside MCP by default. Business logic belongs in services, not route handlers.
+- **FastMCP**, supplied by the official `mcp[cli]` package, provides MCP tool, prompt, and resource registration plus stdio, SSE, and streamable-HTTP transports. Groundworkers preserves each handler's signature and docstring for schema discovery and registers model-facing handlers as native async tools.
+- **omop-llm** is the provider-neutral model API. MCP-facing provider calls use its async completion, embedding, and availability methods so a cached provider client remains attached to the transport's persistent event loop. The synchronous methods remain available to direct Python callers.
+- **omop-emb and omop-graph** remain synchronous storage and graph dependencies. Their database and vector operations must stay outside the event-loop thread until those packages expose supported async contracts.
 
 ### Maintenance tasks
 

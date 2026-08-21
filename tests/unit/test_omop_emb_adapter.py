@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import numpy as np
@@ -38,6 +39,17 @@ class StubModelBackend:
 
     def embed_texts(self, texts, *, role, batch_size=None):
         self.calls.append({"texts": texts, "role": role, "batch_size": batch_size})
+        return self.vectors
+
+    async def async_embed_texts(self, texts, *, role, batch_size=None):
+        self.calls.append(
+            {
+                "texts": texts,
+                "role": role,
+                "batch_size": batch_size,
+                "async": True,
+            }
+        )
         return self.vectors
 
 
@@ -206,6 +218,52 @@ def test_encode_rejects_invalid_embedding_shape(monkeypatch):
         adapter.encode("hypertension", None)
 
     assert caught.value.code == "QUERY_ERROR"
+
+
+def test_async_encode_repeated_calls_use_native_async_backend(monkeypatch):
+    backend = StubModelBackend()
+    adapter = build_adapter(model_backend=backend)
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: model_record())
+
+    async def invoke_twice() -> tuple[dict, dict]:
+        return (
+            await adapter.async_encode("first", None),
+            await adapter.async_encode("second", None),
+        )
+
+    first, second = asyncio.run(invoke_twice())
+
+    assert first["vector"] == [0.1, 0.2, 0.3]
+    assert second["vector"] == [0.1, 0.2, 0.3]
+    assert [call["texts"] for call in backend.calls] == [["first"], ["second"]]
+    assert all(call["async"] is True for call in backend.calls)
+
+
+def test_async_search_embeds_natively_before_stored_vector_lookup(monkeypatch):
+    backend = StubModelBackend()
+    adapter = build_adapter(model_backend=backend)
+    record = model_record()
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: record)
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+    monkeypatch.setattr(adapter, "_build_concept_filter", lambda **kwargs: kwargs)
+
+    result = asyncio.run(
+        adapter.async_search(
+            "hypertension", 7, "Condition", "SNOMED", True, True, None
+        )
+    )
+
+    assert result["results"][0]["concept_id"] == 111
+    assert backend.calls == [
+        {
+            "texts": ["hypertension"],
+            "role": EmbeddingRole.QUERY,
+            "batch_size": None,
+            "async": True,
+        }
+    ]
+    assert reader.calls[0]["k"] == 7
 
 
 def test_live_encoding_rejects_registered_model_that_is_not_configured(monkeypatch):

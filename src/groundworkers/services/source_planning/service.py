@@ -122,6 +122,48 @@ class SourcePlanningService:
             use_assisted_classification=True,
         )
 
+    async def async_plan_source_assisted(
+        self,
+        content: str | bytes,
+        *,
+        filename: str | None = None,
+        caller_hint: str | None = None,
+    ) -> PreIngestBundle:
+        """MCP-facing assisted plan using native async model completion."""
+
+        started = perf_counter()
+        raw_content = _coerce_content_bytes(content)
+        source_format = self._detector.detect(raw_content, filename)
+        raw_tables = self._decomposer.decompose(raw_content, source_format, filename)
+        if not raw_tables:
+            return self._plan_from_raw_tables(
+                raw_tables,
+                source_format=source_format,
+                caller_hint=caller_hint,
+                elapsed_ms=_elapsed_ms(started),
+            )
+        if self._assisted_classifier is None:
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                "LLM-assisted source planning is unavailable because no LLM adapter is configured.",
+            )
+        normalised_tables = normalise_tables(raw_tables, policy=self._normalisation_policy)
+        annotated_tables: list[AnnotatedTable] = []
+        for table in normalised_tables:
+            baseline = self._classifier.classify(table)
+            annotated_tables.append(
+                await self._assisted_classifier.async_classify(baseline=baseline)
+                if _table_needs_assistance(baseline)
+                else baseline
+            )
+        return self._plan_from_raw_tables(
+            raw_tables,
+            source_format=source_format,
+            caller_hint=caller_hint,
+            elapsed_ms=_elapsed_ms(started),
+            preclassified_tables=annotated_tables,
+        )
+
     def plan_tables_assisted(
         self,
         tables: Sequence[RawTable],
@@ -154,6 +196,7 @@ class SourcePlanningService:
         caller_hint: str | None,
         elapsed_ms: int,
         use_assisted_classification: bool = False,
+        preclassified_tables: list[AnnotatedTable] | None = None,
     ) -> PreIngestBundle:
         warnings: list[PlanningWarning] = []
         errors: list[PlanningError] = []
@@ -195,7 +238,9 @@ class SourcePlanningService:
             source_profile.packed_value_column_hint() if source_profile is not None else None
         )
 
-        annotated_tables = [self._classifier.classify(table) for table in normalised_tables]
+        annotated_tables = preclassified_tables or [
+            self._classifier.classify(table) for table in normalised_tables
+        ]
         if use_assisted_classification:
             if self._assisted_classifier is None:
                 raise GroundworkersError(

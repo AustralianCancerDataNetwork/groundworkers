@@ -1,11 +1,43 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 from omop_emb import MetricType
 from sqlalchemy import create_engine
 
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
+
+
+def test_async_query_encoding_uses_native_model_api_repeatedly():
+    class AsyncOnlyBackend:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def embed_texts(self, *args, **kwargs):
+            raise AssertionError("sync embedding API must not be called")
+
+        async def async_embed_texts(self, texts, *, role):
+            self.calls.extend(texts)
+            return [[0.1, 0.2, 0.3] for _ in texts]
+
+    backend = AsyncOnlyBackend()
+    adapter = OmopGraphAdapter(
+        create_engine("sqlite:///:memory:"),
+        model_backend_factory=lambda: backend,  # type: ignore[arg-type,return-value]
+    )
+
+    async def invoke_twice():
+        return (
+            await adapter._async_encode_query("first"),
+            await adapter._async_encode_query("second"),
+        )
+
+    first, second = asyncio.run(invoke_twice())
+
+    assert first.shape == (1, 3)
+    assert second.shape == (1, 3)
+    assert backend.calls == ["first", "second"]
 
 
 def test_embedding_resolver_requires_complete_configuration():

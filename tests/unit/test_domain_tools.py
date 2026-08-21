@@ -44,6 +44,13 @@ class StubDomainService:
         self.calls.append({"label_values": label_values, "model_name": model_name})
         return {"haemoglobin": "Measurement"}
 
+    async def async_classify_attributes(
+        self,
+        label_values: dict[str, list[str]],
+        model_name: str | None = None,
+    ) -> dict[str, str]:
+        return self.classify_attributes(label_values, model_name=model_name)
+
 
 def test_domain_service_filters_null_and_invalid_domains() -> None:
     llm = FakeLLMAdapter(
@@ -96,7 +103,7 @@ def test_domain_classify_tool_returns_classifications() -> None:
 
 def test_domain_classify_tool_returns_groundworkers_error_dict() -> None:
     class ErrorDomainService(StubDomainService):
-        def classify_attributes(self, label_values: dict[str, list[str]], model_name: str | None = None) -> dict[str, str]:
+        async def async_classify_attributes(self, label_values: dict[str, list[str]], model_name: str | None = None) -> dict[str, str]:
             raise GroundworkersError("BACKEND_UNAVAIL", "llm unavailable")
 
     server = GroundworkersMCPServer("test-server")

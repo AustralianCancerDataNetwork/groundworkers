@@ -1,8 +1,13 @@
+import asyncio
+import inspect
+import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from groundworkers.app import build_adapters, build_application
+from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.server import create_server, main, parse_args, run_rest_api
@@ -188,6 +193,74 @@ def test_stdio_transport_runs_without_json_responses(monkeypatch: pytest.MonkeyP
         "port": 18080,
         "json_response": False,
         "stateless_http": True,
+    }
+
+
+def test_fastmcp_preserves_native_async_tool_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Model-facing tools stay on one persistent transport event loop."""
+
+    from mcp.server.fastmcp import FastMCP
+
+    captured: dict[str, Any] = {}
+    invocation_loops: list[asyncio.AbstractEventLoop] = []
+    caller_thread = threading.get_ident()
+
+    server = GroundworkersMCPServer("groundworkers-test")
+
+    @server.tool("embedding_encode")
+    async def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
+        invocation_loops.append(asyncio.get_running_loop())
+        assert threading.get_ident() == caller_thread
+        return {"text": text, "model_name": model_name}
+
+    @server.tool("backend_failure")
+    async def backend_failure() -> dict[str, Any]:
+        raise GroundworkersError("BACKEND_UNAVAIL", "provider unavailable")
+
+    def capture_run(app: FastMCP, transport: str) -> None:
+        captured["app"] = app
+        captured["transport"] = transport
+
+    monkeypatch.setattr(FastMCP, "run", capture_run)
+    server.run(transport="stdio")
+
+    app = captured["app"]
+    assert isinstance(app, FastMCP)
+    registered = app._tool_manager.get_tool("embedding_encode")
+    assert registered is not None
+    assert registered.is_async is True
+    assert inspect.signature(registered.fn) == inspect.signature(embedding_encode)
+
+    async def invoke() -> tuple[Any, Any, Any]:
+        first_result = await app.call_tool(
+            "embedding_encode",
+            {"text": "first", "model_name": "configured-model"},
+        )
+        second_result = await app.call_tool(
+            "embedding_encode",
+            {"text": "second", "model_name": "configured-model"},
+        )
+        failure_result = await app.call_tool("backend_failure", {})
+        return first_result, second_result, failure_result
+
+    first, second, failure = asyncio.run(invoke())
+
+    assert len(invocation_loops) == 2
+    assert invocation_loops[0] is invocation_loops[1]
+    _content, structured = first
+    assert structured == {
+        "text": "first",
+        "model_name": "configured-model",
+    }
+    _content, structured = second
+    assert structured["text"] == "second"
+    _failure_content, failure_structured = failure
+    assert failure_structured == {
+        "error": True,
+        "code": "BACKEND_UNAVAIL",
+        "message": "provider unavailable",
     }
 
 

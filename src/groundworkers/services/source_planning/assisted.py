@@ -76,6 +76,32 @@ class AssistedColumnRoleClassifier:
 
         return _merge_assisted_decisions(baseline, candidate_headers, result.decisions)
 
+    async def async_classify(
+        self,
+        *,
+        baseline: AnnotatedTable,
+        model_name: str | None = None,
+    ) -> AnnotatedTable:
+        """Classify candidates through the model backend's async API."""
+
+        candidate_headers = _candidate_headers(baseline)
+        if not candidate_headers:
+            return baseline
+        raw = await self._llm.async_complete_structured(
+            _build_prompt(baseline, candidate_headers),
+            AssistedClassificationResult.model_json_schema(),
+            system_prompt=_SYSTEM_PROMPT,
+            model_name=model_name,
+        )
+        try:
+            result = AssistedClassificationResult.model_validate(raw)
+        except ValidationError as exc:
+            raise GroundworkersError(
+                "QUERY_ERROR",
+                "LLM-assisted source-planning response did not match the expected structure.",
+            ) from exc
+        return _merge_assisted_decisions(baseline, candidate_headers, result.decisions)
+
 
 def _candidate_headers(baseline: AnnotatedTable) -> list[str]:
     return [

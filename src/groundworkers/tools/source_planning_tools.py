@@ -61,7 +61,7 @@ def register_source_planning_tools(
             return exc.to_dict()
 
     @server.tool("source_plan_assisted")
-    def source_plan_assisted(
+    async def source_plan_assisted(
         content: str,
         filename: str | None = None,
         caller_hint: str | None = None,
@@ -78,7 +78,7 @@ def register_source_planning_tools(
 
         try:
             raw_content = decode_content(content, content_encoding)
-            bundle = source_planning_service.plan_source_assisted(
+            bundle = await source_planning_service.async_plan_source_assisted(
                 raw_content,
                 filename=filename,
                 caller_hint=caller_hint,

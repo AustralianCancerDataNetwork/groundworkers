@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from omop_llm import ModelBackend
 
 _COMPLETION_TIMEOUT_SECONDS = 180.0
+logger = logging.getLogger(__name__)
 
 
 class LLMAdapter:
@@ -40,6 +42,11 @@ class LLMAdapter:
     def is_available(self) -> bool:
         """Return True if the model backend is reachable."""
         return self.status()["available"]
+
+    async def async_is_available(self) -> bool:
+        """Return True if the model backend is reachable from an async runtime."""
+
+        return (await self.async_status())["available"]
 
     def close(self) -> None:
         """Release the cached backend."""
@@ -78,6 +85,28 @@ class LLMAdapter:
                 "detail": f"LLM status failed with {type(exc).__name__}.",
             }
 
+    async def async_status(self) -> dict[str, Any]:
+        """Async availability and configuration snapshot. Never raises."""
+
+        try:
+            backend = self._get_backend()
+            available = await backend.async_is_available()
+            return {
+                "available": available,
+                "provider": backend.provider,
+                "default_model": backend.model,
+                "structured_output_supported": backend.capabilities.structured_output,
+                "detail": None if available else "Provider did not respond to a model listing.",
+            }
+        except Exception as exc:
+            return {
+                "available": False,
+                "provider": None,
+                "default_model": None,
+                "structured_output_supported": None,
+                "detail": f"LLM status failed with {type(exc).__name__}.",
+            }
+
     def complete_text(
         self,
         prompt: str,
@@ -104,6 +133,36 @@ class LLMAdapter:
                 timeout=_COMPLETION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
+            logger.exception("LLM text completion failed")
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", f"LLM call failed with {type(exc).__name__}."
+            ) from exc
+        return {
+            "text": response.choices[0].message.content,
+            "model": response.model,
+            "provider": backend.provider,
+        }
+
+    async def async_complete_text(
+        self,
+        prompt: str,
+        *,
+        system_prompt: str | None = None,
+        model_name: str | None = None,
+        temperature: float = 0.0,
+    ) -> dict[str, Any]:
+        """Complete a prompt without crossing an async-to-sync model boundary."""
+
+        backend = self._get_backend()
+        self._check_model(backend, model_name)
+        try:
+            response = await backend.async_complete(
+                _build_messages(prompt, system_prompt),
+                temperature=temperature,
+                timeout=_COMPLETION_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.exception("LLM async text completion failed")
             raise GroundworkersError(
                 "BACKEND_UNAVAIL", f"LLM call failed with {type(exc).__name__}."
             ) from exc
@@ -140,14 +199,7 @@ class LLMAdapter:
         """
         backend = self._get_backend()
         self._check_model(backend, model_name)
-        try:
-            schema_json = json.dumps(response_schema, indent=2)
-        except (TypeError, ValueError) as exc:
-            raise GroundworkersError(
-                "INVALID_INPUT", f"response_schema is not JSON-serializable: {exc}"
-            ) from exc
-        schema_directive = f"Respond with a JSON object matching this schema:\n{schema_json}"
-        augmented_system = f"{system_prompt}\n\n{schema_directive}" if system_prompt else schema_directive
+        augmented_system = _structured_system_prompt(response_schema, system_prompt)
         try:
             response = backend.complete(
                 _build_messages(prompt, augmented_system),
@@ -156,6 +208,41 @@ class LLMAdapter:
                 timeout=_COMPLETION_TIMEOUT_SECONDS,
             )
         except Exception as exc:
+            logger.exception("LLM structured completion failed")
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", f"LLM call failed with {type(exc).__name__}."
+            ) from exc
+        content = response.choices[0].message.content or ""
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise GroundworkersError(
+                "QUERY_ERROR", "LLM response was not valid JSON."
+            ) from exc
+
+    async def async_complete_structured(
+        self,
+        prompt: str,
+        response_schema: dict[str, Any],
+        *,
+        system_prompt: str | None = None,
+        model_name: str | None = None,
+        temperature: float = 0.0,
+    ) -> dict[str, Any]:
+        """Structured completion using the backend's native async client."""
+
+        backend = self._get_backend()
+        self._check_model(backend, model_name)
+        augmented_system = _structured_system_prompt(response_schema, system_prompt)
+        try:
+            response = await backend.async_complete(
+                _build_messages(prompt, augmented_system),
+                response_format={"type": "json_object"},
+                temperature=temperature,
+                timeout=_COMPLETION_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            logger.exception("LLM async structured completion failed")
             raise GroundworkersError(
                 "BACKEND_UNAVAIL", f"LLM call failed with {type(exc).__name__}."
             ) from exc
@@ -195,3 +282,17 @@ def _build_messages(prompt: str, system_prompt: str | None) -> list[dict[str, st
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
     return messages
+
+
+def _structured_system_prompt(
+    response_schema: dict[str, Any],
+    system_prompt: str | None,
+) -> str:
+    try:
+        schema_json = json.dumps(response_schema, indent=2)
+    except (TypeError, ValueError) as exc:
+        raise GroundworkersError(
+            "INVALID_INPUT", f"response_schema is not JSON-serializable: {exc}"
+        ) from exc
+    schema_directive = f"Respond with a JSON object matching this schema:\n{schema_json}"
+    return f"{system_prompt}\n\n{schema_directive}" if system_prompt else schema_directive

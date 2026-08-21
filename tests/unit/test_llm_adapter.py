@@ -1,5 +1,6 @@
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,6 +30,8 @@ def _make_backend(
     backend.model = model
     backend.capabilities = SimpleNamespace(structured_output=structured_output)
     backend.is_available.return_value = True
+    backend.async_is_available = AsyncMock(return_value=True)
+    backend.async_complete = AsyncMock()
     return backend
 
 
@@ -205,6 +208,39 @@ def test_complete_structured_raises_backend_unavail_on_api_error():
         adapter.complete_structured("Prompt", {})
 
     assert exc_info.value.code == "BACKEND_UNAVAIL"
+
+
+def test_async_structured_completion_reuses_one_event_loop_without_sync_calls():
+    backend = _make_backend()
+    backend.async_complete.side_effect = [
+        _make_response('{"label": "first"}'),
+        _make_response('{"label": "second"}'),
+    ]
+    adapter = _adapter(backend=backend)
+
+    async def invoke_twice() -> tuple[dict, dict]:
+        return (
+            await adapter.async_complete_structured("First", {}),
+            await adapter.async_complete_structured("Second", {}),
+        )
+
+    first, second = asyncio.run(invoke_twice())
+
+    assert first == {"label": "first"}
+    assert second == {"label": "second"}
+    assert backend.async_complete.await_count == 2
+    backend.complete.assert_not_called()
+
+
+def test_async_status_uses_native_async_availability_probe():
+    backend = _make_backend()
+    adapter = _adapter(backend=backend)
+
+    result = asyncio.run(adapter.async_status())
+
+    assert result["available"] is True
+    backend.async_is_available.assert_awaited_once_with()
+    backend.is_available.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_promp
 
 def register_text_tools(server: GroundworkersMCPServer, text_service: TextService) -> None:
     @server.tool("text_normalize")
-    def text_normalize(
+    async def text_normalize(
         text: str,
         domain_hint: str | None = None,
         model_name: str | None = None,
@@ -28,7 +28,11 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         the model's categorical confidence, and optional notes about ambiguity.
         """
         try:
-            result = text_service.normalize(text, domain_hint=domain_hint, model_name=model_name)
+            result = await text_service.async_normalize(
+                text,
+                domain_hint=domain_hint,
+                model_name=model_name,
+            )
             return result.model_dump()
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
@@ -36,7 +40,7 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return exc.to_dict()
 
     @server.tool("text_mapping_cleanup")
-    def text_mapping_cleanup(
+    async def text_mapping_cleanup(
         text: str,
         context: dict[str, Any] | None = None,
         domain_hint: str | None = None,
@@ -53,7 +57,7 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         categorical confidence, and optional notes.
         """
         try:
-            result = text_service.mapping_cleanup(
+            result = await text_service.async_mapping_cleanup(
                 text,
                 context=context,
                 domain_hint=domain_hint,
@@ -66,7 +70,7 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return exc.to_dict()
 
     @server.tool("text_decompose")
-    def text_decompose(
+    async def text_decompose(
         text: str,
         domain_hint: str | None = None,
         max_terms: int = 10,
@@ -86,7 +90,12 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         original input text.
         """
         try:
-            result = text_service.decompose(text, domain_hint=domain_hint, max_terms=max_terms, model_name=model_name)
+            result = await text_service.async_decompose(
+                text,
+                domain_hint=domain_hint,
+                max_terms=max_terms,
+                model_name=model_name,
+            )
             return result.model_dump()
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
@@ -94,7 +103,7 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
             return exc.to_dict()
 
     @server.tool("text_disambiguate")
-    def text_disambiguate(
+    async def text_disambiguate(
         text: str,
         domain_hint: str | None = None,
         max_interpretations: int = 5,
@@ -114,7 +123,7 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         context clues, plus the original input and an ambiguity flag.
         """
         try:
-            result = text_service.disambiguate(
+            result = await text_service.async_disambiguate(
                 text, domain_hint=domain_hint, max_interpretations=max_interpretations, model_name=model_name,
             )
             return result.model_dump()

@@ -93,13 +93,7 @@ class DomainService:
         if not label_values:
             return {}
 
-        lines: list[str] = ["Classify each field into the most appropriate OMOP CDM domain."]
-        lines.append('Return a JSON object: {"<label>": "<domain or null>", ...}\n')
-        for i, (label, values) in enumerate(label_values.items(), 1):
-            lines.append(f'{i}. Label: "{label}"')
-            if values:
-                lines.append(f'   Values: {" | ".join(values[:10])}')
-        prompt = "\n".join(lines)
+        prompt = _build_domain_prompt(label_values)
 
         raw = self._llm.complete_structured(
             prompt,
@@ -113,3 +107,34 @@ class DomainService:
             for label, domain in raw.items()
             if isinstance(domain, str) and domain in _VALID_DOMAINS
         }
+
+    async def async_classify_attributes(
+        self,
+        label_values: dict[str, list[str]],
+        model_name: str | None = None,
+    ) -> dict[str, str]:
+        """Async MCP-facing variant of :meth:`classify_attributes`."""
+
+        if not label_values:
+            return {}
+        raw = await self._llm.async_complete_structured(
+            _build_domain_prompt(label_values),
+            _DOMAIN_RESPONSE_SCHEMA,
+            system_prompt=_DOMAIN_SYSTEM,
+            model_name=model_name,
+        )
+        return {
+            label: domain
+            for label, domain in raw.items()
+            if isinstance(domain, str) and domain in _VALID_DOMAINS
+        }
+
+
+def _build_domain_prompt(label_values: dict[str, list[str]]) -> str:
+    lines: list[str] = ["Classify each field into the most appropriate OMOP CDM domain."]
+    lines.append('Return a JSON object: {"<label>": "<domain or null>", ...}\n')
+    for i, (label, values) in enumerate(label_values.items(), 1):
+        lines.append(f'{i}. Label: "{label}"')
+        if values:
+            lines.append(f'   Values: {" | ".join(values[:10])}')
+    return "\n".join(lines)

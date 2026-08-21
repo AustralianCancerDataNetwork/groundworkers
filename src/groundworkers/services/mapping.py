@@ -17,6 +17,8 @@ from groundworkers.services.vocab import (
 
 MAX_CANDIDATES_PER_CHANNEL = 20
 MAX_CANDIDATE_UNION = 100
+_SYNC_EMBEDDING = object()
+_SYNC_GROUNDING = object()
 
 
 class MappingService:
@@ -110,6 +112,7 @@ class MappingService:
         per_channel_limit: int = 10,
         overall_limit: int = 30,
         model_name: str | None = None,
+        _embedding_result: dict[str, Any] | GroundworkersError | object = _SYNC_EMBEDDING,
     ) -> dict[str, Any]:
         stripped = query.strip()
         if not stripped:
@@ -186,15 +189,21 @@ class MappingService:
                 warnings.append("embedding adapter not configured; embedding channel omitted")
             else:
                 try:
-                    embedding_result = self._emb.search(
-                        query=query,
-                        limit=per_channel_limit,
-                        domain=domain,
-                        vocabulary=vocabulary_id,
-                        standard_only=standard_only,
-                        active_only=active_only,
-                        model_name=model_name,
-                    )
+                    if _embedding_result is _SYNC_EMBEDDING:
+                        embedding_result = self._emb.search(
+                            query=query,
+                            limit=per_channel_limit,
+                            domain=domain,
+                            vocabulary=vocabulary_id,
+                            standard_only=standard_only,
+                            active_only=active_only,
+                            model_name=model_name,
+                        )
+                    elif isinstance(_embedding_result, GroundworkersError):
+                        raise _embedding_result
+                    else:
+                        assert isinstance(_embedding_result, dict)
+                        embedding_result = _embedding_result
                     emb_notes = ["semantic retrieval from omop-emb"]
                     if parent_ids:
                         emb_notes.append("parent_ids hierarchy filter was not applied at the embedding level")
@@ -254,6 +263,62 @@ class MappingService:
             "warnings": warnings,
         }
 
+    async def async_concept_candidate_bundle(
+        self,
+        query: str,
+        *,
+        domain: str | None = None,
+        vocabulary_id: str | None = None,
+        standard_only: bool = False,
+        active_only: bool = True,
+        include_synonyms: bool = True,
+        include_normalized: bool = True,
+        include_fulltext: bool = True,
+        include_embedding: bool = True,
+        include_standard_mappings: bool = True,
+        include_hierarchy_context: bool = False,
+        include_relationship_summary: bool = False,
+        parent_ids: list[int] | None = None,
+        per_channel_limit: int = 10,
+        overall_limit: int = 30,
+        model_name: str | None = None,
+    ) -> dict[str, Any]:
+        """MCP-facing candidate bundle with native async query encoding."""
+
+        embedding_result: dict[str, Any] | GroundworkersError | object = _SYNC_EMBEDDING
+        if include_embedding and self._emb is not None:
+            try:
+                embedding_result = await self._emb.async_search(
+                    query=query,
+                    limit=per_channel_limit,
+                    domain=domain,
+                    vocabulary=vocabulary_id,
+                    standard_only=standard_only,
+                    active_only=active_only,
+                    model_name=model_name,
+                )
+            except GroundworkersError as exc:
+                embedding_result = exc
+        return self.concept_candidate_bundle(
+            query,
+            domain=domain,
+            vocabulary_id=vocabulary_id,
+            standard_only=standard_only,
+            active_only=active_only,
+            include_synonyms=include_synonyms,
+            include_normalized=include_normalized,
+            include_fulltext=include_fulltext,
+            include_embedding=include_embedding,
+            include_standard_mappings=include_standard_mappings,
+            include_hierarchy_context=include_hierarchy_context,
+            include_relationship_summary=include_relationship_summary,
+            parent_ids=parent_ids,
+            per_channel_limit=per_channel_limit,
+            overall_limit=overall_limit,
+            model_name=model_name,
+            _embedding_result=embedding_result,
+        )
+
     def concept_nearest_standard_ancestor(
         self,
         *,
@@ -264,6 +329,7 @@ class MappingService:
         parent_ids: list[int] | None = None,
         max_depth: int = 5,
         candidate_limit: int = 10,
+        _grounded_result: dict[str, Any] | object = _SYNC_GROUNDING,
     ) -> dict[str, Any]:
         if self._graph is None:
             raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
@@ -273,13 +339,17 @@ class MappingService:
         if query is not None:
             if self._grounding is None:
                 raise GroundworkersError("BACKEND_UNAVAIL", "grounding service is not configured")
-            grounded = self._grounding.ground(
-                query.strip(),
-                limit=candidate_limit,
-                domain=domain or None,
-                vocabulary_id=vocabulary_id or None,
-                parent_ids=tuple(parent_ids) if parent_ids else None,
-            )
+            if _grounded_result is _SYNC_GROUNDING:
+                grounded = self._grounding.ground(
+                    query.strip(),
+                    limit=candidate_limit,
+                    domain=domain or None,
+                    vocabulary_id=vocabulary_id or None,
+                    parent_ids=tuple(parent_ids) if parent_ids else None,
+                )
+            else:
+                assert isinstance(_grounded_result, dict)
+                grounded = _grounded_result
             results = grounded["results"]
             if not results:
                 return {
@@ -339,6 +409,43 @@ class MappingService:
             "alternative_parents": alternatives,
             "warnings": [],
         }
+
+    async def async_concept_nearest_standard_ancestor(
+        self,
+        *,
+        query: str | None = None,
+        concept_id: int | None = None,
+        domain: str | None = None,
+        vocabulary_id: str | None = None,
+        parent_ids: list[int] | None = None,
+        max_depth: int = 5,
+        candidate_limit: int = 10,
+    ) -> dict[str, Any]:
+        """MCP-facing ancestor lookup with async grounding for text queries."""
+
+        grounded_result: dict[str, Any] | object = _SYNC_GROUNDING
+        if query is not None:
+            if self._grounding is None:
+                raise GroundworkersError(
+                    "BACKEND_UNAVAIL", "grounding service is not configured"
+                )
+            grounded_result = await self._grounding.async_ground(
+                query.strip(),
+                limit=candidate_limit,
+                domain=domain or None,
+                vocabulary_id=vocabulary_id or None,
+                parent_ids=tuple(parent_ids) if parent_ids else None,
+            )
+        return self.concept_nearest_standard_ancestor(
+            query=query,
+            concept_id=concept_id,
+            domain=domain,
+            vocabulary_id=vocabulary_id,
+            parent_ids=parent_ids,
+            max_depth=max_depth,
+            candidate_limit=candidate_limit,
+            _grounded_result=grounded_result,
+        )
 
     def concept_mapping_context(
         self,

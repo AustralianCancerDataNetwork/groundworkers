@@ -564,6 +564,94 @@ class GraphService:
         )
         return payload
 
+    async def async_ground_with_plan(self, request: GroundingPlan) -> dict[str, Any]:
+        """Async grounding path that keeps query encoding on the MCP event loop."""
+
+        overall_started = time.perf_counter()
+        logger.info(
+            "concept_ground plan query=%r parent_ids=%s tiers=%s",
+            _short_text(request.query),
+            list(request.constraints.parent_ids)
+            if request.constraints.parent_ids is not None
+            else None,
+            ["+".join(type(r).__name__ for r in tier) for tier in request.tiers],
+        )
+
+        results: list[dict[str, Any]] = []
+        embedding_tier_detail: str | None = None
+        for tier in request.tiers:
+            tier_started = time.perf_counter()
+            tier_name = "+".join(type(r).__name__ for r in tier)
+            is_fts_tier = any(
+                isinstance(r, (FullTextResolver, FullTextSynonymResolver))
+                for r in tier
+            )
+            try:
+                hits = await self._adapter.async_run_ground_tier(
+                    tier,
+                    request.query,
+                    constraints=request.constraints,
+                    limit=request.limit,
+                )
+            except EmbeddingTierUnavailable as exc:
+                embedding_tier_detail = exc.message
+                logger.warning(
+                    "concept_ground tier skipped query=%r tier=%s detail=%s",
+                    _short_text(request.query),
+                    tier_name,
+                    exc.message,
+                )
+                continue
+            if hits and is_fts_tier and request.min_fulltext_overlap > 0.0:
+                query_tokens = set(request.query.lower().split())
+                results = [
+                    hit
+                    for hit in hits
+                    if self._fts_overlap(query_tokens, hit["matched_label"] or "")
+                    >= request.min_fulltext_overlap
+                ]
+            else:
+                results = list(hits)
+            logger.info(
+                "concept_ground tier done query=%r tier=%s duration_ms=%.1f raw=%d kept=%d",
+                _short_text(request.query),
+                tier_name,
+                (time.perf_counter() - tier_started) * 1000.0,
+                len(hits),
+                len(results),
+            )
+            if results:
+                break
+
+        concept_ids = tuple(dict.fromkeys(hit["concept_id"] for hit in results))
+        views = self._adapter.concept_views(concept_ids)
+        raw_flags = self._adapter.raw_standard_flags(concept_ids)
+        matched_tier = results[0]["match_kind"] if results else None
+        used_embedding = any(hit["embedding_score"] is not None for hit in results)
+        payload = {
+            "results": [
+                self._merge_ground_view(
+                    hit,
+                    views.get(hit["concept_id"]),
+                    raw_flags.get(hit["concept_id"]),
+                )
+                for hit in results
+            ],
+            "matched_tier": matched_tier,
+            "used_embedding": used_embedding,
+            "embedding_tier_detail": embedding_tier_detail,
+        }
+        logger.info(
+            "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r "
+            "used_embedding=%s result_count=%d",
+            _short_text(request.query),
+            (time.perf_counter() - overall_started) * 1000.0,
+            matched_tier,
+            used_embedding,
+            len(payload["results"]),
+        )
+        return payload
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------

@@ -392,6 +392,35 @@ class OmopGraphAdapter:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return [self._serialise_ground_hit(r) for r in raw]
 
+    async def async_run_ground_tier(
+        self,
+        resolvers: tuple[Any, ...],
+        query: str,
+        *,
+        constraints: GroundingConstraints,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Run a grounding tier with native async query encoding when needed."""
+
+        pipeline = ResolverPipeline(resolvers=resolvers)
+        query_embedding = (
+            await self._async_encode_query(query)
+            if self._is_embedding_tier(resolvers)
+            else None
+        )
+        try:
+            raw = ground_term(
+                pipeline,
+                self._get_kg(),
+                query,
+                query_embedding=query_embedding,
+                constraints=constraints,
+                max_candidates=limit,
+            )
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
+        return [self._serialise_ground_hit(r) for r in raw]
+
     @staticmethod
     def _is_embedding_tier(resolvers: tuple[Any, ...]) -> bool:
         return any(isinstance(resolver, EmbeddingResolver) for resolver in resolvers)
@@ -430,6 +459,37 @@ class OmopGraphAdapter:
             logger.warning("%s", detail)
             raise EmbeddingTierUnavailable(detail) from exc
         if embedding.shape[0] != 1:
+            raise EmbeddingTierUnavailable(
+                "The configured embedding model returned an unexpected vector shape "
+                f"{tuple(embedding.shape)} for one query."
+            )
+        return embedding
+
+    async def _async_encode_query(self, query: str) -> np.ndarray:
+        if self._model_backend_factory is None:
+            raise EmbeddingTierUnavailable(
+                "The embedding tier needs a configured embedding model to encode the "
+                "query. Configure groundworkers.embedding_model_name."
+            )
+        try:
+            import numpy as np
+            from omop_emb import EmbeddingRole
+
+            if self._model_backend is None:
+                self._model_backend = self._model_backend_factory()
+            vectors = await self._model_backend.async_embed_texts(
+                [query],
+                role=EmbeddingRole.QUERY,
+            )
+            embedding = np.asarray(vectors)
+        except Exception as exc:
+            detail = (
+                "The configured embedding model could not encode the query "
+                f"({type(exc).__name__}); lexical tiers remain available."
+            )
+            logger.warning("%s", detail)
+            raise EmbeddingTierUnavailable(detail) from exc
+        if embedding.ndim != 2 or embedding.shape[0] != 1:
             raise EmbeddingTierUnavailable(
                 "The configured embedding model returned an unexpected vector shape "
                 f"{tuple(embedding.shape)} for one query."

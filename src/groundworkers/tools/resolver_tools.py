@@ -31,7 +31,7 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
     """
 
     @server.tool("concept_ground")
-    def concept_ground(
+    async def concept_ground(
         query: str,
         limit: int = 5,
         domain: str | None = None,
@@ -113,7 +113,7 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
             active_only,
         )
         try:
-            ground_result = grounding_service.ground(
+            ground_result = await grounding_service.async_ground(
                 stripped,
                 limit=safe_limit,
                 domain=domain or None,

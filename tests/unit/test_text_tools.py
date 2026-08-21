@@ -63,6 +63,47 @@ class StubTextService:
             raise self._raises
         return self._mapping_cleanup
 
+    async def async_normalize(self, text, *, domain_hint=None, model_name=None):
+        return self.normalize(text, domain_hint=domain_hint, model_name=model_name)
+
+    async def async_decompose(self, text, *, domain_hint=None, max_terms=10, model_name=None):
+        return self.decompose(
+            text,
+            domain_hint=domain_hint,
+            max_terms=max_terms,
+            model_name=model_name,
+        )
+
+    async def async_disambiguate(
+        self,
+        text,
+        *,
+        domain_hint=None,
+        max_interpretations=5,
+        model_name=None,
+    ):
+        return self.disambiguate(
+            text,
+            domain_hint=domain_hint,
+            max_interpretations=max_interpretations,
+            model_name=model_name,
+        )
+
+    async def async_mapping_cleanup(
+        self,
+        text,
+        *,
+        context=None,
+        domain_hint=None,
+        model_name=None,
+    ):
+        return self.mapping_cleanup(
+            text,
+            context=context,
+            domain_hint=domain_hint,
+            model_name=model_name,
+        )
+
 
 def _server(service) -> GroundworkersMCPServer:
     server = GroundworkersMCPServer("test-server")

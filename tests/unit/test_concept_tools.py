@@ -256,6 +256,9 @@ class StubGroundingService:
             },
         }
 
+    async def async_ground(self, query: str, **kwargs) -> dict:
+        return self.ground(query, **kwargs)
+
 
 def build_server(adapter, grounding_service=None) -> GroundworkersMCPServer:
     server = GroundworkersMCPServer("test-server")

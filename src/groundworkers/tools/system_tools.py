@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from groundworkers.adapters.llm import LLMAdapter
@@ -99,8 +99,20 @@ def register_system_tools(
         probe_cache[key] = (now, result)
         return result
 
+    async def async_cached_probe(
+        key: str,
+        probe: Callable[[], Awaitable[tuple[bool, str | None]]],
+    ) -> tuple[bool, str | None]:
+        now = time.monotonic()
+        cached = probe_cache.get(key)
+        if cached is not None and now - cached[0] < _HEALTH_PROBE_CACHE_SECONDS:
+            return cached[1]
+        result = await probe()
+        probe_cache[key] = (now, result)
+        return result
+
     @server.tool("system_status")
-    def system_status() -> dict[str, Any]:
+    async def system_status() -> dict[str, Any]:
         """Returns availability and live health of each configured backend.
 
         overall is one of:
@@ -137,13 +149,13 @@ def register_system_tools(
         if emb_adapter is not None:
             try:
                 status = emb_adapter.index_status()
-                live_probe = getattr(emb_adapter, "probe_live_query", None)
+                live_probe = getattr(emb_adapter, "async_probe_live_query", None)
                 if (
                     status["available"]
                     and emb_adapter.has_model_backend()
                     and callable(live_probe)
                 ):
-                    embedding_live = cached_probe(
+                    embedding_live = await async_cached_probe(
                         "embedding",
                         live_probe,
                     )
@@ -196,7 +208,7 @@ def register_system_tools(
 
         if llm_adapter is not None:
             try:
-                status = llm_adapter.status()
+                status = await llm_adapter.async_status()
                 components["llm"] = {
                     "available": status["available"],
                     "provider": status.get("provider"),

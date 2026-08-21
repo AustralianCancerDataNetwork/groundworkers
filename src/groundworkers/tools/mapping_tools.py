@@ -43,7 +43,7 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return exc.to_dict()
 
     @server.tool("concept_candidate_bundle")
-    def concept_candidate_bundle(
+    async def concept_candidate_bundle(
         query: str,
         domain: str | None = None,
         vocabulary_id: str | None = None,
@@ -73,7 +73,7 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
         active_only filters out retired (invalid) concepts.
         """
         try:
-            return mapping_service.concept_candidate_bundle(
+            return await mapping_service.async_concept_candidate_bundle(
                 query,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
@@ -97,7 +97,7 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
             return exc.to_dict()
 
     @server.tool("concept_nearest_standard_ancestor")
-    def concept_nearest_standard_ancestor(
+    async def concept_nearest_standard_ancestor(
         query: str | None = None,
         concept_id: int | None = None,
         domain: str | None = None,
@@ -116,7 +116,7 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
         safe_depth = max(1, min(max_depth, 10))
         safe_limit = max(1, min(candidate_limit, 20))
         try:
-            return mapping_service.concept_nearest_standard_ancestor(
+            return await mapping_service.async_concept_nearest_standard_ancestor(
                 query=query,
                 concept_id=concept_id,
                 domain=domain,

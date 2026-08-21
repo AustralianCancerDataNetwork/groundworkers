@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 from collections.abc import Callable
@@ -37,21 +38,38 @@ class GroundworkersMCPServer:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or _callable_name(func)
 
-            @wraps(func)
-            def guarded(*args: Any, **kwargs: Any) -> Any:
-                try:
-                    result = func(*args, **kwargs)
-                except GroundworkersError as exc:
-                    return exc.to_dict()
-                except ValueError as exc:
-                    return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
-                except Exception as exc:
-                    return internal_error_response(
-                        exc,
-                        logger=logger,
-                        boundary=f"mcp.tool.{tool_name}",
-                    )
-                return _sanitise_tool_result(result, tool_name=tool_name)
+            if inspect.iscoroutinefunction(func):
+                @wraps(func)
+                async def guarded(*args: Any, **kwargs: Any) -> Any:
+                    try:
+                        result = await func(*args, **kwargs)
+                    except GroundworkersError as exc:
+                        return exc.to_dict()
+                    except ValueError as exc:
+                        return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                    except Exception as exc:
+                        return internal_error_response(
+                            exc,
+                            logger=logger,
+                            boundary=f"mcp.tool.{tool_name}",
+                        )
+                    return _sanitise_tool_result(result, tool_name=tool_name)
+            else:
+                @wraps(func)
+                def guarded(*args: Any, **kwargs: Any) -> Any:
+                    try:
+                        result = func(*args, **kwargs)
+                    except GroundworkersError as exc:
+                        return exc.to_dict()
+                    except ValueError as exc:
+                        return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                    except Exception as exc:
+                        return internal_error_response(
+                            exc,
+                            logger=logger,
+                            boundary=f"mcp.tool.{tool_name}",
+                        )
+                    return _sanitise_tool_result(result, tool_name=tool_name)
 
             self._tools[tool_name] = guarded
             return guarded
@@ -91,7 +109,20 @@ class GroundworkersMCPServer:
         return sorted(self._resources.keys())
 
     def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
-        return self._tools[name](*args, **kwargs)
+        result = self._tools[name](*args, **kwargs)
+        if not inspect.isawaitable(result):
+            return result
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(result)
+        return result
+
+    async def call_async(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        """Call a registered tool from an existing async runtime."""
+
+        result = self._tools[name](*args, **kwargs)
+        return await result if inspect.isawaitable(result) else result
 
     def call_prompt(self, name: str, **kwargs: Any) -> Any:
         func, _ = self._prompts[name]

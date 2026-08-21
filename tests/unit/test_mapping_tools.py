@@ -17,9 +17,15 @@ class StubMappingService:
         self.calls.append(("concept_candidate_bundle", {"query": query, **kwargs}))
         return {"query": query.strip(), "channels": {}, "candidate_union": [], "warnings": []}
 
+    async def async_concept_candidate_bundle(self, query: str, **kwargs):
+        return self.concept_candidate_bundle(query, **kwargs)
+
     def concept_nearest_standard_ancestor(self, **kwargs):
         self.calls.append(("concept_nearest_standard_ancestor", kwargs))
         return {"found": True, "selected_parent": {"concept_id": 1}}
+
+    async def async_concept_nearest_standard_ancestor(self, **kwargs):
+        return self.concept_nearest_standard_ancestor(**kwargs)
 
     def concept_mapping_context(self, concept_id: int, **kwargs):
         self.calls.append(("concept_mapping_context", {"concept_id": concept_id, **kwargs}))
@@ -70,7 +76,7 @@ def test_concept_search_normalized_clamps_limit_and_calls_service():
 
 def test_concept_candidate_bundle_rejects_invalid_input_from_service():
     class InvalidService(StubMappingService):
-        def concept_candidate_bundle(self, query: str, **kwargs):
+        async def async_concept_candidate_bundle(self, query: str, **kwargs):
             raise ValueError("query must be a non-empty string")
 
     server = build_server(InvalidService())
@@ -82,7 +88,7 @@ def test_concept_candidate_bundle_rejects_invalid_input_from_service():
 
 def test_concept_nearest_standard_ancestor_returns_groundworkers_error_dict():
     class ErrorService(StubMappingService):
-        def concept_nearest_standard_ancestor(self, **kwargs):
+        async def async_concept_nearest_standard_ancestor(self, **kwargs):
             raise GroundworkersError("NOT_FOUND", "missing")
 
     server = build_server(ErrorService())

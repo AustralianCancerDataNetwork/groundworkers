@@ -85,6 +85,12 @@ class StubEmbAdapter:
             "vector": [0.1, 0.2, 0.3],
         }
 
+    async def async_search(self, **kwargs) -> dict:
+        return self.search(**kwargs)
+
+    async def async_encode(self, text: str, model_name: str | None) -> dict:
+        return self.encode(text=text, model_name=model_name)
+
 
 def build_server(adapter) -> GroundworkersMCPServer:
     server = GroundworkersMCPServer("test-server")
@@ -189,7 +195,7 @@ def test_embedding_search_rejects_empty_query():
 
 def test_embedding_search_returns_error_dict_for_cava_error():
     class UnavailableAdapter(StubEmbAdapter):
-        def search(
+        async def async_search(
             self,
             query: str,
             limit: int,

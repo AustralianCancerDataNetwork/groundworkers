@@ -106,6 +106,68 @@ class ConceptGroundingService:
             },
         }
 
+    async def async_ground(
+        self,
+        query: str,
+        *,
+        limit: int,
+        domain: str | None,
+        vocabulary_id: str | None,
+        parent_ids: tuple[int, ...] | None = None,
+        standard_only: bool = False,
+        active_only: bool = False,
+    ) -> dict[str, Any]:
+        """MCP-facing grounding with native async embedding resolution."""
+
+        stripped = query.strip()
+        if not stripped:
+            raise ValueError("query must be a non-empty string")
+        if limit <= 0:
+            raise GroundworkersError(
+                "INVALID_INPUT",
+                f"limit must be a positive integer, got {limit}",
+            )
+        canonical_domain = self._graph.canonicalize_domain(domain)
+        search_constraint = self._build_search_constraint(
+            canonical_domain,
+            vocabulary_id,
+            standard_only=standard_only,
+            active_only=active_only,
+        )
+        if parent_ids is not None and not parent_ids:
+            raise GroundworkersError(
+                "QUERY_ERROR",
+                "parent_ids was provided but empty; omit it to run unconstrained grounding",
+            )
+        result = await self._graph.async_ground_with_plan(
+            GroundingPlan(
+                query=stripped,
+                limit=limit,
+                constraints=GroundingConstraints(
+                    parent_ids=parent_ids,
+                    search_constraint=search_constraint,
+                    max_depth=self._max_depth,
+                ),
+                tiers=self._build_tier_plan(
+                    query=stripped,
+                    search_space_narrowed=bool(canonical_domain or vocabulary_id),
+                ),
+                min_fulltext_overlap=self._min_fulltext_overlap,
+            )
+        )
+        return {
+            "results": result["results"],
+            "grounding_explanation": {
+                "matched_tier": result["matched_tier"],
+                "used_embedding": result["used_embedding"],
+                "effective_parent_ids": list(parent_ids) if parent_ids is not None else [],
+                "parent_ids_source": "explicit" if parent_ids is not None else "none",
+                "standard_only": standard_only,
+                "active_only": active_only,
+                "embedding_tier_detail": result.get("embedding_tier_detail"),
+            },
+        }
+
     def _build_search_constraint(
         self,
         domain: str | None,
