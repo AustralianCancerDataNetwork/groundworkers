@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 import shutil
-from importlib import import_module
 from dataclasses import replace
+from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
