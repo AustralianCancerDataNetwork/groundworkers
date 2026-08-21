@@ -659,3 +659,61 @@ def test_a_wizard_text_box_is_actually_drawn(tmp_path: Path) -> None:
             assert box.text.startswith("A")
 
     asyncio.run(run_check())
+
+
+def test_a_compact_review_shows_embedding_model_changes(tmp_path: Path) -> None:
+    """The review table must retain rows in a small terminal."""
+    pytest.importorskip("groundskeeping")
+
+    from groundskeeping.app import OperatorApp
+    from groundskeeping.configurator import ConfigWizardController, MutationOperation
+    from groundskeeping.widgets.wizard import WizardScreen
+    from textual.widgets import DataTable
+
+    from groundworkers.application.setup.configuration_provider import (
+        GroundworkersConfigMutationService,
+        model_setup_workflow,
+    )
+    from groundworkers.tui.app import build_groundworkers_app, build_groundworkers_tui_spec
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    controller = ConfigWizardController(
+        model_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(
+            config_path,
+            model_discoverer=lambda *_: ("embedding-model:v1",),
+        ),
+    )
+
+    async def run_check() -> None:
+        app_class = build_groundworkers_app()
+        app = app_class(build_groundworkers_tui_spec(config_path=str(config_path)))
+
+        async with app.run_test(size=(70, 24)) as pilot:
+            app.push_screen(WizardScreen(controller))
+            await pilot.pause()
+            screen = app.screen
+            for values in (
+                {
+                    "provider_name": "embedding_provider",
+                    "provider_kind": "ollama",
+                    "base_url": "http://localhost:11434/v1",
+                    "api_key": None,
+                },
+                {"model_source": "new"},
+                {
+                    "model_entry_name": "embedding_model",
+                    "model_choice": "embedding-model:v1",
+                },
+                {"prefix_convention": "none"},
+            ):
+                await screen._set_snapshot(screen._controller.submit(values).snapshot)
+                await pilot.pause()
+
+            table = screen.query_one("#wizard-review-table", DataTable)
+            assert table.row_count > 0
+            assert table.region.height > 1
+            assert str(table.get_row_at(0)[0]).startswith("models.embedding_model")
+
+    asyncio.run(run_check())

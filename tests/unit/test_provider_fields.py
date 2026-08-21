@@ -45,7 +45,7 @@ def test_offered_providers_are_ones_any_llm_accepts(build, kind_key, url_key) ->
 def test_ollama_defaults_to_its_well_known_endpoint(build, kind_key, url_key) -> None:
     default = _field(build(StackConfig(tools={"groundworkers": {}})), url_key).default
 
-    assert default == "http://localhost:11434/v1"
+    assert default == "http://localhost:11434"
 
 
 @FIELDS

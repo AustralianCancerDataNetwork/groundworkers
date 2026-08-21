@@ -53,7 +53,7 @@ schema_name = "public"
 
 [providers.local_ollama]
 provider = "ollama"
-base_url = "http://localhost:11434/v1"
+base_url = "http://localhost:11434"
 api_key  = "ollama"
 
 # Embedding model, referenced by embedding_model_name below.
@@ -122,3 +122,20 @@ source_planning_llm_assisted_enabled = true
 
 # Semantic projection tools are opt-in.
 semantic_projection_enabled = false
+
+# Groundworkers launches omop-emb for managed population runs. oa-configurator
+# gives each package its own typed tool section; both packages share the actual
+# CDM, model, and vector-store entries by naming the same resources here.
+[tools.omop_emb]
+cdm_db               = "cdm_db"
+embedding_model_name = "embedding_model"
+vector_store_name    = "embeddings"
+
+# Groundworkers also launches these packages' CDM maintenance CLIs. Their own
+# typed sections point at the same shared CDM entry. Groundworkers does not read
+# their package policy at runtime.
+[tools.omop_alchemy]
+cdm_db = "cdm_db"
+
+[tools.omop_graph]
+cdm_db = "cdm_db"

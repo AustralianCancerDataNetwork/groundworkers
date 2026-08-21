@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from groundworkers.application.setup.configuration import load_configuration
@@ -10,6 +11,20 @@ from groundworkers.application.setup.runtime_setup import (
     load_llm_provider_configuration,
     verify_llm_provider,
 )
+
+
+class _JsonResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self._payload).encode()
 
 
 def test_runtime_sections_load_from_plain_tool_mappings_and_redact_secrets(
@@ -126,6 +141,43 @@ def test_llm_provider_check_reports_missing_configured_model(tmp_path: Path) -> 
     assert result.model_available is False
     assert result.ready is False
     assert result.has_errors is True
+
+
+def test_ollama_inventory_uses_native_endpoint_with_or_without_v1(
+    monkeypatch, tmp_path: Path
+) -> None:
+    path = _write_llm_config(
+        tmp_path,
+        model="snowflake-arctic-embed2:local-2026-06-30",
+        provider="ollama",
+        api_base="http://localhost:11434/v1",
+    )
+    snapshot = load_configuration(config_path=path)
+    requested: list[str] = []
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        requested.append(request if isinstance(request, str) else request.full_url)
+        return _JsonResponse(
+            {
+                "models": [
+                    {
+                        "name": "snowflake-arctic-embed2:local-2026-06-30",
+                        "details": {"embedding_length": 1024},
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.runtime_setup.urlopen", fake_urlopen
+    )
+    result = verify_llm_provider(snapshot)
+
+    assert result is not None
+    assert result.reachable is True
+    assert result.model_available is True
+    assert requested == ["http://localhost:11434/api/tags"]
 
 
 def test_llm_provider_check_enriches_ollama_model_metadata(tmp_path: Path) -> None:

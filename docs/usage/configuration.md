@@ -64,8 +64,8 @@ database_name = "omop"
 [databases.cdm_db]
 kind = "cdm"
 connection = "cdm_main"
-schema_name = "omop"
-vocab_schema = "omop_vocab"
+schema_name = "public"
+vocab_schema = "public"
 
 [providers.local_ollama]
 provider = "ollama"
@@ -105,11 +105,36 @@ grounding_min_fulltext_overlap = 0.5
 grounding_max_depth = 5
 
 source_planning_llm_assisted_enabled = true
+
+[tools.omop_emb]
+cdm_db = "cdm_db"
+embedding_model_name = "embedding_model"
+vector_store_name = "embeddings"
+
+[tools.omop_alchemy]
+cdm_db = "cdm_db"
+
+[tools.omop_graph]
+cdm_db = "cdm_db"
 ```
 
 Settings are flat, grouped by name prefix. For example, `omop-config configure groundworkers --grounding-max-depth 6` updates that field without changing its neighbours.
 
 A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name` and every lexical feature still works. See [Runtime combinations](#what-becomes-available-at-runtime).
+
+When both embedding references are configured, the setup console also writes
+`[tools.omop_emb]` with the same `cdm_db`, model, and vector-store names.
+`oa-configurator` gives each package a typed tool section; the database, model,
+provider, and store definitions remain single shared entries. This binding is
+required because managed population runs execute the `omop-emb` CLI. The setup
+change is planned and saved atomically with `[tools.groundworkers]`.
+
+CDM setup similarly writes `[tools.omop_alchemy]` and `[tools.omop_graph]`
+with the same `cdm_db` reference. Groundworkers launches those packages' schema,
+full-text, index, and relationship-classification maintenance CLIs, which resolve
+their own typed package sections. Groundworkers' runtime graph adapter continues
+to receive its engine and optional embedding dependencies directly; it does not
+read omop-graph's traversal or embedding configuration.
 
 ### Reference fields
 
@@ -169,7 +194,7 @@ The chat model used by `TextService`, `DomainService`, and LLM-assisted source p
 ```toml
 [providers.local_ollama]
 provider = "ollama"
-base_url = "http://localhost:11434/v1"
+base_url = "http://localhost:11434"
 api_key = "…"
 
 [models.chat_model]

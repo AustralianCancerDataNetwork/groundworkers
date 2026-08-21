@@ -10,6 +10,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Final
 
@@ -43,6 +44,7 @@ from groundskeeping.contracts.actions import (
 from oa_configurator import (  # type: ignore[import-untyped]
     CDMDatabaseConfig,
     ConfigurationError,
+    PackageConfigBase,
     StackConfig,
     is_sensitive,
     plan_configure,
@@ -86,6 +88,8 @@ VECTOR_STORE_SETUP_TARGET: Final = ConfigTarget(
     "groundworkers.vector-store",
     "Groundworkers embedding store",
 )
+_OMOP_EMB_TOOL_NAME: Final = "omop_emb"
+_CDM_CLI_TOOL_NAMES: Final = ("omop_alchemy", "omop_graph")
 LLM_SETUP_TARGET: Final = ConfigTarget(
     ConfigTargetKind.TOOL,
     "groundworkers.llm",
@@ -746,7 +750,15 @@ class GroundworkersConfigMutationService:
         else:
             raise ValueError("Unsupported Groundworkers configuration target.")
         candidate = plan_configure(GroundworkersConfig, session.base, set_dict)
-        GroundworkersConfig.validate_candidate(candidate)
+        groundworkers = GroundworkersConfig.validate_candidate(candidate)
+        if session.target == CDM_SETUP_TARGET:
+            candidate = _align_cdm_cli_configs(candidate, groundworkers)
+        if session.target in {
+            CDM_SETUP_TARGET,
+            MODEL_SETUP_TARGET,
+            VECTOR_STORE_SETUP_TARGET,
+        }:
+            candidate = _align_omop_emb_config(candidate, groundworkers)
         return candidate
 
     def _invalidate_plan(self, session: _MutationSession) -> None:
@@ -1041,7 +1053,7 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "Provider endpoint",
             required=False,
             default=_default_endpoint(provider_kind, getattr(provider, "base_url", None)),
-            help="OpenAI-compatible root, including /v1. Blank uses the provider's own default.",
+            help=_endpoint_help(provider_kind),
         ),
         FieldSpec(
             "api_key",
@@ -1335,7 +1347,7 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "Provider endpoint",
             required=False,
             default=_default_endpoint(provider_kind, getattr(provider, "base_url", None)),
-            help="OpenAI-compatible root, including /v1. Blank uses the provider's own default.",
+            help=_endpoint_help(provider_kind),
         ),
         FieldSpec(
             "llm_api_key",
@@ -1523,6 +1535,93 @@ def _target_exists(stack: StackConfig | None, target: ConfigTarget) -> bool:
         name = tool.get("llm_model_name")
         return isinstance(name, str) and name in stack.models
     raise ValueError("Groundworkers does not support this configuration target.")
+
+
+def _align_omop_emb_config(
+    stack: StackConfig,
+    groundworkers: GroundworkersConfig | None = None,
+) -> StackConfig:
+    """Point omop-emb at the embedding resources Groundworkers will operate.
+
+    ``oa-configurator`` gives each package its own typed ``[tools.<name>]``
+    section. Packages share databases, models, and vector stores by having
+    their ``RefTo`` fields name the same top-level entries. Groundworkers
+    launches the omop-emb population CLI, so a complete Groundworkers embedding
+    tier must also configure omop-emb to use that same tier.
+
+    CDM, model, and vector-store setup are independently resumable. Until both
+    optional embedding references exist, leave omop-emb untouched rather than
+    creating a package section whose required references cannot validate.
+    """
+
+    resolved = groundworkers or GroundworkersConfig.validate_candidate(stack)
+    if (
+        resolved.embedding_model_name is None
+        or resolved.vector_store_name is None
+    ):
+        return stack
+    return plan_configure(
+        _registered_package_config(_OMOP_EMB_TOOL_NAME),
+        stack,
+        {
+            "cdm_db": resolved.cdm_db,
+            "embedding_model_name": resolved.embedding_model_name,
+            "vector_store_name": resolved.vector_store_name,
+        },
+    )
+
+
+def _align_cdm_cli_configs(
+    stack: StackConfig,
+    groundworkers: GroundworkersConfig | None = None,
+) -> StackConfig:
+    """Point managed graph-maintenance CLIs at Groundworkers' CDM.
+
+    Groundworkers supplies resolved dependencies directly to the omop-graph
+    runtime, so runtime graph configuration stays Groundworkers-owned. Its setup
+    console does, however, launch the omop-graph and omop-alchemy maintenance
+    CLIs. Each CLI resolves its own typed package section and therefore needs
+    its ``cdm_db`` reference bound to the same shared database entry.
+    """
+
+    resolved = groundworkers or GroundworkersConfig.validate_candidate(stack)
+    aligned = stack
+    for tool_name in _CDM_CLI_TOOL_NAMES:
+        aligned = plan_configure(
+            _registered_package_config(tool_name),
+            aligned,
+            {"cdm_db": resolved.cdm_db},
+        )
+    return aligned
+
+
+def _registered_package_config(tool_name: str) -> type[PackageConfigBase]:
+    """Load a package schema through oa-configurator's public plugin boundary."""
+
+    matches = tuple(
+        entry_point
+        for entry_point in entry_points(group="omop.config")
+        if entry_point.name == tool_name
+    )
+    if len(matches) != 1:
+        raise ConfigurationError(
+            f"Expected one omop.config entry point for {tool_name!r}; "
+            f"found {len(matches)}."
+        )
+    config_class = matches[0].load()
+    if not isinstance(config_class, type) or not issubclass(
+        config_class, PackageConfigBase
+    ):
+        raise ConfigurationError(
+            f"The omop.config entry point for {tool_name!r} is not a "
+            "PackageConfigBase subclass."
+        )
+    if config_class.tool_name != tool_name:
+        raise ConfigurationError(
+            f"The omop.config entry point {tool_name!r} declares tool name "
+            f"{config_class.tool_name!r}."
+        )
+    return config_class
 
 
 def _normalise_for_diff(stack: StackConfig) -> StackConfig:
@@ -1899,7 +1998,7 @@ def supported_provider_keys() -> frozenset[str]:
 # a well-known port get one; a hosted provider's own default is better than any
 # guess, and omop-llm falls back to it when base_url is unset.
 _PROVIDER_ENDPOINT_DEFAULTS: Final = {
-    "ollama": "http://localhost:11434/v1",
+    "ollama": "http://localhost:11434",
 }
 
 
@@ -1907,6 +2006,12 @@ def _default_endpoint(provider_kind: str | None, stored: str | None) -> str | No
     if stored:
         return stored
     return _PROVIDER_ENDPOINT_DEFAULTS.get(provider_kind or "")
+
+
+def _endpoint_help(provider_kind: str | None) -> str:
+    if provider_kind == "ollama":
+        return "Ollama server root, for example http://localhost:11434. Blank uses the provider's own default."
+    return "OpenAI-compatible root (do not include /v1). Blank uses the provider's own default."
 
 
 def _registry_summary(store: EmbeddingStoreSnapshot) -> str:

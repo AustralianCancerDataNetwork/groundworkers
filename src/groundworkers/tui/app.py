@@ -78,6 +78,11 @@ _WIZARD_FIELD_CSS = """
 #wizard-body TextArea:focus {
     border: tall $accent;
 }
+
+#wizard-body DataTable {
+    height: auto;
+    min-height: 4;
+}
 """
 
 

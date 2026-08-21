@@ -142,10 +142,21 @@ def verify_llm_config(
             )
         )
 
+    model_metadata: tuple[LlmModelMetadata, ...] = ()
+    ollama_metadata_checked = False
     try:
-        inventory = tuple(
-            (inventory_factory or _openai_compatible_inventory)(llm)
-        )
+        if inventory_factory is not None:
+            inventory = tuple(inventory_factory(llm))
+        elif _uses_ollama_inventory(llm):
+            # Ollama's model inventory is native /api/tags, not the
+            # OpenAI-compatible /models route. Reuse the metadata parser so
+            # the setup console accepts the same endpoint shape as the
+            # provider backend.
+            model_metadata = _ollama_model_metadata(llm)
+            ollama_metadata_checked = True
+            inventory = tuple(item.name for item in model_metadata)
+        else:
+            inventory = tuple(_openai_compatible_inventory(llm))
     except Exception as exc:
         # Broad except: converted to redacted setup state.
         failure = classify_connection_error(exc)
@@ -171,27 +182,35 @@ def verify_llm_config(
             "The LLM provider endpoint responded to model inventory.",
         )
     )
-    model_metadata: tuple[LlmModelMetadata, ...] = ()
     if _uses_ollama_inventory(llm):
-        try:
-            model_metadata = (
-                metadata_factory(llm)
-                if metadata_factory is not None
-                else _ollama_model_metadata(llm)
-            )
+        if not ollama_metadata_checked:
+            try:
+                model_metadata = (
+                    metadata_factory(llm)
+                    if metadata_factory is not None
+                    else _ollama_model_metadata(llm)
+                )
+                diagnostics.append(
+                    ResourceDiagnostic(
+                        "llm_ollama_metadata_available",
+                        "Ollama model metadata is available.",
+                    )
+                )
+            except Exception as exc:
+                # Enrichment must not block readiness when inventory came from
+                # an injected discovery service.
+                diagnostics.append(
+                    ResourceDiagnostic(
+                        "llm_ollama_metadata_unavailable",
+                        f"Ollama model metadata could not be read: {exc}",
+                        DiagnosticSeverity.WARNING,
+                    )
+                )
+        else:
             diagnostics.append(
                 ResourceDiagnostic(
                     "llm_ollama_metadata_available",
                     "Ollama model metadata is available.",
-                )
-            )
-        except Exception as exc:
-            # Broad except: enrichment must not block readiness.
-            diagnostics.append(
-                ResourceDiagnostic(
-                    "llm_ollama_metadata_unavailable",
-                    f"Ollama model metadata could not be read: {exc}",
-                    DiagnosticSeverity.WARNING,
                 )
             )
     inventory = _merge_model_inventory(inventory, model_metadata)
@@ -397,5 +416,4 @@ def _optional_str(value: object) -> str | None:
 
 def _effective_tool(stack: StackConfig, name: str):
     return stack.tools.get(name)
-
 
