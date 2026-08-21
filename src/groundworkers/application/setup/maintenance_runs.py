@@ -709,55 +709,115 @@ def _run_to_json(run: MaintenanceRun) -> dict[str, object]:
 
 
 def _command_from_json(data: dict[str, object]) -> MaintenanceCommand:
+    argv = data.get("argv")
+    environment = data.get("environment")
     return MaintenanceCommand(
-        argv=tuple(str(value) for value in data.get("argv", ())),
-        environment=tuple((str(pair[0]), str(pair[1])) for pair in data.get("environment", ())),
+        argv=tuple(str(value) for value in argv) if isinstance(argv, list) else (),
+        environment=tuple(
+            (str(pair[0]), str(pair[1]))
+            for pair in environment
+            if isinstance(pair, (list, tuple)) and len(pair) == 2
+        )
+        if isinstance(environment, list)
+        else (),
     )
 
 
 def _run_from_json(data: dict[str, object], root: Path) -> MaintenanceRun:
+    steps_data = data.get("steps")
     steps = []
-    for item in data.get("steps", ()):
+    for item in steps_data if isinstance(steps_data, list) else ():
+        if not isinstance(item, dict):
+            continue
         item = dict(item)
-        log = item.get("log_path")
+        command_data = item.get("command")
+        affected_resources = item.get("affected_resources")
+        log = _optional_str(item.get("log_path"))
+        started_at = item.get("started_at")
+        finished_at = item.get("finished_at")
+        exit_code = _optional_int(item.get("exit_code"))
+        process_pid = _optional_int(item.get("process_pid"))
+        process_start_time = _optional_float(item.get("process_start_time"))
+        message = _optional_str(item.get("message"))
         steps.append(
             MaintenanceStepRecord(
                 spec=MaintenanceStep(
                     key=str(item["key"]),
-                    command=_command_from_json(dict(item["command"])),
-                    affected_resources=tuple(str(value) for value in item.get("affected_resources", ())),
+                    command=(
+                        _command_from_json(dict(command_data))
+                        if isinstance(command_data, dict)
+                        else MaintenanceCommand(argv=())
+                    ),
+                    affected_resources=(
+                        tuple(str(value) for value in affected_resources)
+                        if isinstance(affected_resources, list)
+                        else ()
+                    ),
                     idempotent=bool(item.get("idempotent", True)),
                 ),
                 status=StepStatus(str(item.get("status", StepStatus.PENDING.value))),
-                started_at=item.get("started_at"),
-                finished_at=item.get("finished_at"),
-                exit_code=item.get("exit_code"),
-                log_path=(root / str(log)) if log else None,
-                process_pid=item.get("process_pid"),
-                process_start_time=item.get("process_start_time"),
-                message=item.get("message"),
+                started_at=_optional_str(started_at),
+                finished_at=_optional_str(finished_at),
+                exit_code=exit_code,
+                log_path=(root / log) if log is not None else None,
+                process_pid=process_pid,
+                process_start_time=process_start_time,
+                message=message,
             )
         )
+    postflight_data = data.get("postflight")
+    postflight = (
+        tuple(
+            _command_from_json(dict(command))
+            for command in postflight_data
+            if isinstance(command, dict)
+        )
+        if isinstance(postflight_data, list)
+        else ()
+    )
     return MaintenanceRun(
         run_id=str(data["run_id"]),
         kind=str(data["kind"]),
         status=RunStatus(str(data["status"])),
         created_at=str(data["created_at"]),
-        started_at=data.get("started_at"),
-        finished_at=data.get("finished_at"),
+        started_at=_optional_str(data.get("started_at")),
+        finished_at=_optional_str(data.get("finished_at")),
         root=root,
         steps=tuple(steps),
-        postflight=tuple(_command_from_json(dict(command)) for command in data.get("postflight", ())),
-        postflight_status=(StepStatus(str(data["postflight_status"])) if data.get("postflight_status") else None),
-        current_step=data.get("current_step"),
-        completed=int(data.get("completed", 0)),
-        last_message=data.get("last_message"),
-        exit_code=data.get("exit_code"),
-        supervisor_pid=data.get("supervisor_pid"),
-        supervisor_start_time=data.get("supervisor_start_time"),
-        retry_of=data.get("retry_of"),
-        failure=data.get("failure"),
+        postflight=postflight,
+        postflight_status=(
+            StepStatus(str(postflight_status))
+            if (postflight_status := _optional_str(data.get("postflight_status")))
+            is not None
+            else None
+        ),
+        current_step=_optional_int(data.get("current_step")),
+        completed=_optional_int(data.get("completed")) or 0,
+        last_message=_optional_str(data.get("last_message")),
+        exit_code=_optional_int(data.get("exit_code")),
+        supervisor_pid=_optional_int(data.get("supervisor_pid")),
+        supervisor_start_time=_optional_float(data.get("supervisor_start_time")),
+        retry_of=_optional_str(data.get("retry_of")),
+        failure=_optional_str(data.get("failure")),
     )
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
+
+
+def _optional_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

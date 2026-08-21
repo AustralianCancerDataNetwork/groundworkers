@@ -5,6 +5,7 @@ from pathlib import Path
 
 from oa_configurator import (
     ResolvedModel,
+    ResolvedVectorStore,
     Resolver,
     safe_endpoint,  # type: ignore[import-untyped]
 )
@@ -38,7 +39,7 @@ ModelInventoryDiscoverer = Callable[[ResolvedModel], Sequence[str]]
 def initialize_embedding_store(
     snapshot: ConfigurationSnapshot,
     *,
-    initializer: Callable[[object], EmbeddingBackend] | None = None,
+    initializer: Callable[[ResolvedVectorStore], EmbeddingBackend] | None = None,
 ) -> EmbeddingStoreSnapshot:
     """Run the reviewed store-initialization operation.
 

@@ -33,8 +33,8 @@ class EmbeddingStoreInitializationWizardController:
     def start(self) -> WizardSnapshot:
         return self._snapshot()
 
-    def review(self) -> WizardSnapshot:
-        return self._snapshot()
+    def review(self) -> WizardTransition:
+        return WizardTransition(self._snapshot())
 
     def submit(self, _values: Mapping[str, object]) -> WizardTransition:
         return WizardTransition(self._snapshot())

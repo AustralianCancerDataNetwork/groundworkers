@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 from groundskeeping.configurator import (
     ConfigTarget,
@@ -19,6 +20,7 @@ from groundskeeping.contracts import (
     TableView,
     TextView,
 )
+from groundskeeping.contracts.wizards import WizardController
 
 from groundworkers._env import rejected_config_path
 from groundworkers.application.setup.configuration_provider import (
@@ -187,7 +189,7 @@ class SetupPage(GroundworkersPage):
         if not isinstance(view, TableView):
             self._show_current_view(context)
             return
-        context.surface.refresh_view(self.route.key, view)
+        context.surface.show_view(self.route.key, view)
         self._show_section_detail(context)
 
     def _config_path_was_rejected(self) -> bool:
@@ -497,7 +499,10 @@ class SetupPage(GroundworkersPage):
             )
 
             context.open_wizard(
-                EmbeddingStoreInitializationWizardController(self._session)
+                cast(
+                    WizardController,
+                    EmbeddingStoreInitializationWizardController(self._session),
+                )
             )
             return
         if action_key == "embeddings.check_model":

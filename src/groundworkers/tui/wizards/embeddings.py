@@ -143,6 +143,13 @@ class EmbeddingPopulationWizardController:
                 detail=str(exc),
                 refresh_pages=frozenset({SETUP_ROUTE.key}),
             )
+        if launch is None:
+            return WizardResult(
+                status=WizardResultStatus.FAILED,
+                summary="Embedding population was not started.",
+                detail="The launcher returned no run record.",
+                refresh_pages=frozenset({SETUP_ROUTE.key}),
+            )
         if isinstance(launch, MaintenanceRun):
             return WizardResult(
                 status=WizardResultStatus.APPLIED,

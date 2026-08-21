@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
+from typing import Any, cast
 
 from oa_configurator import (  # type: ignore[import-untyped]
     ConfigurationError,
@@ -8,7 +10,6 @@ from oa_configurator import (  # type: ignore[import-untyped]
     Resolver,
     StackConfig,
     load_stack_config,
-    load_stack_config_from_path,
 )
 
 from groundworkers.config import (
@@ -21,8 +22,9 @@ from groundworkers.config import (
 def build_app_config(*, config_path: str | Path | None = None) -> AppConfig:
     """Resolve the stack configuration into Groundworkers' runtime view."""
 
+    configurator = cast(Any, import_module("oa_configurator"))
     stack = (
-        load_stack_config_from_path(config_path)
+        configurator.load_stack_config_from_path(config_path)
         if config_path is not None
         else load_stack_config()
     )

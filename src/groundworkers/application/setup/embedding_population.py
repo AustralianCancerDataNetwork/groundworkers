@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import re
 import shutil
+from importlib import import_module
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 from oa_configurator import Resolver, safe_endpoint
 from omop_llm import canonical_model_name
@@ -289,12 +291,17 @@ def inspect_resolved_vector_store(resolved):
 def plan_population(cdm_engine, store, *, model_name: str, scope):
     """Load the optional identity-planning contract at use time."""
 
-    from omop_emb.population import plan_population as plan
+    population = cast(Any, import_module("omop_emb.population"))
 
-    return plan(cdm_engine, store, model_name=model_name, scope=scope)
+    return population.plan_population(
+        cdm_engine,
+        store,
+        model_name=model_name,
+        scope=scope,
+    )
 
 
 def _population_scope(**kwargs):
-    from omop_emb.population import PopulationScope
+    population = cast(Any, import_module("omop_emb.population"))
 
-    return PopulationScope(**kwargs)
+    return population.PopulationScope(**kwargs)
