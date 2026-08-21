@@ -1,13 +1,6 @@
-from pathlib import Path
 import json
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.source_planning import SourcePlanningService
 from groundworkers.tools.source_planning_tools import (
     register_source_planning_resources,
@@ -15,8 +8,8 @@ from groundworkers.tools.source_planning_tools import (
 )
 
 
-def _server() -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def _server() -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_source_planning_tools(server, SourcePlanningService())
     register_source_planning_resources(server)
     return server

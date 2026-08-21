@@ -7,12 +7,13 @@ column names deterministic. They must not assign semantic roles.
 
 from __future__ import annotations
 
+import re
+import warnings
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from html import unescape
-import re
-from typing import Any, Iterable
-import warnings
+from typing import Any
 
 from groundworkers.services.source_planning.models import NormalisedTable, RawTable
 from groundworkers.services.source_planning.provenance import HeaderProvenance

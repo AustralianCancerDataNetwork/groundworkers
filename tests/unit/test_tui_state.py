@@ -2,14 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("groundskeeping")  # setup write flows live behind the `tui` extra
+
 from groundskeeping.contracts import TableView
 
-from groundworkers.application.setup.configuration import load_configuration
 from groundworkers.application.setup.models import (
     ClassifiedFailure,
+    ConfigurationOwnership,
     ConfigurationState,
     ConnectionFailureKind,
     ConnectionResult,
+    CoverageScope,
+    CoverageSnapshot,
     DatabaseTarget,
     DiagnosticSeverity,
     EmbeddingConfiguration,
@@ -18,31 +24,55 @@ from groundworkers.application.setup.models import (
     LlmModelMetadata,
     LlmProviderCheckResult,
     LlmProviderConfiguration,
-    CoverageScope,
-    CoverageSnapshot,
+    OwnershipMode,
     ResourceDiagnostic,
     VocabularyCoverage,
-)
-from groundworkers.application.setup.runtime_setup import (
-    load_llm_provider_configuration,
 )
 from groundworkers.tui.presenters.database import DatabasePresenter
 from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.state import SetupSession
-from groundworkers.tui.wizards.llm_provider import (
-    LlmProviderConfigurationWizardController,
-)
+
+
+def _embedding_configuration(**overrides) -> EmbeddingConfiguration:
+    values = {
+        "backend": "sqlitevec",
+        "vector_store_name": "embedding_store",
+        "database_name": "embedding_db",
+        "connection_name": "embedding_main",
+        "database_safe_url": "sqlite:///embeddings.db",
+        "provider_name": "embedding_provider",
+        "provider_kind": "ollama",
+        "model_entry_name": "embedding_model",
+        "model_name": "qwen3-embedding:0.6b",
+        "embeddings_supported": True,
+        "api_base": "http://localhost:11434/v1",
+    }
+    values.update(overrides)
+    return EmbeddingConfiguration(**values)
 
 
 def test_setup_session_starts_with_missing_config() -> None:
     session = SetupSession(
         config_path="/definitely/not/a/groundworkers-config.toml",
-        profile="test",
     )
 
     assert session.configuration.state is ConfigurationState.MISSING
     assert session.databases_connected is False
+
+
+def test_setup_session_accepts_explicit_read_only_ownership(tmp_path: Path) -> None:
+    ownership = ConfigurationOwnership(
+        mode=OwnershipMode.DERIVED_READ_ONLY,
+        source_label="Container supplied configuration",
+    )
+    session = SetupSession(
+        config_path=tmp_path / "config.toml",
+        ownership=ownership,
+    )
+
+    assert session.configuration.ownership.editable is False
+    assert session.configuration.ownership.source_label == "Container supplied configuration"
 
 
 def test_malformed_config_is_presented_without_secret(tmp_path: Path) -> None:
@@ -74,13 +104,17 @@ def test_database_failure_status_uses_classified_kind(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -88,8 +122,8 @@ cdm_schema = "main"
     target = DatabaseTarget(
         key="database.cdm",
         label="CDM / vocabulary",
-        resource_name="cdm_db",
-        database_name="main",
+        database_entry_name="cdm_db",
+        connection_name="main",
         safe_url="sqlite:///:memory:",
         cdm_schema="main",
         vocabulary_schema="main",
@@ -120,13 +154,17 @@ def test_database_warning_status_uses_successful_diagnostics(tmp_path: Path) -> 
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -134,8 +172,8 @@ cdm_schema = "main"
     target = DatabaseTarget(
         key="database.cdm",
         label="CDM / vocabulary",
-        resource_name="cdm_db",
-        database_name="main",
+        database_entry_name="cdm_db",
+        connection_name="main",
         safe_url="sqlite:///:memory:",
         cdm_schema="main",
         vocabulary_schema="main",
@@ -172,40 +210,51 @@ cdm_schema = "main"
 def test_embeddings_presenter_shows_sqlitevec_and_faiss_paths() -> None:
     view = EmbeddingsPresenter().landing(
         database_ready=True,
-        configuration=EmbeddingConfiguration(
-            backend="sqlitevec",
-            provider_kind="ollama",
-            model_name="qwen3-embedding:0.6b",
-            api_base="http://localhost:11434/v1",
-            sqlite_path="embeddings.db",
-            sqlite_path_exists=True,
+        configuration=_embedding_configuration(
+            database_path="embeddings.db",
+            database_path_exists=True,
             faiss_cache_dir="faiss-cache",
             faiss_cache_dir_exists=False,
         ),
     )
 
     assert view.status.name == "WARNING"
-    assert view.rows[0].cells == ("Store", "sqlitevec · embeddings.db", "Found")
+    assert view.rows[0].cells == (
+        "Store",
+        "embedding_store · sqlitevec · embeddings.db",
+        "Found",
+    )
+    assert view.rows[1].cells == (
+        "Provider",
+        "embedding_provider (ollama) · http://localhost:11434/v1",
+        "Not checked",
+    )
+    assert view.rows[2].cells == (
+        "Model",
+        "embedding_model · qwen3-embedding:0.6b",
+        "Not checked",
+    )
     assert view.rows[3].cells == ("FAISS cache", "faiss-cache", "Missing")
 
 
 def test_embeddings_presenter_explains_faiss_is_not_a_backend() -> None:
     view = EmbeddingsPresenter().landing(
         database_ready=True,
-        configuration=EmbeddingConfiguration(
+        configuration=_embedding_configuration(
             backend="faiss",
-            provider_kind="ollama",
-            model_name="qwen3-embedding:0.6b",
-            api_base="http://localhost:11434/v1",
         ),
     )
 
     assert view.status.name == "ERROR"
-    assert view.rows[0].cells == ("Store", "FAISS configured as backend", "Invalid")
-    assert "faiss_cache_dir" in str(view.message)
+    assert view.rows[0].cells == (
+        "Store",
+        "embedding_store · faiss",
+        "Unsupported",
+    )
+    assert "sqlitevec or pgvector" in str(view.message)
 
 
-def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
+def test_embeddings_presenter_leaves_index_readiness_to_performance() -> None:
     coverage = CoverageSnapshot(
         scope=CoverageScope(
             model_name="qwen3-embedding:0.6b",
@@ -228,11 +277,8 @@ def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
         embedded_total=4,
         pending_total=6,
     )
-    configuration = EmbeddingConfiguration(
+    configuration = _embedding_configuration(
         backend="pgvector",
-        provider_kind="ollama",
-        model_name="qwen3-embedding:0.6b",
-        api_base="http://localhost:11434/v1",
     )
     report = EmbeddingCoverageReport(
         configuration=configuration,
@@ -257,23 +303,12 @@ def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
     assert isinstance(view, TableView)
     assert view.status.name == "WARNING"
     assert view.title == "Embedding setup"
-    assert view.rows[3].cells == (
-        "Index",
-        "Registry FLAT; physical index present",
-        "Warning",
-    )
-    assert view.rows[-3].cells == (
-        "! Index warning",
-        "Adding over an existing physical vector index will be slow.",
-        "Drop before large runs",
-    )
-    assert view.rows[-1].cells == (
-        "  Drop SQL 1",
-        "DROP INDEX IF EXISTS idx_emb_qwen3_cosine;",
-        "Suggested",
-    )
-    assert view.actions[1].label == "Populate"
-    assert view.actions[1].disabled is False
+    assert all(row.cells[0] != "Index" for row in view.rows)
+    assert all("index" not in row.key for row in view.rows)
+    assert "physical embedding index" not in str(view.message)
+    populate = next(a for a in view.actions if a.key == "embeddings.populate")
+    assert populate.label == "Populate"
+    assert populate.disabled is True
     assert isinstance(detail, TableView)
     assert detail.title == "Vocabulary coverage"
     assert detail.columns == (
@@ -438,138 +473,3 @@ def test_llm_provider_detail_reports_inventory_failure() -> None:
     assert "Failure: Connection Refused" in detail.body
     assert "Check that Ollama is running." in detail.body
     assert "error: The provider endpoint did not respond." in detail.body
-
-
-def test_llm_provider_wizard_scans_then_saves_selected_model(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    path = tmp_path / "config.toml"
-    path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.groundworkers.extra.llm]
-enabled = true
-provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "old-model"
-""",
-        encoding="utf-8",
-    )
-
-    def fake_scan(draft):
-        assert draft.provider == "ollama"
-        assert draft.api_base == "http://localhost:11434/v1"
-        return LlmProviderCheckResult(
-            provider=draft.provider,
-            api_base=draft.api_base,
-            default_model_name=None,
-            reachable=True,
-            inventory=("chat-model", "other-model"),
-        )
-
-    monkeypatch.setattr(
-        "groundworkers.tui.wizards.llm_provider.scan_llm_models",
-        fake_scan,
-    )
-    session = SetupSession(config_path=path)
-    controller = LlmProviderConfigurationWizardController(session)
-
-    start = controller.start()
-    assert start.step.key == "endpoint"
-
-    model_step = controller.submit(
-        {
-            "provider": "ollama",
-            "api_base": "http://localhost:11434/v1",
-        }
-    ).snapshot
-
-    assert model_step.step.key == "model"
-    assert [choice.value for choice in model_step.step.fields[0].choices] == [
-        "chat-model",
-        "other-model",
-    ]
-    assert model_step.values["default_model_name"] == "chat-model"
-
-    review = controller.submit({"default_model_name": "other-model"}).snapshot
-
-    assert review.step.key == "review"
-    assert review.can_apply is True
-    result = controller.apply()
-    assert result.status.value == "applied"
-
-    saved = load_llm_provider_configuration(load_configuration(config_path=path))
-    assert saved is not None
-    assert saved.provider == "ollama"
-    assert saved.api_base == "http://localhost:11434/v1"
-    assert saved.default_model_name == "other-model"
-
-
-def test_llm_provider_wizard_model_choices_include_ollama_metadata(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    path = tmp_path / "config.toml"
-    path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.groundworkers.extra.llm]
-enabled = true
-provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "chat-model"
-""",
-        encoding="utf-8",
-    )
-
-    def fake_scan(draft):
-        return LlmProviderCheckResult(
-            provider=draft.provider,
-            api_base=draft.api_base,
-            default_model_name="chat-model",
-            reachable=True,
-            inventory=("chat-model", "other-model"),
-            model_metadata=(
-                LlmModelMetadata(name="chat-model"),
-                LlmModelMetadata(name="other-model"),
-            ),
-        )
-
-    monkeypatch.setattr(
-        "groundworkers.tui.wizards.llm_provider.scan_llm_models",
-        fake_scan,
-    )
-
-    model_step = (
-        LlmProviderConfigurationWizardController(SetupSession(config_path=path))
-        .submit(
-            {
-                "provider": "ollama",
-                "api_base": "http://localhost:11434/v1",
-            }
-        )
-        .snapshot
-    )
-
-    assert [choice.value for choice in model_step.step.fields[0].choices] == [
-        "chat-model",
-        "other-model",
-    ]
-    assert model_step.values["default_model_name"] == "chat-model"

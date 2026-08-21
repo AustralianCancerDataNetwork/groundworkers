@@ -10,15 +10,15 @@ from omop_alchemy.cdm.model.vocabulary import (
     Concept_Synonym,
 )
 from sqlalchemy import column as sa_col
-from sqlalchemy import func, inspect as sa_inspect, select
+from sqlalchemy import func, select
+from sqlalchemy import inspect as sa_inspect
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.base.errors import GroundworkersError
 
-
-# note that this service should only contain logic related to querying the vocabulary; no higher-level business logic or heuristics
-# belong here - a lot of queries already exist on omop-graph and can be reused, so verify both locations before adding new methods here, 
-# and consider where the new method belongs long term.
+# Keep this service focused on vocabulary queries. Reuse an omop-graph primitive
+# when it already provides the required operation; higher-level policy belongs in
+# a domain service.
 
 # ---------------------------------------------------------------------------
 # Return types
@@ -117,6 +117,36 @@ class VocabService:
         self._detect_fts_sidecars()
         return bool(self._fts_name_sidecar)
 
+    def probe_fulltext(self) -> tuple[bool, str | None]:
+        """Smoke-test PostgreSQL full-text search with a representative term.
+
+        A sidecar column and GIN index can exist while all sidecar values are
+        NULL. Requiring one real match makes that state visible to health
+        reporting instead of treating schema presence as operational readiness.
+        """
+
+        try:
+            with self._cdm.session() as session:
+                probe_label = session.execute(
+                    select(Concept.concept_name)
+                    .where(Concept.concept_name.is_not(None))
+                    .where(Concept.concept_name != "")
+                    .order_by(Concept.concept_id)
+                    .limit(1)
+                ).scalar_one_or_none()
+            if not probe_label:
+                return False, "No non-empty concept label is available for probing."
+            results, available = self.search_fulltext(str(probe_label), limit=1)
+        except GroundworkersError as exc:
+            return False, exc.message
+        except Exception as exc:
+            return False, f"Full-text query probe failed with {type(exc).__name__}."
+        if not available:
+            return False, "Full-text sidecar columns are unavailable."
+        if not results:
+            return False, "Full-text smoke query returned no results."
+        return True, None
+
     # ------------------------------------------------------------------
     # search_exact
     # ------------------------------------------------------------------
@@ -205,7 +235,9 @@ class VocabService:
         except GroundworkersError:
             raise
         except Exception as exc:
-            raise GroundworkersError("QUERY_ERROR", f"search_exact failed: {exc}") from exc
+            raise GroundworkersError(
+                "QUERY_ERROR", f"search_exact failed with {type(exc).__name__}."
+            ) from exc
 
         return results
 
@@ -311,7 +343,9 @@ class VocabService:
         except GroundworkersError:
             raise
         except Exception as exc:
-            raise GroundworkersError("QUERY_ERROR", f"search_normalized failed: {exc}") from exc
+            raise GroundworkersError(
+                "QUERY_ERROR", f"search_normalized failed with {type(exc).__name__}."
+            ) from exc
 
         return results
 
@@ -421,7 +455,9 @@ class VocabService:
         except GroundworkersError:
             raise
         except Exception as exc:
-            raise GroundworkersError("QUERY_ERROR", f"search_fulltext failed: {exc}") from exc
+            raise GroundworkersError(
+                "QUERY_ERROR", f"search_fulltext failed with {type(exc).__name__}."
+            ) from exc
 
         results.sort(key=lambda r: r.ts_rank or 0.0, reverse=True)
         return results, True
@@ -493,7 +529,10 @@ class VocabService:
         except GroundworkersError:
             raise
         except Exception as exc:
-            raise GroundworkersError("QUERY_ERROR", f"navigate_to_standard failed: {exc}") from exc
+            raise GroundworkersError(
+                "QUERY_ERROR",
+                f"navigate_to_standard failed with {type(exc).__name__}.",
+            ) from exc
 
         results: list[StandardMapping] = []
         for cid in concept_ids:
@@ -622,7 +661,10 @@ class VocabService:
         except GroundworkersError:
             raise
         except Exception as exc:
-            raise GroundworkersError("QUERY_ERROR", f"relationship navigation failed: {exc}") from exc
+            raise GroundworkersError(
+                "QUERY_ERROR",
+                f"relationship navigation failed with {type(exc).__name__}.",
+            ) from exc
 
         results: list[RelatedConceptMapping] = []
         for cid in concept_ids:

@@ -12,11 +12,19 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from oa_configurator import Resolver
-from omop_emb.config import OmopEmbConfig
-from sqlalchemy import create_engine, inspect, text
+from oa_configurator import (  # type: ignore[import-untyped]
+    ResolvedCDMDatabase,
+    Resolver,
+)
+from omop_emb.backends.embedding_table import (
+    CONCEPT_METADATA_COLUMNS,
+    EMBEDDING_COLUMN_NAME,
+)
+from omop_emb.model_registry import ModelRegistry
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import Connection, Engine
-from sqlalchemy.exc import NoSuchModuleError, TimeoutError as SQLAlchemyTimeoutError
+from sqlalchemy.exc import NoSuchModuleError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from groundworkers.application.setup.models import (
     ClassifiedFailure,
@@ -27,11 +35,8 @@ from groundworkers.application.setup.models import (
     DiagnosticSeverity,
     ResourceDiagnostic,
 )
-from groundworkers.config import (
-    GroundworkersConfig,
-    resolve_cdm_resource_name,
-    resolve_embedding_resource_name,
-)
+from groundworkers.base.sql import quote_identifier
+from groundworkers.config import GroundworkersConfig
 
 CDM_TABLES = (
     "concept",
@@ -83,14 +88,13 @@ GROUNDWORKERS_TRIGRAM_INDEX_TARGETS = (
         ("idx_concept_synonym_lower_name_trgm",),
     ),
 )
-EMBEDDING_REGISTRY_TABLE = "model_registry"
+# Taken from omop-emb rather than restated: these describe tables omop-emb owns
+# and creates, so a column added there must not need a matching edit here to stay
+# checkable.
+EMBEDDING_REGISTRY_TABLE = ModelRegistry.__tablename__
 EMBEDDING_REQUIRED_COLUMNS = (
-    "concept_id",
-    "domain_id",
-    "vocabulary_id",
-    "is_standard",
-    "is_valid",
-    "embedding",
+    *(column.name for column in CONCEPT_METADATA_COLUMNS),
+    EMBEDDING_COLUMN_NAME,
 )
 
 
@@ -103,90 +107,80 @@ def resolve_database_targets(
         return ()
     stack = snapshot.stack
     resolver = Resolver(stack)
-    cdm_name = resolve_cdm_resource_name(stack)
-    cdm = resolver.resolve_resource(cdm_name)
-    groundworkers = GroundworkersConfig.from_stack(stack)
+    groundworkers = GroundworkersConfig.validate_candidate(stack)
+    cdm = resolver.resolve_database(groundworkers.cdm_db)
+    if not isinstance(cdm, ResolvedCDMDatabase):
+        return ()
     embedding_target: DatabaseTarget | None = None
     expected_embedding_model_name: str | None = None
     embedding_safe_url: str | None = None
     embedding_connection_url: str | None = None
+    embedding_schema: str | None = None
 
-    if _has_tool(stack, "omop_emb"):
-        embedding_config = OmopEmbConfig.from_stack(stack)
-        if embedding_config.backend == "pgvector":
-            embedding_name = resolve_embedding_resource_name(stack)
-            embedding = resolver.resolve_resource(embedding_name)
-            expected_embedding_model_name = (
-                groundworkers.grounding.embedding_model_name
-                or embedding_config.embedding_model
-            )
-            embedding_safe_url = embedding.database.safe_url
-            embedding_connection_url = embedding.database.url
-            embedding_target = DatabaseTarget(
-                key="database.embedding",
-                label="Embedding store",
-                resource_name=embedding_name,
-                database_name=embedding.database.name,
-                safe_url=embedding.database.safe_url,
-                cdm_schema=embedding.cdm_schema,
-                vocabulary_schema=embedding.vocab_schema,
-                connection_url=embedding.database.url,
-                role="embedding",
-            )
+    if groundworkers.embedding_model_name is not None:
+        expected_embedding_model_name = resolver.resolve_model(
+            groundworkers.embedding_model_name
+        ).model
+    if groundworkers.vector_store_name is not None:
+        embedding = resolver.resolve_vector_store(groundworkers.vector_store_name)
+        embedding_safe_url = embedding.database.connection.safe_url
+        embedding_connection_url = embedding.database.connection.url
+        embedding_schema = embedding.database.schema_name
+        embedding_target = DatabaseTarget(
+            key="database.embedding",
+            label="Embedding store",
+            database_entry_name=embedding.database.name,
+            connection_name=embedding.database.connection.name,
+            safe_url=embedding.database.connection.safe_url,
+            cdm_schema=embedding_schema or "main",
+            vocabulary_schema=embedding_schema or "main",
+            connection_url=embedding.database.connection.url,
+            role="embedding",
+            embedding_schema=embedding_schema,
+        )
 
     targets = [
         DatabaseTarget(
             key="database.cdm",
             label="CDM / vocabulary",
-            resource_name=cdm_name,
-            database_name=cdm.database.name,
-            safe_url=cdm.database.safe_url,
-            cdm_schema=cdm.cdm_schema,
+            database_entry_name=cdm.name,
+            connection_name=cdm.connection.name,
+            safe_url=cdm.connection.safe_url,
+            cdm_schema=cdm.schema_name or "main",
             vocabulary_schema=cdm.vocab_schema,
-            connection_url=cdm.database.url,
+            connection_url=cdm.connection.url,
             role="cdm",
         ),
         DatabaseTarget(
             key="database.graph",
             label="Graph readiness",
-            resource_name=cdm_name,
-            database_name=cdm.database.name,
-            safe_url=cdm.database.safe_url,
-            cdm_schema=cdm.cdm_schema,
+            database_entry_name=cdm.name,
+            connection_name=cdm.connection.name,
+            safe_url=cdm.connection.safe_url,
+            cdm_schema=cdm.schema_name or "main",
             vocabulary_schema=cdm.vocab_schema,
-            connection_url=cdm.database.url,
+            connection_url=cdm.connection.url,
             role="graph",
         ),
         DatabaseTarget(
             key="database.groundworkers",
             label="Groundworkers tuning",
-            resource_name=cdm_name,
-            database_name=cdm.database.name,
-            safe_url=cdm.database.safe_url,
-            cdm_schema=cdm.cdm_schema,
+            database_entry_name=cdm.name,
+            connection_name=cdm.connection.name,
+            safe_url=cdm.connection.safe_url,
+            cdm_schema=cdm.schema_name or "main",
             vocabulary_schema=cdm.vocab_schema,
-            connection_url=cdm.database.url,
+            connection_url=cdm.connection.url,
             role="groundworkers",
+            embedding_schema=embedding_schema,
             expected_embedding_model_name=expected_embedding_model_name,
             embedding_safe_url=embedding_safe_url,
             embedding_connection_url=embedding_connection_url,
         ),
     ]
-    if cdm.vocab_database.name != cdm.database.name:
-        targets.append(
-            DatabaseTarget(
-                key="database.vocabulary",
-                label="Vocabulary",
-                resource_name=cdm_name,
-                database_name=cdm.vocab_database.name,
-                safe_url=cdm.vocab_database.safe_url,
-                cdm_schema=cdm.cdm_schema,
-                vocabulary_schema=cdm.vocab_schema,
-                connection_url=cdm.vocab_database.url,
-                role="vocabulary",
-            )
-        )
-
+    # No separate vocabulary target: a CDM entry naming a second connection for
+    # its vocabulary is rejected before it gets here, by `split_vocabulary_connection`
+    # via `_incomplete_issues`, so `cdm.vocab_connection` is always `cdm.connection`.
     if embedding_target is not None:
         targets.append(embedding_target)
     return tuple(targets)
@@ -211,7 +205,8 @@ def verify_database_target(
                 target,
                 engine_factory=engine_factory,
             )
-    except Exception as exc:  # noqa: BLE001 - returned as a redacted category
+    except Exception as exc:
+        # Broad except: returned as a redacted category.
         return ConnectionResult(
             target_key=target.key,
             connected=False,
@@ -238,7 +233,7 @@ def _diagnostics_for_target(
     engine_factory: Callable[[str], Engine],
 ) -> tuple[ResourceDiagnostic, ...]:
     if target.role == "embedding":
-        return _embedding_diagnostics(connection)
+        return _embedding_diagnostics(connection, schema=target.embedding_schema)
     if target.role == "graph":
         return _graph_diagnostics(connection, target.vocabulary_schema)
     if target.role == "groundworkers":
@@ -247,7 +242,7 @@ def _diagnostics_for_target(
             target,
             engine_factory=engine_factory,
         )
-    if target.role in {"cdm", "vocabulary"}:
+    if target.role == "cdm":
         return _cdm_diagnostics(connection, target.vocabulary_schema)
     return ()
 
@@ -313,6 +308,7 @@ def _graph_diagnostics(
                 )
             )
 
+    fulltext_sidecar_unpopulated: list[str] = []
     for table, column in GRAPH_FTS_COLUMNS.items():
         if table not in existing_tables:
             continue
@@ -324,6 +320,17 @@ def _graph_diagnostics(
                     f"Full-text sidecar column {table}.{column} is missing.",
                 )
             )
+        elif _column_has_null_values(connection, schema, table, column):
+            fulltext_sidecar_unpopulated.append(f"{table}.{column}")
+    if fulltext_sidecar_unpopulated:
+        diagnostics.append(
+            _warning(
+                "fulltext_sidecar_unpopulated",
+                "Full-text sidecar values are NULL for: "
+                + ", ".join(fulltext_sidecar_unpopulated)
+                + ". Run full-text population before relying on lexical grounding.",
+            )
+        )
     missing_fts_indexes = tuple(
         name for name in GRAPH_FTS_INDEXES if not _index_exists(inspector, schema, name)
     )
@@ -461,7 +468,9 @@ def _groundworkers_embedding_model_diagnostics(
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
             inspector = inspect(connection)
-            existing_tables = set(inspector.get_table_names())
+            existing_tables = set(
+                inspector.get_table_names(schema=target.embedding_schema)
+            )
             if EMBEDDING_REGISTRY_TABLE not in existing_tables:
                 return (
                     _warning(
@@ -469,8 +478,11 @@ def _groundworkers_embedding_model_diagnostics(
                         "Groundworkers grounding model could not be checked because the omop-emb model registry table is missing.",
                     ),
                 )
-            rows = _embedding_registry_rows(connection)
-    except Exception as exc:  # noqa: BLE001 - reported as a redacted warning
+            rows = _embedding_registry_rows(
+                connection, schema=target.embedding_schema
+            )
+    except Exception as exc:
+        # Broad except: reported as a redacted warning.
         failure = classify_connection_error(exc)
         return (
             _warning(
@@ -498,9 +510,13 @@ def _groundworkers_embedding_model_diagnostics(
     )
 
 
-def _embedding_diagnostics(connection: Connection) -> tuple[ResourceDiagnostic, ...]:
+def _embedding_diagnostics(
+    connection: Connection,
+    *,
+    schema: str | None = None,
+) -> tuple[ResourceDiagnostic, ...]:
     inspector = inspect(connection)
-    existing_tables = set(inspector.get_table_names())
+    existing_tables = set(inspector.get_table_names(schema=schema))
     if EMBEDDING_REGISTRY_TABLE not in existing_tables:
         return (
             _warning(
@@ -509,7 +525,7 @@ def _embedding_diagnostics(connection: Connection) -> tuple[ResourceDiagnostic, 
             ),
         )
 
-    rows = _embedding_registry_rows(connection)
+    rows = _embedding_registry_rows(connection, schema=schema)
     if not rows:
         return (
             _warning(
@@ -534,7 +550,7 @@ def _embedding_diagnostics(connection: Connection) -> tuple[ResourceDiagnostic, 
                 )
             )
             continue
-        columns = _column_names(connection, None, table_name)
+        columns = _column_names(connection, schema, table_name)
         missing_columns = tuple(
             column for column in EMBEDDING_REQUIRED_COLUMNS if column not in columns
         )
@@ -546,7 +562,7 @@ def _embedding_diagnostics(connection: Connection) -> tuple[ResourceDiagnostic, 
                 )
             )
             continue
-        count = _count_table_rows(connection, None, table_name)
+        count = _count_table_rows(connection, schema, table_name)
         if count == 0:
             diagnostics.append(
                 _warning(
@@ -564,17 +580,46 @@ def _embedding_diagnostics(connection: Connection) -> tuple[ResourceDiagnostic, 
     return tuple(diagnostics)
 
 
-def _embedding_registry_rows(connection: Connection):
+def _embedding_registry_rows(connection: Connection, *, schema: str | None = None):
+    """Read omop-emb's registry through omop-emb's own mapping.
+
+    The hand-written ``SELECT ... FROM model_registry`` this replaces named the
+    table unqualified, and ``text()`` is exempt from ``schema_translate_map`` --
+    so a store configured with a schema was written by omop-emb into that schema
+    and read back here from the search path's default one. Going through
+    ``ModelRegistry`` puts both sides on the same translate map, and keeps the
+    column list owned by the package that defines it.
+    """
+
+    statement = select(
+        ModelRegistry.model_name,
+        ModelRegistry.storage_identifier,
+        ModelRegistry.dimensions,
+        ModelRegistry.index_type,
+        ModelRegistry.metric_type,
+    ).order_by(ModelRegistry.model_name)
     return (
-        connection.execute(
-            text(
-                "SELECT model_name, storage_identifier, dimensions, index_type, metric_type "
-                "FROM model_registry ORDER BY model_name"
-            )
-        )
+        connection.execute(statement, execution_options=_schema_options(schema))
         .mappings()
         .all()
     )
+
+
+def _schema_options(schema: str | None) -> dict[str, Any]:
+    """Execution options that point unqualified ORM/Core tables at *schema*.
+
+    omop-emb declares its tables without a schema, expecting the caller's
+    translate map to place them -- which is what
+    ``ResolvedDatabase.create_engine`` does. The engines here are built straight
+    from a connection URL and carry no map, so it is supplied per statement.
+    Per statement rather than via ``Connection.execution_options``, which
+    mutates the connection and would leave the map in place for everything
+    executed on it afterwards.
+    """
+
+    if schema is None:
+        return {}
+    return {"schema_translate_map": {None: schema}}
 
 
 def classify_connection_error(exc: BaseException) -> ClassifiedFailure:
@@ -662,8 +707,8 @@ def classify_connection_error(exc: BaseException) -> ClassifiedFailure:
     ):
         return _failure(
             ConnectionFailureKind.DATABASE_MISSING,
-            "The configured database or provider resource was not found.",
-            "Check the database, model or resource name.",
+            "A configured database, model, vector store, or provider entry was not found.",
+            "Check the named stack entry and the Groundworkers reference to it.",
         )
     if any(
         phrase in lowered
@@ -703,7 +748,8 @@ def _index_exists(inspector: Any, schema: str | None, index_name: str) -> bool:
     for table_name in CDM_TABLES + GRAPH_TABLES:
         try:
             indexes = inspector.get_indexes(table_name, schema=schema)
-        except Exception:  # noqa: BLE001 - absence is reported as a warning
+        except Exception:
+            # Broad except: absence is reported as a warning.
             continue
         if any(index.get("name") == index_name for index in indexes):
             return True
@@ -727,7 +773,8 @@ def _functional_lower_index_exists(
         return True
     try:
         indexes = inspector.get_indexes(table_name, schema=schema)
-    except Exception:  # noqa: BLE001 - absence is reported as a warning
+    except Exception:
+        # Broad except: absence is reported as a warning.
         return False
     return any(index.get("name") in aliases for index in indexes)
 
@@ -750,7 +797,8 @@ def _trigram_lower_index_exists(
         return True
     try:
         indexes = inspector.get_indexes(table_name, schema=schema)
-    except Exception:  # noqa: BLE001 - absence is optional here
+    except Exception:
+        # Broad except: absence is optional here.
         return False
     return any(index.get("name") in aliases for index in indexes)
 
@@ -775,7 +823,8 @@ def _postgres_lower_index_exists(
             ),
             {"schema": schema or "public", "table_name": table_name},
         )
-    except Exception:  # noqa: BLE001 - fall back to reflected index names
+    except Exception:
+        # Broad except: fall back to reflected index names.
         return False
     return any(
         _index_defines_lower_expression(
@@ -827,7 +876,7 @@ def _column_names(
         return {str(row[0]) for row in rows}
     if connection.dialect.name == "sqlite":
         rows = connection.execute(
-            text(f"PRAGMA table_info({_quote_identifier(table_name)})")
+            text(f"PRAGMA table_info({quote_identifier(connection, table_name)})")
         )
         return {str(row[1]) for row in rows}
     return {
@@ -842,25 +891,44 @@ def _table_is_empty(
     return _count_table_rows(connection, schema, table_name) == 0
 
 
+def _column_has_null_values(
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    """Return whether a full-text sidecar contains any unpopulated rows."""
+
+    qualified = _qualified_name(connection, schema, table_name)
+    column = quote_identifier(connection, column_name)
+    return bool(
+        connection.execute(
+            text(
+                f"SELECT EXISTS (SELECT 1 FROM {qualified} "
+                f"WHERE {column} IS NULL)"
+            )
+        ).scalar()
+    )
+
+
 def _count_table_rows(
     connection: Connection,
     schema: str | None,
     table_name: str,
 ) -> int:
-    qualified = _qualified_name(schema, table_name)
+    qualified = _qualified_name(connection, schema, table_name)
     return int(
         connection.execute(text(f"SELECT count(*) FROM {qualified}")).scalar() or 0
     )
 
 
-def _qualified_name(schema: str | None, table_name: str) -> str:
+def _qualified_name(connection: Connection, schema: str | None, table_name: str) -> str:
     if schema:
-        return f"{_quote_identifier(schema)}.{_quote_identifier(table_name)}"
-    return _quote_identifier(table_name)
-
-
-def _quote_identifier(value: str) -> str:
-    return '"' + value.replace('"', '""') + '"'
+        return (
+            f"{quote_identifier(connection, schema)}."
+            f"{quote_identifier(connection, table_name)}"
+        )
+    return quote_identifier(connection, table_name)
 
 
 def _exception_chain(exc: BaseException):
@@ -870,13 +938,3 @@ def _exception_chain(exc: BaseException):
         seen.add(id(current))
         yield current
         current = current.__cause__ or current.__context__
-
-
-def _has_tool(stack: Any, name: str) -> bool:
-    if name in stack.tools:
-        return True
-    return bool(
-        stack.active_profile
-        and stack.active_profile in stack.profiles
-        and name in stack.profiles[stack.active_profile].tools
-    )

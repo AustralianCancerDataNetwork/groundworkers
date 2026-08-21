@@ -1,13 +1,10 @@
 # VocabService
 
-`VocabService` provides vocabulary search and concept navigation over OMOP CDM
-vocabulary tables. It is the direct Python API for lexical retrieval operations —
-the same operations exposed via the search MCP tools.
+`VocabService` provides vocabulary search and concept navigation over OMOP CDM vocabulary tables. It is the direct Python API for lexical retrieval operations — the same operations exposed via the search MCP tools.
 
 ## Construction
 
-`VocabService` takes a single `CDMAdapter` argument. It uses the adapter's session
-factory to open per-call database sessions.
+`VocabService` takes a single `CDMAdapter` argument. It uses the adapter's session factory to open per-call database sessions.
 
 ```python
 from groundworkers.app import build_application
@@ -37,15 +34,9 @@ vocab.search_exact(
 ) -> list[ConceptMatch]
 ```
 
-Case-insensitive exact match of `query` against `concept_name` and (when
-`include_synonyms=True`) `concept_synonym_name`. Name matches are returned before
-synonym matches. Concepts that match both their name and a synonym appear only once,
-under `"name"`.
+Case-insensitive exact match of `query` against `concept_name` and (when `include_synonyms=True`) `concept_synonym_name`. Name matches are returned before synonym matches. Concepts that match both their name and a synonym appear only once, under `"name"`.
 
-`standard_only` defaults to `False`. Non-standard concepts often have better lexical
-coverage (trade names, source codes, regional synonyms) than their standard equivalents;
-filtering them out in the search step loses those signals. Use `navigate_to_standard`
-afterward to resolve non-standard results.
+`standard_only` defaults to `False`. Non-standard concepts often have better lexical coverage (trade names, source codes, regional synonyms) than their standard equivalents; filtering them out in the search step loses those signals. Use `navigate_to_standard` afterward to resolve non-standard results.
 
 ### `search_normalized`
 
@@ -60,9 +51,7 @@ vocab.search_normalized(
 ) -> list[ConceptMatch]
 ```
 
-Normalized search: lowercases and strips punctuation from both the query and concept
-names before matching. Catches common surface-form differences (abbreviations, spacing,
-case) that exact search misses without the false-positive risk of full-text search.
+Normalized search: lowercases and strips punctuation from both the query and concept names before matching. Catches common surface-form differences (abbreviations, spacing, case) that exact search misses without the false-positive risk of full-text search.
 
 ### `search_fulltext`
 
@@ -79,18 +68,11 @@ vocab.search_fulltext(
 ) -> tuple[list[ConceptMatch], bool]
 ```
 
-PostgreSQL full-text search against the `concept_name_tsvector` GIN-indexed sidecar
-column, with `ts_rank` scores included on each result. Returns a `(results, fts_available)`
-tuple. When `fts_available=False` (the sidecar column is absent), `results` is always
-`[]` — fall through to embedding search or exact search instead.
+PostgreSQL full-text search against the `concept_name_tsvector` GIN-indexed sidecar column, with `ts_rank` scores included on each result. Returns a `(results, fts_available)` tuple. When `fts_available=False` (the sidecar column is absent), `results` is always `[]` — fall through to embedding search or exact search instead.
 
-FTS sidecar detection is lazy and cached after the first call. No configuration is
-required: if the column is present it is used, and if it is absent `fts_available`
-is simply `False`.
+FTS sidecar detection is lazy and cached after the first call. No configuration is required: if the column is present it is used, and if it is absent `fts_available` is simply `False`.
 
-Synonym FTS is included when the `concept_synonym_name_tsvector` sidecar is also
-present. If the synonym sidecar is absent, synonym results are silently omitted — it
-is not an error.
+Synonym FTS is included when the `concept_synonym_name_tsvector` sidecar is also present. If the synonym sidecar is absent, synonym results are silently omitted — it is not an error.
 
 ### `navigate_to_standard`
 
@@ -100,13 +82,9 @@ vocab.navigate_to_standard(
 ) -> list[StandardMapping]
 ```
 
-Batch navigation: given a list of concept IDs (which may be non-standard), returns
-their standard OMOP equivalents by following `"Maps to"` relationship edges. Two
-queries total regardless of input list size.
+Batch navigation: given a list of concept IDs (which may be non-standard), returns their standard OMOP equivalents by following `"Maps to"` relationship edges. Two queries total regardless of input list size.
 
-Concepts that are already standard are returned as self-mappings
-(`relationship_id="self"`). Concepts with no `"Maps to"` edge return an empty
-`standard_concepts` list. Concept IDs not found in the vocabulary are silently omitted.
+Concepts that are already standard are returned as self-mappings (`relationship_id="self"`). Concepts with no `"Maps to"` edge return an empty `standard_concepts` list. Concept IDs not found in the vocabulary are silently omitted.
 
 ### `navigate_to_value`
 
@@ -116,9 +94,7 @@ vocab.navigate_to_value(
 ) -> list[RelatedConceptMapping]
 ```
 
-Same batch navigation pattern as `navigate_to_standard`, but follows `"Maps to value"`
-relationship edges. Used for value-domain mapping in OMOP measurement and observation
-workflows.
+Same batch navigation pattern as `navigate_to_standard`, but follows `"Maps to value"` relationship edges. Used for value-domain mapping in OMOP measurement and observation workflows.
 
 ### `navigate_to_unit`
 
@@ -176,15 +152,12 @@ class MappedConcept:
 
 ## Serialization helpers
 
-`VocabService` provides `serialise_*` helpers that convert the typed return objects
-to plain dicts suitable for MCP tool responses:
+`VocabService` provides `serialise_*` helpers that convert the typed return objects to plain dicts suitable for MCP tool responses:
 
 - `serialise_concept_match(match: ConceptMatch) -> dict`
 - `serialise_standard_mapping(mapping: StandardMapping) -> dict`
 
-The search MCP tools in `search_tools.py` use these helpers to convert service results
-into the wire format. Direct Python consumers can use the dataclasses directly without
-serializing.
+The search MCP tools in `search_tools.py` use these helpers to convert service results into the wire format. Direct Python consumers can use the dataclasses directly without serializing.
 
 ## Error handling
 

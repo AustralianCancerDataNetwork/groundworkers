@@ -4,6 +4,29 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from oa_configurator import save_stack_config
+
+from tests.support.stack_config import build_cdm_stack, build_embedding_stack
+
+
+def _write_embedding_stack(path: Path) -> None:
+    save_stack_config(build_embedding_stack(), path)
+
+
+def _embedding_configuration(path: str):
+    from groundworkers.application.setup.embedding_setup import (
+        load_embedding_configuration,
+    )
+
+    configuration = load_embedding_configuration(_snapshot_for(path))
+    assert configuration is not None
+    return configuration
+
+
+def _snapshot_for(path: str):
+    from groundworkers.application.setup.configuration import load_configuration
+
+    return load_configuration(config_path=path)
 
 
 def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
@@ -13,7 +36,6 @@ def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
 
     spec = build_groundworkers_tui_spec(
         config_path="/definitely/not/a/groundworkers-config.toml",
-        profile="test",
     )
 
     assert spec.validate().keys() == ("setup",)
@@ -21,25 +43,31 @@ def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
     assert spec.title == "Groundworkers"
 
 
-def test_groundworkers_pages_do_not_cover_workbench() -> None:
+def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
+    """Layout only. Uses a real config so the page renders its sections.
+
+    A missing config now opens the location wizard on activate, which is a
+    different journey and is covered by its own tests.
+    """
     pytest.importorskip("groundskeeping")
 
     from groundskeeping.app import OperatorApp
 
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+
     async def run_check() -> None:
         app = OperatorApp(
-            build_groundworkers_tui_spec(
-                config_path="/definitely/not/a/groundworkers-config.toml",
-                profile="test",
-            )
+            build_groundworkers_tui_spec(config_path=str(config_path))
         )
 
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
 
             active_page = app.query_one(".operator-page.-active")
+            assert active_page._runs_refresh_timer is not None
             workbench = app.query_one("#workbench")
             catalogue_panel = app.query_one("#catalogue-panel")
             sections = app.query_one("#sections")
@@ -52,22 +80,33 @@ def test_groundworkers_pages_do_not_cover_workbench() -> None:
             assert tabs.styles.display == "none"
             assert sections.styles.display == "block"
             assert catalogue.styles.display == "none"
-            assert sections.option_count == 5
+            assert sections.option_count == 9
             assert app.query_one("#result-panel").border_title == "Setup"
-            assert app.query_one("#context-panel").border_title == "Database Setup"
+            assert app.query_one("#context-panel").border_title == "Readiness"
             assert tuple(
                 sections.get_option_at_index(index).id
                 for index in range(sections.option_count)
             ) == (
+                "setup.overview",
                 "setup.database",
                 "setup.graph",
+                "setup.performance",
                 "setup.llm_provider",
                 "setup.embeddings",
                 "setup.chat",
+                "setup.configuration",
+                "setup.runs",
             )
 
+            result_table = app.query_one("#result-table")
+            result_table.focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.query_one("#context-panel").border_title == "Overview detail"
+            assert app.query_one("#context-table").styles.display == "block"
+
             sections.focus()
-            sections.highlighted = 2
+            sections.highlighted = 4
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
@@ -77,7 +116,7 @@ def test_groundworkers_pages_do_not_cover_workbench() -> None:
             assert app.query_one("#result-panel").border_title == "Setup"
             assert app.query_one("#context-panel").border_title == "Model inventory"
 
-            sections.highlighted = 1
+            sections.highlighted = 2
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#result-panel").border_title == "Setup"
@@ -100,14 +139,18 @@ def test_database_actions_render_in_workspace_and_verify_connections(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -116,6 +159,11 @@ vocab_schema = "main"
         app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
 
         async with app.run_test(size=(100, 32)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 1
+            await pilot.press("enter")
             await pilot.pause()
             assert app.query_one("#catalogue").styles.display == "none"
             assert str(app.query_one("#view-action-0").label) == "Configure"
@@ -149,14 +197,18 @@ def test_groundworkers_tuning_row_does_not_offer_configure(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
     )
@@ -165,6 +217,11 @@ vocab_schema = "main"
         app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
 
         async with app.run_test(size=(100, 32)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 1
+            await pilot.press("enter")
             await pilot.pause()
             table = app.query_one("#result-table")
             table.move_cursor(row=2, column=0, animate=False)
@@ -189,75 +246,19 @@ def test_configure_action_opens_database_wizard(tmp_path: Path) -> None:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
 """,
         encoding="utf-8",
-    )
-
-    async def run_check() -> None:
-        app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
-
-        async with app.run_test(size=(100, 32)) as pilot:
-            await pilot.pause()
-            await pilot.click("#view-action-0")
-            await pilot.pause()
-
-            assert app.screen.query_one("#wizard-frame") is not None
-
-    asyncio.run(run_check())
-
-
-def test_llm_provider_wizard_renders_model_inventory_choices(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    pytest.importorskip("groundskeeping")
-
-    from groundskeeping.app import OperatorApp
-    from textual.widgets import Select
-
-    from groundworkers.application.setup.models import LlmProviderCheckResult
-    from groundworkers.tui.app import build_groundworkers_tui_spec
-
-    config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.groundworkers.extra.llm]
-enabled = true
-provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "chat-model"
-""",
-        encoding="utf-8",
-    )
-
-    def fake_scan(draft):
-        return LlmProviderCheckResult(
-            provider=draft.provider,
-            api_base=draft.api_base,
-            default_model_name="chat-model",
-            reachable=True,
-            inventory=("chat-model", "other-model"),
-        )
-
-    monkeypatch.setattr(
-        "groundworkers.tui.wizards.llm_provider.scan_llm_models",
-        fake_scan,
     )
 
     async def run_check() -> None:
@@ -267,7 +268,81 @@ default_model_name = "chat-model"
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 2
+            sections.highlighted = 1
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.click("#view-action-0")
+            await pilot.pause()
+
+            assert app.screen.query_one("#wizard-frame") is not None
+
+    asyncio.run(run_check())
+
+
+def test_chat_model_wizard_renders_discovered_model_choices(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The chat journey runs through the generic Groundskeeping wizard.
+
+    Dynamic discovery arrives as `future_fields` from the shared mutation provider,
+    so the model step's choices come from the injected inventory seam rather than a
+    Groundworkers-specific wizard controller.
+    """
+    pytest.importorskip("groundskeeping")
+
+    from groundskeeping.app import OperatorApp
+    from textual.widgets import Select
+
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[connections.main]
+dialect = "sqlite"
+database_name = ":memory:"
+
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
+vocab_schema = "main"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
+llm_model_name = "chat_model"
+
+[providers.chat_provider]
+provider = "ollama"
+base_url = "http://localhost:11434/v1"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "chat-model"
+structured_output = true
+""",
+        encoding="utf-8",
+    )
+
+    def fake_discovery(provider_kind, base_url, api_key):
+        assert provider_kind == "ollama"
+        assert base_url == "http://localhost:11434/v1"
+        return ("chat-model", "other-model")
+
+    monkeypatch.setattr(
+        "groundworkers.tui.pages.setup.discover_provider_models",
+        fake_discovery,
+    )
+
+    async def run_check() -> None:
+        app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
+
+        async with app.run_test(size=(100, 32)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 4
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-0")
@@ -275,9 +350,9 @@ default_model_name = "chat-model"
             await pilot.click("#wizard-next")
             await pilot.pause()
 
-            choices = app.screen.query_one("#wizard-field-0", Select)
+            choices = app.screen.query_one("#wizard-field-1", Select)
             assert choices.value == "chat-model"
-            assert [value for _label, value in choices._options] == [  # noqa: SLF001
+            assert [value for _label, value in choices._options] == [
                 "chat-model",
                 "other-model",
             ]
@@ -302,20 +377,28 @@ def test_llm_provider_detail_renders_model_inventory_table(
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
-enabled = true
+[tools.groundworkers]
+cdm_db = "cdm_db"
+llm_model_name = "chat_model"
+
+[providers.chat_provider]
 provider = "ollama"
-api_base = "http://localhost:11434/v1"
-default_model_name = "chat-model"
+base_url = "http://localhost:11434/v1"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "chat-model"
+structured_output = true
 """,
         encoding="utf-8",
     )
@@ -349,7 +432,7 @@ default_model_name = "chat-model"
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 2
+            sections.highlighted = 4
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-1")
@@ -379,30 +462,10 @@ def test_embedding_coverage_refresh_shows_loading_state(
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
     config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.omop_emb.extra]
-backend = "sqlitevec"
-sqlite_path = "embeddings.db"
-embedding_model = "test-model"
-api_base = "http://localhost:11434/v1"
-provider_type = "ollama"
-""",
-        encoding="utf-8",
-    )
+    _write_embedding_stack(config_path)
 
     def slow_refresh(*_args, **_kwargs):
         sleep(0.4)
-        return None
 
     monkeypatch.setattr(
         "groundworkers.tui.pages.setup.load_embedding_coverage_report",
@@ -416,11 +479,12 @@ provider_type = "ollama"
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 5
             await pilot.press("enter")
             await pilot.pause()
 
-            await pilot.click("#view-action-0")
+            assert str(app.query_one("#view-action-0").label) == "Check model"
+            await pilot.click("#view-action-1")
             await pilot.pause(0.05)
 
             assert app.query_one("#result-loading").styles.display == "block"
@@ -439,6 +503,8 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
 ) -> None:
     pytest.importorskip("groundskeeping")
 
+    from groundskeeping.app import OperatorApp
+
     from groundworkers.application.setup.models import (
         CoverageScope,
         CoverageSnapshot,
@@ -447,37 +513,23 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
         EmbeddingIndexSnapshot,
         VocabularyCoverage,
     )
-    from groundskeeping.app import OperatorApp
-
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
     config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
-
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-vocab_schema = "main"
-
-[tools.omop_emb.extra]
-backend = "sqlitevec"
-sqlite_path = "embeddings.db"
-embedding_model = "test-model"
-api_base = "http://localhost:11434/v1"
-provider_type = "ollama"
-""",
-        encoding="utf-8",
-    )
+    _write_embedding_stack(config_path)
 
     report = EmbeddingCoverageReport(
         configuration=EmbeddingConfiguration(
             backend="sqlitevec",
+            vector_store_name="embedding_store",
+            database_name="embedding_db",
+            connection_name="embedding_main",
+            database_safe_url="sqlite:///embeddings.db",
+            provider_name="embedding_provider",
             provider_kind="ollama",
+            model_entry_name="embedding_model",
             model_name="test-model",
+            embeddings_supported=True,
             api_base="http://localhost:11434/v1",
         ),
         coverage=CoverageSnapshot(
@@ -517,15 +569,17 @@ provider_type = "ollama"
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 5
             await pilot.press("enter")
             await pilot.pause()
-            await pilot.click("#view-action-0")
+            await pilot.click("#view-action-1")
             await pilot.pause(0.2)
 
             setup = app.query_one("#result-table")
-            assert setup.get_row_at(3)[0] == "Index"
-            assert setup.get_row_at(3)[1] == "FLAT / exact scan"
+            assert all(
+                setup.get_row_at(index)[0] != "Index"
+                for index in range(setup.row_count)
+            )
 
             detail = app.query_one("#context-table")
             assert app.query_one("#context-panel").border_title == "Vocabulary coverage"
@@ -538,74 +592,141 @@ provider_type = "ollama"
     asyncio.run(run_check())
 
 
-def test_database_wizard_clone_suggests_new_connection_name(tmp_path: Path) -> None:
+def test_a_wizard_text_box_is_actually_drawn(tmp_path: Path) -> None:
+    """A zero-height field is focusable, editable, and invisible.
+
+    Groundskeeping's theme sizes every ``TextArea`` at ``height: 1fr``. Inside a
+    wizard the labels, help lines, and sibling fields take their auto height
+    first, and the remaining fraction rounds to nothing -- so the widget accepts
+    typing it can never show, and reads as a box that ignores the keyboard.
+    Asserting on the rendered height is the only thing that catches this; every
+    contract-level check passes on a widget nobody can see.
+    """
     pytest.importorskip("groundskeeping")
 
+    from textual.widgets import TextArea
+
+    from groundworkers.application.setup.models import (
+        CoverageScope,
+        CoverageSnapshot,
+        EmbeddingCoverageReport,
+        EmbeddingIndexSnapshot,
+        VocabularyCoverage,
+    )
+    from groundworkers.tui.app import (
+        build_groundworkers_app,
+        build_groundworkers_tui_spec,
+    )
     from groundworkers.tui.state import SetupSession
-    from groundworkers.tui.wizards.database import DatabaseConfigurationWizardController
+    from groundworkers.tui.wizards.embeddings import (
+        EmbeddingPopulationWizardController,
+    )
 
     config_path = tmp_path / "config.toml"
-    config_path.write_text(
-        """
-[databases.main]
-dialect = "sqlite"
-database_name = ":memory:"
+    save_stack_config(build_embedding_stack(), config_path)
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
-
-[resources.other_app]
-database = "main"
-cdm_schema = "main"
-""",
-        encoding="utf-8",
+    rows = (VocabularyCoverage("SNOMED", 100, 40, 60, 40.0),)
+    report = EmbeddingCoverageReport(
+        configuration=_embedding_configuration(str(config_path)),
+        coverage=CoverageSnapshot(
+            scope=CoverageScope(
+                model_name="arctic:v1",
+                metric="cosine",
+                vocabularies=("SNOMED",),
+                standard_only=True,
+                valid_only=False,
+            ),
+            available=True,
+            rows=rows,
+            eligible_total=100,
+            embedded_total=40,
+            pending_total=60,
+        ),
+        index=EmbeddingIndexSnapshot(model_name="arctic:v1", registered=True),
     )
-    controller = DatabaseConfigurationWizardController(
-        SetupSession(config_path=config_path)
-    )
 
-    controller.submit(
-        {"path": str(config_path), "revision": "ignored", "source": "ignored"}
-    )
-    controller.submit({"resource_name": "cdm_db"})
-    snapshot = controller.submit({"connection_strategy": "clone"}).snapshot
+    async def run_check() -> None:
+        app_class = build_groundworkers_app()
+        app = app_class(build_groundworkers_tui_spec(config_path=str(config_path)))
 
-    assert snapshot.values["connection_name"] == "main_groundworkers"
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.open_wizard(
+                EmbeddingPopulationWizardController(
+                    SetupSession(), coverage=report, launcher=lambda command: None
+                )
+            )
+            await pilot.pause()
+
+            box = app.screen.query_one(TextArea)
+            assert box.read_only is False
+            assert box.disabled is False
+            assert box.size.height > 1
+
+            box.focus()
+            await pilot.pause()
+            await pilot.press("A")
+            await pilot.pause()
+            assert box.text.startswith("A")
+
+    asyncio.run(run_check())
 
 
-def test_database_wizard_optional_vocabulary_connection_uses_select_safe_blank(
-    tmp_path: Path,
-) -> None:
+def test_a_compact_review_shows_embedding_model_changes(tmp_path: Path) -> None:
+    """The review table must retain rows in a small terminal."""
     pytest.importorskip("groundskeeping")
 
-    from groundworkers.tui.state import SetupSession
-    from groundworkers.tui.wizards.database import DatabaseConfigurationWizardController
+    from groundskeeping.configurator import ConfigWizardController, MutationOperation
+    from groundskeeping.widgets.wizard import WizardScreen
+    from textual.widgets import DataTable
+
+    from groundworkers.application.setup.configuration_provider import (
+        GroundworkersConfigMutationService,
+        model_setup_workflow,
+    )
+    from groundworkers.tui.app import (
+        build_groundworkers_app,
+        build_groundworkers_tui_spec,
+    )
 
     config_path = tmp_path / "config.toml"
-    controller = DatabaseConfigurationWizardController(
-        SetupSession(config_path=config_path)
+    save_stack_config(build_cdm_stack(), config_path)
+    controller = ConfigWizardController(
+        model_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(
+            config_path,
+            model_discoverer=lambda *_: ("embedding-model:v1",),
+        ),
     )
 
-    controller.submit(
-        {"path": str(config_path), "revision": "new file", "source": "local"}
-    )
-    controller.submit({"resource_name": "cdm_db"})
-    controller.submit({"connection_strategy": "create"})
-    snapshot = controller.submit(
-        {
-            "connection_name": "main",
-            "dialect": "sqlite",
-            "host": "",
-            "port": "",
-            "user": "",
-            "password": "",
-            "clear_password": False,
-            "database_name": ":memory:",
-            "read_only": True,
-            "test_only": False,
-        }
-    ).snapshot
+    async def run_check() -> None:
+        app_class = build_groundworkers_app()
+        app = app_class(build_groundworkers_tui_spec(config_path=str(config_path)))
 
-    assert snapshot.step.key == "schemas"
-    assert snapshot.values["vocabulary_connection_name"] == ""
+        async with app.run_test(size=(70, 24)) as pilot:
+            app.push_screen(WizardScreen(controller))
+            await pilot.pause()
+            screen = app.screen
+            for values in (
+                {
+                    "provider_name": "embedding_provider",
+                    "provider_kind": "ollama",
+                    "base_url": "http://localhost:11434/v1",
+                    "api_key": None,
+                },
+                {"model_source": "new"},
+                {
+                    "model_entry_name": "embedding_model",
+                    "model_choice": "embedding-model:v1",
+                },
+                {"prefix_convention": "none"},
+            ):
+                await screen._set_snapshot(screen._controller.submit(values).snapshot)
+                await pilot.pause()
+
+            table = screen.query_one("#wizard-review-table", DataTable)
+            assert table.row_count > 0
+            assert table.region.height > 1
+            assert str(table.get_row_at(0)[0]).startswith("models.embedding_model")
+
+    asyncio.run(run_check())

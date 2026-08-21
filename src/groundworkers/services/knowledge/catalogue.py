@@ -17,8 +17,9 @@ It can be called at any phase — not only at source planning time.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import yaml
 

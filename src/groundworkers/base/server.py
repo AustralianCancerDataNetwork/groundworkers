@@ -1,10 +1,33 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
-from typing import Any, Callable, Literal
+import logging
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, Literal
+
+from groundworkers.base.errors import (
+    ERROR_CODES,
+    GroundworkersError,
+    internal_error_response,
+    scrub_error_message,
+)
+
+logger = logging.getLogger(__name__)
 
 
-class GroundcrewServer:
+def _callable_name(func: Callable[..., Any]) -> str:
+    """Registration name for a decorated callable.
+
+    Decorators are applied to plain functions, which always carry ``__name__``.
+    The fallback keeps partials and other ``__name__``-less callables registrable
+    rather than raising at import time.
+    """
+    return getattr(func, "__name__", None) or repr(func)
+
+
+class GroundworkersMCPServer:
     def __init__(self, name: str) -> None:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
@@ -13,9 +36,43 @@ class GroundcrewServer:
 
     def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            tool_name = name or func.__name__
-            self._tools[tool_name] = func
-            return func
+            tool_name = name or _callable_name(func)
+
+            if inspect.iscoroutinefunction(func):
+                @wraps(func)
+                async def guarded(*args: Any, **kwargs: Any) -> Any:
+                    try:
+                        result = await func(*args, **kwargs)
+                    except GroundworkersError as exc:
+                        return exc.to_dict()
+                    except ValueError as exc:
+                        return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                    except Exception as exc:
+                        return internal_error_response(
+                            exc,
+                            logger=logger,
+                            boundary=f"mcp.tool.{tool_name}",
+                        )
+                    return _sanitise_tool_result(result, tool_name=tool_name)
+            else:
+                @wraps(func)
+                def guarded(*args: Any, **kwargs: Any) -> Any:
+                    try:
+                        result = func(*args, **kwargs)
+                    except GroundworkersError as exc:
+                        return exc.to_dict()
+                    except ValueError as exc:
+                        return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                    except Exception as exc:
+                        return internal_error_response(
+                            exc,
+                            logger=logger,
+                            boundary=f"mcp.tool.{tool_name}",
+                        )
+                    return _sanitise_tool_result(result, tool_name=tool_name)
+
+            self._tools[tool_name] = guarded
+            return guarded
 
         return decorator
 
@@ -25,7 +82,7 @@ class GroundcrewServer:
         description: str | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            prompt_name = name or func.__name__
+            prompt_name = name or _callable_name(func)
             self._prompts[prompt_name] = (func, description)
             return func
 
@@ -52,7 +109,20 @@ class GroundcrewServer:
         return sorted(self._resources.keys())
 
     def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
-        return self._tools[name](*args, **kwargs)
+        result = self._tools[name](*args, **kwargs)
+        if not inspect.isawaitable(result):
+            return result
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(result)
+        return result
+
+    async def call_async(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        """Call a registered tool from an existing async runtime."""
+
+        result = self._tools[name](*args, **kwargs)
+        return await result if inspect.isawaitable(result) else result
 
     def call_prompt(self, name: str, **kwargs: Any) -> Any:
         func, _ = self._prompts[name]
@@ -123,3 +193,18 @@ class GroundcrewServer:
         for uri, (func, description) in self._resources.items():
             app.resource(uri, description=description or "")(func)
         app.run(transport=transport)
+
+
+def _sanitise_tool_result(result: Any, *, tool_name: str) -> Any:
+    if not isinstance(result, dict) or result.get("error") is not True:
+        return result
+    code = result.get("code")
+    if code not in ERROR_CODES:
+        return internal_error_response(
+            RuntimeError(f"Tool returned unknown error code {code!r}"),
+            logger=logger,
+            boundary=f"mcp.tool.{tool_name}",
+        )
+    safe = dict(result)
+    safe["message"] = scrub_error_message(str(result.get("message", "Request failed.")))
+    return safe

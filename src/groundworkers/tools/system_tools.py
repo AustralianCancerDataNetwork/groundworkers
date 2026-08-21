@@ -16,18 +16,23 @@ Resources:
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.config import AppConfig
+from groundworkers.services.vocab import VocabService
+
+_HEALTH_PROBE_CACHE_SECONDS = 30.0
 
 
 def register_system_resources(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     config: AppConfig,
     graph_adapter: OmopGraphAdapter | None = None,
 ) -> None:
@@ -63,18 +68,52 @@ def register_system_resources(
         except GroundworkersError as exc:
             return json.dumps(exc.to_dict())
         except Exception as exc:
-            return json.dumps({"error": True, "code": "QUERY_ERROR", "message": repr(exc)})
+            return json.dumps(
+                {
+                    "error": True,
+                    "code": "INTERNAL_ERROR",
+                    "message": f"Vocabulary catalogue failed with {type(exc).__name__}.",
+                }
+            )
 
 
 def register_system_tools(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     graph_adapter: OmopGraphAdapter | None = None,
     emb_adapter: OmopEmbAdapter | None = None,
     llm_adapter: LLMAdapter | None = None,
+    embedding_configuration_detail: str | None = None,
+    vocab_service: VocabService | None = None,
 ) -> None:
+    probe_cache: dict[str, tuple[float, tuple[bool, str | None]]] = {}
+
+    def cached_probe(
+        key: str,
+        probe: Callable[[], tuple[bool, str | None]],
+    ) -> tuple[bool, str | None]:
+        now = time.monotonic()
+        cached = probe_cache.get(key)
+        if cached is not None and now - cached[0] < _HEALTH_PROBE_CACHE_SECONDS:
+            return cached[1]
+        result = probe()
+        probe_cache[key] = (now, result)
+        return result
+
+    async def async_cached_probe(
+        key: str,
+        probe: Callable[[], Awaitable[tuple[bool, str | None]]],
+    ) -> tuple[bool, str | None]:
+        now = time.monotonic()
+        cached = probe_cache.get(key)
+        if cached is not None and now - cached[0] < _HEALTH_PROBE_CACHE_SECONDS:
+            return cached[1]
+        result = await probe()
+        probe_cache[key] = (now, result)
+        return result
+
     @server.tool("system_status")
-    def system_status() -> dict[str, Any]:
-        """Returns availability and health of each configured adapter/backend.
+    async def system_status() -> dict[str, Any]:
+        """Returns availability and live health of each configured backend.
 
         overall is one of:
           "healthy"     — all configured components available
@@ -82,18 +121,27 @@ def register_system_tools(
           "unavailable" — no components available (or none configured)
 
         components only contains entries for configured backends.
-        omop_graph.embedding_resolver_active is true only when an EmbeddingClient
-        was successfully wired into the omop-graph backend at startup — it is independent
-        from omop_emb.available and must be checked separately to confirm the
-        embedding tier of concept_ground is operational.
+        Live full-text and embedding probes are cached briefly to avoid making
+        every health request call the model provider or vocabulary database.
+        omop_graph.embedding_resolver_active is true only when the graph accepted a
+        complete read-only vector-store and resolved-model configuration.
         """
         components: dict[str, Any] = {}
+        embedding_live: tuple[bool, str | None] | None = None
 
         if graph_adapter is not None:
             available, detail = graph_adapter.probe()
+            fulltext_live: tuple[bool, str | None] | None = None
+            if available and vocab_service is not None:
+                fulltext_live = cached_probe("fulltext", vocab_service.probe_fulltext)
+                if not fulltext_live[0]:
+                    detail = _join_details(detail, fulltext_live[1])
             components["omop_graph"] = {
-                "available": available,
+                "available": available and (fulltext_live is None or fulltext_live[0]),
                 "db_connected": available,
+                "fulltext_available": (
+                    fulltext_live[0] if fulltext_live is not None else None
+                ),
                 "embedding_resolver_active": graph_adapter.embedding_resolver_active,
                 "detail": detail,
             }
@@ -101,25 +149,66 @@ def register_system_tools(
         if emb_adapter is not None:
             try:
                 status = emb_adapter.index_status()
+                live_probe = getattr(emb_adapter, "async_probe_live_query", None)
+                if (
+                    status["available"]
+                    and emb_adapter.has_model_backend()
+                    and callable(live_probe)
+                ):
+                    embedding_live = await async_cached_probe(
+                        "embedding",
+                        live_probe,
+                    )
+                store_available = status["available"]
+                live_available = (
+                    embedding_live[0]
+                    if embedding_live is not None
+                    else None
+                )
                 components["omop_emb"] = {
-                    "available": status["available"],
+                    "available": store_available and (live_available is None or live_available),
+                    "store_available": store_available,
+                    "live_query_available": live_available,
                     "backend_type": status.get("backend_type"),
                     "model_count": len(status.get("models", [])),
-                    "client_configured": emb_adapter.has_client(),
+                    "model_backend_configured": emb_adapter.has_model_backend(),
                     "detail": status.get("detail"),
                 }
+                if embedding_live is not None and not embedding_live[0]:
+                    components["omop_emb"]["detail"] = _join_details(
+                        components["omop_emb"]["detail"], embedding_live[1]
+                    )
             except Exception as exc:
                 components["omop_emb"] = {
                     "available": False,
+                    "store_available": False,
+                    "live_query_available": None,
                     "backend_type": None,
                     "model_count": 0,
-                    "client_configured": emb_adapter.has_client(),
-                    "detail": repr(exc),
+                    "model_backend_configured": emb_adapter.has_model_backend(),
+                    "detail": (
+                        "Embedding status failed with " f"{type(exc).__name__}."
+                    ),
                 }
+        elif embedding_configuration_detail is not None:
+            components["omop_emb"] = {
+                "available": False,
+                "backend_type": None,
+                "model_count": 0,
+                "model_backend_configured": True,
+                "store_available": False,
+                "live_query_available": None,
+                "detail": embedding_configuration_detail,
+            }
+
+        if embedding_live is not None and not embedding_live[0]:
+            graph = components.get("omop_graph")
+            if graph is not None:
+                graph["embedding_resolver_active"] = False
 
         if llm_adapter is not None:
             try:
-                status = llm_adapter.status()
+                status = await llm_adapter.async_status()
                 components["llm"] = {
                     "available": status["available"],
                     "provider": status.get("provider"),
@@ -133,7 +222,7 @@ def register_system_tools(
                     "provider": None,
                     "default_model": None,
                     "structured_output_supported": None,
-                    "detail": repr(exc),
+                    "detail": f"LLM status failed with {type(exc).__name__}.",
                 }
 
         if not components:
@@ -160,5 +249,11 @@ def register_system_tools(
             return graph_adapter.get_vocabulary_catalogue()
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+
+
+def _join_details(first: str | None, second: str | None) -> str | None:
+    """Combine redacted health details without producing awkward separators."""
+
+    if first and second:
+        return f"{first} {second}"
+    return first or second

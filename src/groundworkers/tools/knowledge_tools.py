@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
 from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
 
@@ -62,7 +62,7 @@ def _default_packs_roots(configured_root: Path | None) -> tuple[Path, ...]:
 
 
 def register_knowledge_tools(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     packs_root: Path | None = None,
 ) -> bool:
     """Register the knowledge catalogue tools if a packs root is available.
@@ -142,7 +142,7 @@ def register_knowledge_tools(
                         "source, localisation"
                     ),
                 }
-            resolved_layer = cast(KnowledgeLayer, layer)
+            resolved_layer = layer
         try:
             results = catalogue.query(
                 source_system=source_system,
@@ -155,8 +155,8 @@ def register_knowledge_tools(
                 "packs": [_manifest_payload(m) for m in results],
                 "total": len(results),
             }
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+        except Exception:
+            raise
 
     @server.tool("knowledge_pack")
     def knowledge_pack(name: str) -> dict[str, Any]:
@@ -189,7 +189,7 @@ def register_knowledge_tools(
             payload["rules"] = content.rules
             payload["examples"] = content.examples
             return payload
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
+        except Exception:
+            raise
 
     return True

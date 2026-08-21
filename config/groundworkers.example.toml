@@ -1,13 +1,18 @@
-# groundworkers example config — oa-configurator StackConfig format
+# groundworkers example config — oa-configurator 1.x StackConfig format
 #
-# Copy to groundworkers.local.toml and fill in your values.
+# Copy to a path selected by the setup console and fill in your values.
 # Full reference: https://oa-configurator.readthedocs.io (or run omop-config --help)
+#
+# The shape is: physical connections and providers carry credentials, logical
+# databases, models, and vector stores give them names and roles, and the
+# groundworkers tool section references those names. Groundworkers reads only
+# its own section plus the entries it names.
 
 # ---------------------------------------------------------------------------
-# Databases — one entry per named connection
+# Connections — physical servers and credentials
 # ---------------------------------------------------------------------------
 
-[databases.cava]
+[connections.cdm_main]
 dialect       = "postgresql+psycopg"
 host          = "localhost"
 port          = 5432
@@ -15,8 +20,8 @@ user          = "readonly"
 password      = "readonly"
 database_name = "cava"
 
-# pgvector embedding store — only needed when omop_emb.backend = "pgvector"
-# [databases.emb]
+# pgvector embedding store — only needed for the pgvector backend below
+# [connections.emb_main]
 # dialect       = "postgresql+psycopg"
 # host          = "localhost"
 # port          = 5432
@@ -25,79 +30,112 @@ database_name = "cava"
 # database_name = "omop_emb"
 
 # ---------------------------------------------------------------------------
-# Resources — logical role bundles (CDM + vocab schemas)
+# Databases — logical roles over those connections
 # ---------------------------------------------------------------------------
 
-[resources.cdm]
-database     = "airflow_vector"
-cdm_schema   = "public"
+# kind = "cdm" bundles the CDM, vocabulary, and results roles. vocab_connection
+# and vocab_schema fall back to the primary connection and schema when unset.
+[databases.cdm_db]
+kind         = "cdm"
+connection   = "cdm_main"
+schema_name  = "public"
 vocab_schema = "public"
 
-# pgvector embedding resource — only needed when omop_emb.backend = "pgvector"
-# [resources.emb]
-# database   = "emb"
-# cdm_schema = "public"
+# The embedding store's database. kind = "generic": no CDM role-splitting.
+[databases.emb_db]
+kind        = "generic"
+connection  = "cdm_main"
+schema_name = "public"
 
 # ---------------------------------------------------------------------------
-# Resource aliases — map semantic names to your resource names above
+# Providers and models — endpoints, then the named models served through them
 # ---------------------------------------------------------------------------
 
-[resource_aliases]
-cdm_db = "cdm"
-# emb_db = "emb"   # uncomment for pgvector backend
+[providers.local_ollama]
+provider = "ollama"
+base_url = "http://localhost:11434"
+api_key  = "ollama"
+
+# Embedding model, referenced by embedding_model_name below.
+[models.embedding_model]
+provider   = "local_ollama"
+model      = "bge-small-en-v1.5"
+embeddings = true
+
+# Chat model, referenced by llm_model_name below. It may share a provider with
+# the embedding model or use a different one. Capabilities are opt-in: declare
+# structured_output so the JSON-mode tool path is available.
+# [models.chat_model]
+# provider          = "local_ollama"
+# model             = "qwen3:8b"
+# structured_output = true
 
 # ---------------------------------------------------------------------------
-# Tools — package-specific config lives under [tools.<name>.extra]
+# Vector store — where embeddings are stored
 # ---------------------------------------------------------------------------
 
-[tools.groundworkers.extra]
-app_name = "groundworkers"
+# Supported backend_type values are "sqlitevec" and "pgvector". faiss_cache_dir
+# is an optional query-time cache layered over either (install the
+# "embedding-faiss" extra to use it) — FAISS is not itself a backend value.
+[vector_stores.embeddings]
+backend_type    = "pgvector"
+database        = "emb_db"
+faiss_cache_dir = "/absolute/path/to/omop_emb-cache"
+
+# ---------------------------------------------------------------------------
+# Groundworkers — which of the above entries to use, plus its own settings
+#
+# Settings are flat and grouped by name prefix, matching every other package in
+# the stack. Each is settable with `omop-config configure groundworkers
+# --<field-name>`, which updates that field and leaves its neighbours alone.
+# ---------------------------------------------------------------------------
+
+[tools.groundworkers]
+app_name             = "groundworkers"
+cdm_db               = "cdm_db"
+# A CDM-only stack is valid: drop the references below and every lexical
+# feature still works.
+embedding_model_name = "embedding_model"
+vector_store_name    = "embeddings"
+# llm_model_name     = "chat_model"   # enables text, domain, and LLM-assisted
+                                      # source planning. No separate on/off flag.
 
 # MCP transport (stdio is the default for Claude Code; streamable-http for HTTP clients)
-[tools.groundworkers.extra.mcp]
-transport = "stdio"
-# host = "127.0.0.1"
-# port = 8000
+mcp_transport = "stdio"
+# mcp_host    = "127.0.0.1"
+# mcp_port    = 8000
 
-# REST API (enables HTTP access alongside MCP stdio, e.g. for study-agent-mcp)
-[tools.groundworkers.extra.rest]
-enabled = false
-# host     = "127.0.0.1"
-# port     = 18080
-# base_path = "/v1"
-
-# LLM (used for text decomposition, disambiguation, and source planning)
-[tools.groundworkers.extra.llm]
-enabled            = false
-# provider           = "ollama"
-# api_base           = "http://localhost:11434/v1"
-# api_key            = "ollama"
-# default_model_name = "qwen3:8b"
+# REST API defaults (used when `--transport rest` is selected instead of MCP)
+# rest_host      = "127.0.0.1"
+# rest_port      = 18080
+# rest_base_path = "/v1"
 
 # Grounding behaviour
-[tools.groundworkers.extra.grounding]
-min_fulltext_overlap  = 0.0    # 0.0–1.0; raise to tighten FTS result acceptance
-# embedding_model_name = null  # override the embedding model used by concept_ground
+grounding_min_fulltext_overlap = 0.0   # 0.0-1.0; raise to tighten FTS acceptance
+grounding_max_depth            = 5     # 1-10 hierarchy hops
 
-# ---------------------------------------------------------------------------
-# omop_emb — embedding store (remove section entirely to disable)
-# ---------------------------------------------------------------------------
+# No effect unless llm_model_name is set.
+source_planning_llm_assisted_enabled = true
 
-# sqlitevec backend (no extra database resource needed). Supported backends
-# are "sqlitevec" and "pgvector". faiss_cache_dir below is an optional
-# query-time cache accelerator layered over the chosen backend (install the
-# "embedding-faiss" extra to use it) — FAISS is not itself a backend value.
-[tools.omop_emb.extra]
-backend         = "sqlitevec"
-sqlite_path     = "/absolute/path/to/omop_emb.db"
-embedding_model = "bge-small-en-v1.5"
-faiss_cache_dir = "/absolute/path/to/omop_emb-cache"
-api_base        = "http://localhost:11434/v1"
-api_key         = "ollama"
+# Knowledge packs: unset uses the packs shipped in the installed package.
+# knowledge_packs_root = "/absolute/path/to/packs"
 
-# pgvector backend — uncomment and add emb database/resource/alias above
-# [tools.omop_emb.extra]
-# backend         = "pgvector"
-# embedding_model = "qwen3-embedding:0.6b"
-# api_base        = "http://localhost:11434/v1"
-# api_key         = "ollama"
+# Semantic projection tools are opt-in.
+semantic_projection_enabled = false
+
+# Groundworkers launches omop-emb for managed population runs. oa-configurator
+# gives each package its own typed tool section; both packages share the actual
+# CDM, model, and vector-store entries by naming the same resources here.
+[tools.omop_emb]
+cdm_db               = "cdm_db"
+embedding_model_name = "embedding_model"
+vector_store_name    = "embeddings"
+
+# Groundworkers also launches these packages' CDM maintenance CLIs. Their own
+# typed sections point at the same shared CDM entry. Groundworkers does not read
+# their package policy at runtime.
+[tools.omop_alchemy]
+cdm_db = "cdm_db"
+
+[tools.omop_graph]
+cdm_db = "cdm_db"

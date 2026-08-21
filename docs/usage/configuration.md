@@ -1,9 +1,6 @@
 # Configuration
 
-`groundworkers` uses the shared OMOP stack configuration managed by
-`oa-configurator`. `build_app_config(...)` resolves that shared stack into a
-runtime `AppConfig`; callers do not provide a separate `groundworkers`-specific
-runtime file.
+`groundworkers` uses the shared OMOP stack configuration managed by `oa-configurator`. `build_app_config(...)` resolves that shared stack into a runtime `AppConfig`; callers do not provide a separate `groundworkers`-specific runtime file.
 
 ## Runtime entrypoints
 
@@ -14,7 +11,7 @@ from groundworkers.bootstrap import build_app_config, build_app_config_from_stac
 ```
 
 - `build_app_config()` loads the active shared stack config from disk
-- `build_app_config(config_path=..., profile=...)` overrides the file or profile
+- `build_app_config(config_path=...)` loads an explicit shared-stack file
 - `build_app_config_from_stack(stack)` is useful in tests and programmatic tooling
 
 Then construct the application container:
@@ -27,85 +24,118 @@ config = build_app_config()
 app = build_application(config)
 ```
 
-The CLI entry point also accepts transport overrides and an interactive
-semantic-projection explorer flag:
+The CLI entry point also accepts transport overrides and a flag for the interactive setup console:
 
 ```bash
 groundworkers --transport streamable-http --host 127.0.0.1 --port 8000
 groundworkers --tui
 ```
 
-`--tui` launches the semantic projection explorer directly and exits instead of
-starting an MCP or REST server. Install the optional TUI dependencies with
-`uv sync --extra tui` or `pip install groundworkers[tui]`, and make sure a
-shared stack config is loadable with
-`tools.groundworkers.semantic_projection.enabled = true` in the active profile.
+`--tui` launches the setup console and exits instead of starting an MCP or REST server. Install the optional TUI dependencies with `uv sync --extra tui` or `pip install groundworkers[tui]`.
 
 ## Configuration ownership
 
-`groundworkers` does not own every setting it consumes. The shared stack keeps
-package ownership explicit:
+`groundworkers` does not own every setting it consumes. The shared stack keeps package ownership explicit:
 
-| Concern | Package that owns it |
+| Concern | Where it lives |
 |---|---|
-| Shared CDM resource and schema naming | `omop-alchemy` |
-| Graph traversal tuning | `omop-graph` |
-| Embedding backend, model, cache, and embedding store | `omop-emb` |
-| MCP defaults, REST defaults, LLM worker settings, source-planning settings, knowledge-pack settings, semantic-projection settings | `groundworkers` |
+| Physical connection credentials and endpoints | `[connections.*]` |
+| Logical databases, schemas, and CDM/vocabulary roles | `[databases.*]` |
+| Model provider endpoints and credentials | `[providers.*]` |
+| Model identity and capabilities | `[models.*]` |
+| Vector-store backend and its database | `[vector_stores.*]` |
+| Which of those entries Groundworkers uses, plus MCP/REST defaults, grounding policy, source-planning, knowledge-pack, and semantic-projection settings | `[tools.groundworkers]` |
 
-This keeps the `groundworkers` package config intentionally focused on worker-
-owned behavior and transport defaults.
+Groundworkers references stack entries **by name** and resolves them through `oa-configurator`. It does not read any other package's configuration section.
 
 ## Typical TOML shape
 
 This is the steady-state structure to expect in `config.toml`:
 
 ```toml
-[resources.cdm_db]
-database = "cdm_postgres"
-cdm_schema = "omop"
-vocab_schema = "omop_vocab"
+[connections.cdm_main]
+dialect = "postgresql+psycopg"
+host = "localhost"
+port = 5432
+user = "omop"
+password = "…"
+database_name = "omop"
+
+[databases.cdm_db]
+kind = "cdm"
+connection = "cdm_main"
+schema_name = "public"
+vocab_schema = "public"
+
+[providers.local_ollama]
+provider = "ollama"
+base_url = "http://localhost:11434"
+
+[models.embedding_model]
+provider = "local_ollama"
+model = "qwen3-embedding:0.6b"
+embedding_dim = 1024
+embeddings = true
+
+[models.chat_model]
+provider = "local_ollama"
+model = "qwen3:8b"
+structured_output = true
+
+[vector_stores.embeddings]
+backend_type = "pgvector"
+database = "vector_db"
 
 [tools.groundworkers]
-default_resource = "cdm_db"
+cdm_db = "cdm_db"
+embedding_model_name = "embedding_model"
+llm_model_name = "chat_model"
+vector_store_name = "embeddings"
 app_name = "groundworkers"
 
-[tools.groundworkers.mcp]
-transport = "streamable-http"
-host = "127.0.0.1"
-port = 8000
+mcp_transport = "streamable-http"
+mcp_host = "127.0.0.1"
+mcp_port = 8000
 
-[tools.groundworkers.rest]
-enabled = true
-host = "127.0.0.1"
-port = 8080
-base_path = "/v1"
+rest_host = "127.0.0.1"
+rest_port = 8080
+rest_base_path = "/v1"
 
-[tools.groundworkers.llm]
-enabled = true
-provider = "openai-compatible"
-api_base = "http://localhost:11434/v1"
-api_key = "ollama"
-default_model_name = "qwen3:8b"
+grounding_min_fulltext_overlap = 0.5
+grounding_max_depth = 5
 
-[tools.groundworkers.grounding]
-embedding_model_name = "qwen3-embedding:0.6b"
-min_fulltext_overlap = 0.5
+source_planning_llm_assisted_enabled = true
 
-[tools.groundworkers.source_planning]
-llm_assisted_enabled = true
-```
-
-If embeddings are enabled, `omop-emb` contributes its own package section:
-
-```toml
 [tools.omop_emb]
-backend = "sqlitevec"
-sqlite_path = ".local/omop-emb.db"
-embedding_model = "qwen3-embedding:0.6b"
-api_base = "http://localhost:11434/v1"
-api_key = "ollama"
+cdm_db = "cdm_db"
+embedding_model_name = "embedding_model"
+vector_store_name = "embeddings"
+
+[tools.omop_alchemy]
+cdm_db = "cdm_db"
+
+[tools.omop_graph]
+cdm_db = "cdm_db"
 ```
+
+Settings are flat, grouped by name prefix. For example, `omop-config configure groundworkers --grounding-max-depth 6` updates that field without changing its neighbours.
+
+A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name` and every lexical feature still works. See [Runtime combinations](#what-becomes-available-at-runtime).
+
+When both embedding references are configured, the setup console also writes `[tools.omop_emb]` with the same `cdm_db`, model, and vector-store names. `oa-configurator` gives each package a typed tool section; the database, model, provider, and store definitions remain single shared entries. This binding is required because managed population runs execute the `omop-emb` CLI. The setup change is planned and saved atomically with `[tools.groundworkers]`.
+
+CDM setup similarly writes `[tools.omop_alchemy]` and `[tools.omop_graph]` with the same `cdm_db` reference. Groundworkers launches those packages' schema, full-text, index, and relationship-classification maintenance CLIs, which resolve their own typed package sections. Groundworkers' runtime graph adapter continues to receive its engine and optional embedding dependencies directly; it does not read omop-graph's traversal or embedding configuration.
+
+### Reference fields
+
+| Field | References | Required |
+|---|---|---|
+| `cdm_db` | a `[databases.*]` entry with `kind = "cdm"` | yes |
+| `embedding_model_name` | a `[models.*]` entry | no |
+| `llm_model_name` | a `[models.*]` entry | no |
+| `vector_store_name` | a `[vector_stores.*]` entry | no |
+
+`embedding_model_name` is the model used for concept-document embeddings and compatible query encoding; `llm_model_name` is the chat model. Both name `[models.*]` entries. They may share a provider or model entry when that entry declares the required capabilities, may point at different providers, or one may be unset. There is no separate on/off flag: chat is available exactly when `llm_model_name` resolves.
 
 ## groundworkers-owned fields
 
@@ -119,75 +149,93 @@ Application identity used by:
 
 Default: `groundworkers`
 
-### `mcp`
+### MCP transport (`mcp_*`)
 
 Default MCP startup settings used when you do not override them on the CLI.
 
 | Field | Type | Default |
 |---|---|---|
-| `transport` | `stdio` \| `sse` \| `streamable-http` | `stdio` |
-| `host` | `str` | `127.0.0.1` |
-| `port` | `int` | `8000` |
+| `mcp_transport` | `stdio` \| `sse` \| `streamable-http` | `stdio` |
+| `mcp_host` | `str` | `127.0.0.1` |
+| `mcp_port` | `int` | `8000` |
 
-### `rest`
+### REST transport (`rest_*`)
 
-Default REST startup settings.
+REST is selected explicitly with `--transport rest`; it is not started alongside MCP. These settings provide defaults when that transport is selected.
 
 | Field | Type | Default |
 |---|---|---|
-| `enabled` | `bool` | `false` |
-| `host` | `str` | `127.0.0.1` |
-| `port` | `int` | `8080` |
-| `base_path` | `str` | `/v1` |
+| `rest_host` | `str` | `127.0.0.1` |
+| `rest_port` | `int` | `8080` |
+| `rest_base_path` | `str` | `/v1` |
 
 `base_path` is validated to begin with `/`.
 
-### `llm`
+### `llm_model_name` and chat
 
-Worker-owned LLM settings used by `TextService`, `DomainService`, and LLM-assisted
-source planning.
+The chat model used by `TextService`, `DomainService`, and LLM-assisted source planning is a named `[models.*]` entry, exactly like the embedding model. Its endpoint and credentials live on the `[providers.*]` entry that model references, so they are stored, redacted, and reused the same way as every other provider in the stack:
 
-| Field | Type | Default |
-|---|---|---|
-| `enabled` | `bool` | `false` |
-| `provider` | `str` | `openai-compatible` |
-| `api_base` | `str \| null` | `null` |
-| `api_key` | `str \| null` | `null` |
-| `default_model_name` | `str \| null` | `null` |
+```toml
+[providers.local_ollama]
+provider = "ollama"
+base_url = "http://localhost:11434"
+api_key = "…"
 
-### `grounding`
+[models.chat_model]
+provider = "local_ollama"
+model = "qwen3:8b"
+structured_output = true
 
-Groundworkers-owned grounding behavior that does not belong in `omop-graph` or
-`omop-emb`.
+[tools.groundworkers]
+llm_model_name = "chat_model"
+```
 
-| Field | Type | Default |
-|---|---|---|
-| `embedding_model_name` | `str \| null` | `null` |
-| `min_fulltext_overlap` | `float` | `0.0` |
+`structured_output = true` declares that the model can honour the JSON-mode request `complete_structured` makes; omop-llm treats every capability as opt-in. Chat is configured through the setup console's Chat section, using the same configuration workflow as the other setup sections.
 
-`min_fulltext_overlap` must be between `0.0` and `1.0`.
+### Grounding (`grounding_*`)
 
-### `source_planning`
+Groundworkers-owned grounding policy. omop-graph's traversal limits are per-call arguments, not shared configuration, so they do not appear here.
 
 | Field | Type | Default |
 |---|---|---|
-| `llm_assisted_enabled` | `bool` | `true` |
+| `grounding_min_fulltext_overlap` | `float` | `0.0` |
+| `grounding_max_depth` | `int` (1-10) | `5` |
 
-This controls whether `build_application(...)` wires the assisted classifier
-into `SourcePlanningService` when an LLM adapter is present.
+`min_fulltext_overlap` must be between `0.0` and `1.0`. It is the minimum proportion of query tokens that must appear in a matched concept name for a full-text hit to be accepted; below the threshold grounding falls through to the next tier.
 
-### `knowledge`
+`max_depth` bounds the hierarchy distance between a grounding candidate and a required parent concept, or the identity-hop count when grounding runs without `parent_ids`.
+
+### Concept flag contract
+
+Grounding results carry strict OMOP flags:
+
+| Field | Meaning |
+|---|---|
+| `standard_concept` | true only for raw `standard_concept = 'S'` |
+| `classification_concept` | true only for raw `standard_concept = 'C'` |
+| `is_active` | `invalid_reason` unset, treating blank and whitespace-only as active |
+
+Grounding can legitimately land on a classification concept (an ATC or CPT4 hierarchy node). Those are valid hierarchy positions but **not** valid mapping targets for a CDM entity field, so check the flags rather than assuming every result is standard.
+
+`concept_ground` also accepts `standard_only` and `active_only` (both default `false`). They narrow *candidate resolution*, not the returned results.
+
+### Source planning (`source_planning_*`)
 
 | Field | Type | Default |
 |---|---|---|
-| `packs_root` | `str \| null` | `null` |
+| `source_planning_llm_assisted_enabled` | `bool` | `true` |
 
-`groundworkers` includes bundled baseline knowledge packs as part of the
-package. Set `packs_root` when you want to add site-specific or localisation
-packs on top of that baseline.
+This controls whether `build_application(...)` wires the assisted classifier into `SourcePlanningService` when an LLM adapter is present.
 
-The configured directory should contain a `packs/` tree grouped by knowledge
-layer, for example:
+### Knowledge packs (`knowledge_*`)
+
+| Field | Type | Default |
+|---|---|---|
+| `knowledge_packs_root` | `str \| null` | `null` |
+
+`groundworkers` includes bundled baseline knowledge packs as part of the package. Set `knowledge_packs_root` when you want to add site-specific or localisation packs on top of that baseline.
+
+The configured directory should contain a `packs/` tree grouped by knowledge layer, for example:
 
 ```text
 my-knowledge/
@@ -198,48 +246,50 @@ my-knowledge/
         guidance.md
 ```
 
-If a configured pack has the same `layer` and `name` as a bundled baseline
-pack, the configured copy wins.
+If a configured pack has the same `layer` and `name` as a bundled baseline pack, the configured copy wins.
 
-### `semantic_projection`
+<a id="semantic_projection"></a>
+
+### Semantic projection (`semantic_projection_*`)
 
 | Field | Type | Default |
 |---|---|---|
-| `enabled` | `bool` | `false` |
+| `semantic_projection_enabled` | `bool` | `false` |
 
 Gates the `semantic_project` MCP tool and its backing `SemanticProjectionService`.
-Off by default: the service is fully deterministic (no LLM, no database), so
-there's no missing-dependency reason to disable it — the flag exists purely
-for staged rollout, per agent-stack's `SEMANTIC_INTEGRATION` design notes
-(enable in local/test environments first).
 
 ```toml
-[tools.groundworkers.semantic_projection]
-enabled = true
+[tools.groundworkers]
+semantic_projection_enabled = true
 ```
 
 ## What becomes available at runtime
 
-### With shared CDM and `omop_graph` configured
+### With `cdm_db` alone
 
-You get:
+Graph availability follows the resolved CDM database, so a CDM-only stack gets:
 
 - `CDMAdapter`
-- `OmopGraphAdapter`
-- `VocabService`
-- `MappingService`
+- `OmopGraphAdapter` (lexical only)
+- `VocabService`, `GraphService`, `ConceptGroundingService`, `MappingService`
 - concept, resolver, search, mapping, source-planning, knowledge, and system MCP tools
 
-### With `omop_emb` configured
+Embedding status reports as unconfigured. No `[tools.omop_graph]` section is required or read.
+
+### With `embedding_model_name` **and** `vector_store_name`
 
 You additionally get:
 
 - `OmopEmbAdapter`
 - embedding MCP tools
 - embedding-backed channels in `MappingService`
-- optional embedding support in graph grounding
+- the embedding grounding tier
 
-### With `groundworkers.llm.enabled = true`
+Both references are required. With only one configured, status reports an actionable incomplete-configuration message and embedding features stay off rather than guessing a default.
+
+The store must be populated before the embedding tier can return anything. Population is explicit (see the Embeddings setup section) and never starts at query time. The server holds the graph read-only (`write=False`), so Groundworkers encodes query text for the embedding tier but never writes vectors.
+
+### With `groundworkers.llm_model_name` configured
 
 You additionally get:
 
@@ -247,36 +297,35 @@ You additionally get:
 - `TextService`
 - `DomainService`
 - text and domain MCP tools
-- LLM-assisted source planning when `source_planning.llm_assisted_enabled = true`
+- LLM-assisted source planning when `source_planning_llm_assisted_enabled = true`
 
-### With `groundworkers.semantic_projection.enabled = true`
+### With `semantic_projection_enabled = true`
 
 You additionally get:
 
-- `SemanticProjectionService` (constructed directly, not part of `app.services`
-  — it needs no adapter)
+- `SemanticProjectionService` (constructed directly, not part of `app.services` — it needs no adapter)
 - the `semantic_project` MCP tool
 
 ## CLI selection rules
 
 By default:
 
-- `groundworkers` loads the active stack config file
-- the active profile comes from the file unless overridden
+- `groundworkers` loads the stack config file
 - MCP startup uses the `mcp` defaults unless overridden on the CLI
 
 Available runtime selectors:
 
 ```bash
-groundworkers --config-path /path/to/config.toml --profile local --describe
+groundworkers --config-path /path/to/config.toml --describe
 groundworkers --transport streamable-http --host 0.0.0.0 --port 8000
 groundworkers --transport rest --host 0.0.0.0 --port 8080
 ```
 
-Equivalent environment overrides:
+Equivalent environment override:
 
 - `OA_CONFIG_PATH`
-- `OA_ACTIVE_PROFILE`
+
+There is no Groundworkers profile selector. Keep separate stack files when you need separate environments and select one with `--config-path` or `OA_CONFIG_PATH`.
 
 ## Direct Python example
 
@@ -284,12 +333,13 @@ Equivalent environment overrides:
 from groundworkers.app import build_application
 from groundworkers.bootstrap import build_app_config
 
-config = build_app_config(profile="local")
+config = build_app_config(config_path="/path/to/config.toml")
 app = build_application(config)
 
+grounding = app.services.grounding
 mapping = app.services.mapping
-text = app.services.text
 ```
 
-Service attributes are `None` only when their prerequisites are not available in
-the resolved runtime.
+Service attributes are `None` only when their prerequisites are not available in the resolved runtime.
+
+`config.describe()` returns a redacted summary keyed by `database`, `model`, and `vector_store`. Passwords and API keys are masked; safe URLs never carry credentials.

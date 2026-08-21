@@ -5,9 +5,18 @@ services can produce without knowing anything about ACP session state,
 review queues, or persistence models.
 """
 
+from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
+from groundworkers.services.source_planning.classifier import (
+    ColumnRoleClassifier,
+    classify_columns,
+    classify_tables,
+)
+from groundworkers.services.source_planning.decomposer import TableDecomposer
+from groundworkers.services.source_planning.detector import FormatDetector
 from groundworkers.services.source_planning.models import (
-    AnnotatedTable,
     COLUMN_ROLE_DESCRIPTIONS,
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
+    AnnotatedTable,
     ColumnAnnotation,
     ColumnRole,
     IngestionPlan,
@@ -16,16 +25,7 @@ from groundworkers.services.source_planning.models import (
     PreIngestBundle,
     RawTable,
     SourceFormat,
-    UNCERTAIN_CONFIDENCE_THRESHOLD,
 )
-from groundworkers.services.source_planning.classifier import (
-    ColumnRoleClassifier,
-    classify_columns,
-    classify_tables,
-)
-from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
-from groundworkers.services.source_planning.decomposer import TableDecomposer
-from groundworkers.services.source_planning.detector import FormatDetector
 from groundworkers.services.source_planning.normalisation import (
     NormalisationPolicy,
     normalise_headers,
@@ -43,11 +43,15 @@ from groundworkers.services.source_planning.service import (
     plan_source,
     plan_tables,
 )
-from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.warnings import (
+    PlanningError,
+    PlanningWarning,
+)
 
 __all__ = [
-    "AnnotatedTable",
     "COLUMN_ROLE_DESCRIPTIONS",
+    "UNCERTAIN_CONFIDENCE_THRESHOLD",
+    "AnnotatedTable",
     "AssistedColumnRoleClassifier",
     "ColumnAnnotation",
     "ColumnRole",
@@ -57,16 +61,15 @@ __all__ = [
     "IngesterRouter",
     "IngestionPlan",
     "IngestionStrategy",
-    "NormalisedTable",
     "NormalisationPolicy",
+    "NormalisedTable",
     "PlanningError",
     "PlanningWarning",
     "PreIngestBundle",
     "RawTable",
-    "SourcePlanningService",
     "SourceFormat",
+    "SourcePlanningService",
     "TableDecomposer",
-    "UNCERTAIN_CONFIDENCE_THRESHOLD",
     "classify_columns",
     "classify_tables",
     "normalise_headers",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 
 from groundskeeping.contracts import (
     EmptyView,
@@ -38,7 +39,7 @@ class DatabasePresenter(SetupPresenterBase):
         return (
             config_status
             if config_status is not SemanticStatus.OK
-            else _connection_status(results)
+            else _connection_status(_database_results(results))
         )
 
     def landing(
@@ -58,7 +59,12 @@ class DatabasePresenter(SetupPresenterBase):
                 ),
                 status=SemanticStatus.WARNING,
                 actions=(
-                    ViewAction("database.configure", "Configure", variant="primary"),
+                    ViewAction(
+                        "database.configure",
+                        "Configure",
+                        variant="primary",
+                        disabled=not snapshot.ownership.editable,
+                    ),
                     ViewAction("database.refresh", "Refresh"),
                 ),
             )
@@ -83,24 +89,39 @@ class DatabasePresenter(SetupPresenterBase):
                 status=SemanticStatus.ERROR,
                 message=str(snapshot.path),
                 actions=(
-                    ViewAction("database.configure", "Configure", variant="primary"),
+                    ViewAction(
+                        "database.configure",
+                        "Configure",
+                        variant="primary",
+                        disabled=not snapshot.ownership.editable,
+                    ),
                     ViewAction("database.refresh", "Refresh"),
                 ),
             )
 
-        result_by_key = {item.target_key: item for item in results}
+        result_by_key = {
+            item.target_key: _database_result(item)
+            for item in results
+        }
+        rows = [
+            _target_row(target, result_by_key.get(target.key)) for target in targets
+        ]
+        if not any(target.key == EMBEDDING_TARGET_KEY for target in targets):
+            # Shown even when absent. The embedding store is one of the databases
+            # Groundworkers uses, and leaving the row out when it is unconfigured
+            # meant there was nothing to select and so no way to configure one
+            # from the console at all.
+            rows.append(_unconfigured_embedding_row())
         return TableView(
-            title="Database resources",
-            columns=("Resource", "Database", "Schemas", "Status", "Latency"),
-            rows=tuple(
-                _target_row(target, result_by_key.get(target.key)) for target in targets
+            title="Databases",
+            columns=("Entry", "Connection", "Schemas", "Status", "Latency"),
+            rows=tuple(rows),
+            status=_connection_status(tuple(result_by_key.values())),
+            message=f"{snapshot.path}  |  {snapshot.ownership.mode.value}",
+            actions=_database_actions(
+                selected_target_key,
+                editable=snapshot.ownership.editable,
             ),
-            status=_connection_status(results),
-            message=(
-                f"{snapshot.path}  |  profile {snapshot.profile or 'default'}  |  "
-                f"{snapshot.ownership.mode.value}"
-            ),
-            actions=_database_actions(selected_target_key),
         )
 
     def loading(self) -> LoadingView:
@@ -114,12 +135,61 @@ class DatabasePresenter(SetupPresenterBase):
             title="Configuration source",
             rows=(
                 ("path", str(snapshot.path)),
-                ("profile", snapshot.profile or "default"),
                 ("ownership", snapshot.ownership.mode.value),
                 ("source", snapshot.ownership.source_label),
                 ("guidance", snapshot.ownership.guidance),
             ),
         )
+
+
+EMBEDDING_TARGET_KEY = "database.embedding"
+
+_PERFORMANCE_DIAGNOSTIC_CODES = frozenset(
+    {
+        "fulltext_sidecar_missing",
+        "fulltext_indexes_missing",
+        "fulltext_indexes_present",
+        "functional_indexes_missing",
+        "functional_indexes_present",
+        "trigram_indexes_missing",
+        "trigram_indexes_present",
+        "trigram_indexes_unchecked",
+    }
+)
+
+
+def _database_result(result: ConnectionResult) -> ConnectionResult:
+    """Keep performance/index diagnostics on the Performance surface."""
+
+    return replace(
+        result,
+        diagnostics=tuple(
+            diagnostic
+            for diagnostic in result.diagnostics
+            if diagnostic.code not in _PERFORMANCE_DIAGNOSTIC_CODES
+        ),
+    )
+
+
+def _database_results(results: Sequence[ConnectionResult]) -> tuple[ConnectionResult, ...]:
+    return tuple(_database_result(result) for result in results)
+
+
+def _unconfigured_embedding_row() -> TableRow:
+    return TableRow(
+        key=EMBEDDING_TARGET_KEY,
+        cells=("Embedding store", "—", "—", "Not configured", ""),
+        detail=(
+            detail_row(
+                "warn",
+                "Configure a vector store to enable embedding search.",
+            ),
+            detail_row(
+                "unknown",
+                "Configure one here, or run 'omop-config configure groundworkers'.",
+            ),
+        ),
+    )
 
 
 def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> TableRow:
@@ -139,7 +209,7 @@ def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> Tabl
         key=target.key,
         cells=(
             target.label,
-            target.database_name,
+            target.connection_name,
             f"{target.cdm_schema} / {target.vocabulary_schema}",
             status,
             latency,
@@ -148,13 +218,17 @@ def _target_row(target: DatabaseTarget, result: ConnectionResult | None) -> Tabl
     )
 
 
-def _database_actions(selected_target_key: str | None) -> tuple[ViewAction, ...]:
+def _database_actions(
+    selected_target_key: str | None,
+    *,
+    editable: bool,
+) -> tuple[ViewAction, ...]:
     return (
         ViewAction(
             "database.configure",
             "Configure",
             variant="primary",
-            disabled=selected_target_key == "database.groundworkers",
+            disabled=(not editable or selected_target_key == "database.groundworkers"),
         ),
         ViewAction(
             "database.test_connections",

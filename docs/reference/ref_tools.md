@@ -24,6 +24,14 @@
 
 ::: groundworkers.tools.domain_tools
 
+## Source Planning Tools
+
+::: groundworkers.tools.source_planning_tools
+
+## Knowledge Tools
+
+::: groundworkers.tools.knowledge_tools
+
 ## System Tools
 
 ::: groundworkers.tools.system_tools

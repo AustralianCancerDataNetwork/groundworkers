@@ -1,14 +1,10 @@
 # ConceptGroundingService
 
-`ConceptGroundingService` is the direct Python surface for free-text grounding
-policy over `GraphService`. It decides how grounding requests are constrained
-and which resolver tiers participate; the graph service then executes the plan
-against the omop-graph backend.
+`ConceptGroundingService` is the direct Python surface for free-text grounding policy over `GraphService`. It decides how grounding requests are constrained and which resolver tiers participate; the graph service then executes the plan against the omop-graph backend. Grounding returns ranked candidates, not an unreviewable guarantee that the first result is the correct mapping.
 
 ## Construction
 
-`ConceptGroundingService` is wired by `build_application(...)` when
-`GraphService` is available.
+`ConceptGroundingService` is wired by `build_application(...)` when `GraphService` is available.
 
 ```python
 from groundworkers.app import build_application
@@ -47,12 +43,8 @@ Resolver tiers are tried in this order:
 3. embedding retrieval, when an embedding client is wired into `OmopGraphAdapter`
 4. partial label and synonym matches, when the search space is already constrained enough to keep them practical
 
-When `parent_ids` is omitted, the search runs without an ancestry constraint.
-Domain and vocabulary constraints still apply, so parentless grounding can still
-be bounded to a clinical domain or vocabulary. When `parent_ids` is provided,
-results must be descendants of at least one listed concept.
+When `parent_ids` is omitted, the search runs without an ancestry constraint. Domain and vocabulary constraints still apply, so parentless grounding can still be bounded to a clinical domain or vocabulary. When `parent_ids` is provided, results must be descendants of at least one listed concept.
 
 ## Relationship to transports
 
-The `concept_ground` MCP tool delegates to this service. If you are already in
-Python, prefer `app.services.grounding` over calling the tool wrapper directly.
+The `concept_ground` MCP tool delegates to this service. If you are already in Python, prefer `app.services.grounding` over calling the tool wrapper directly.

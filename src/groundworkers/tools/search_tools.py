@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.vocab import (
     VocabService,
     serialise_concept_match,
@@ -11,8 +11,8 @@ from groundworkers.services.vocab import (
 )
 
 
-def register_search_tools(server: GroundcrewServer, vocab_service: VocabService) -> None:
-    """Register agent-composable primitive search tools against the MCP server."""
+def register_search_tools(server: GroundworkersMCPServer, vocab_service: VocabService) -> None:
+    """Register lexical search tools against the MCP server."""
 
     @server.tool("concept_search_exact")
     def concept_search_exact(
@@ -52,8 +52,6 @@ def register_search_tools(server: GroundcrewServer, vocab_service: VocabService)
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_search_fulltext")
     def concept_search_fulltext(
@@ -104,8 +102,6 @@ def register_search_tools(server: GroundcrewServer, vocab_service: VocabService)
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_navigate_to_standard")
     def concept_navigate_to_standard(concept_ids: list[int]) -> dict[str, Any]:
@@ -134,5 +130,3 @@ def register_search_tools(server: GroundcrewServer, vocab_service: VocabService)
             return {"results": [serialise_standard_mapping(m) for m in mappings]}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

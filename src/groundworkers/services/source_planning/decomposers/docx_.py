@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+from typing import Any
 
 from groundworkers.services.source_planning.models import RawTable, SourceFormat
 
@@ -114,7 +115,9 @@ def _normalise_headers(raw: list[str]) -> list[str]:
     return out
 
 
-def _extract_paragraph_sections(doc: object) -> list[dict[str, str]]:
+# `Any`, not `object`: python-docx is an optional dependency with no exported
+# type for its Document, so its attributes cannot be checked statically.
+def _extract_paragraph_sections(doc: Any) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     current_heading = ""
     buffer: list[str] = []
@@ -125,7 +128,7 @@ def _extract_paragraph_sections(doc: object) -> list[dict[str, str]]:
             rows.append({"section": current_heading, "text": body})
         buffer.clear()
 
-    for para in doc.paragraphs:  # type: ignore[attr-defined]
+    for para in doc.paragraphs:
         text = _cell(para.text)
         if not text:
             continue

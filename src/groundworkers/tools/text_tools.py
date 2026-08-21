@@ -3,14 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.text import TextService
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
 
 
-def register_text_tools(server: GroundcrewServer, text_service: TextService) -> None:
+def register_text_tools(server: GroundworkersMCPServer, text_service: TextService) -> None:
     @server.tool("text_normalize")
-    def text_normalize(
+    async def text_normalize(
         text: str,
         domain_hint: str | None = None,
         model_name: str | None = None,
@@ -24,20 +24,23 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         domain_hint optionally scopes normalization to a specific OMOP domain (e.g. Condition, Drug,
         Measurement) when the term is likely to be domain-specific.
 
-        Returns: normalized, original, confidence (high/medium/low), notes.
+        The result preserves the original text and includes the normalized phrase,
+        the model's categorical confidence, and optional notes about ambiguity.
         """
         try:
-            result = text_service.normalize(text, domain_hint=domain_hint, model_name=model_name)
+            result = await text_service.async_normalize(
+                text,
+                domain_hint=domain_hint,
+                model_name=model_name,
+            )
             return result.model_dump()
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("text_mapping_cleanup")
-    def text_mapping_cleanup(
+    async def text_mapping_cleanup(
         text: str,
         context: dict[str, Any] | None = None,
         domain_hint: str | None = None,
@@ -50,10 +53,11 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         Accepts optional context such as parent label, sibling values, child values,
         source code, or preferred domain to keep the rewrite faithful to the source.
 
-        Returns: replacement, original, changed, confidence (high/medium/low), notes.
+        The result includes the replacement phrase, whether it changed, the model's
+        categorical confidence, and optional notes.
         """
         try:
-            result = text_service.mapping_cleanup(
+            result = await text_service.async_mapping_cleanup(
                 text,
                 context=context,
                 domain_hint=domain_hint,
@@ -64,11 +68,9 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("text_decompose")
-    def text_decompose(
+    async def text_decompose(
         text: str,
         domain_hint: str | None = None,
         max_terms: int = 10,
@@ -82,22 +84,26 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         concept_candidate_bundle.
 
         domain_hint optionally scopes extraction to a specific OMOP domain.
-        max_terms controls the upper bound on terms returned (clamped 1–20).
+        max_terms controls the upper bound on terms returned (clamped 1-20).
 
-        Returns: terms (list of {term, domain_hint}), original.
+        The result contains normalized terms with optional domain hints and the
+        original input text.
         """
         try:
-            result = text_service.decompose(text, domain_hint=domain_hint, max_terms=max_terms, model_name=model_name)
+            result = await text_service.async_decompose(
+                text,
+                domain_hint=domain_hint,
+                max_terms=max_terms,
+                model_name=model_name,
+            )
             return result.model_dump()
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("text_disambiguate")
-    def text_disambiguate(
+    async def text_disambiguate(
         text: str,
         domain_hint: str | None = None,
         max_interpretations: int = 5,
@@ -111,13 +117,13 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
         from context — returning the ranked list to the caller to resolve.
 
         domain_hint optionally scopes disambiguation to a specific OMOP domain.
-        max_interpretations controls the upper bound on candidates returned (clamped 1–10).
+        max_interpretations controls the upper bound on candidates returned (clamped 1-10).
 
-        Returns: interpretations (list of {interpretation, domain_hint, context_clues}),
-        original, is_ambiguous.
+        The result contains ranked interpretations with optional domain hints and
+        context clues, plus the original input and an ambiguity flag.
         """
         try:
-            result = text_service.disambiguate(
+            result = await text_service.async_disambiguate(
                 text, domain_hint=domain_hint, max_interpretations=max_interpretations, model_name=model_name,
             )
             return result.model_dump()
@@ -125,11 +131,9 @@ def register_text_tools(server: GroundcrewServer, text_service: TextService) -> 
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
 
-def register_text_prompts(server: GroundcrewServer) -> None:
+def register_text_prompts(server: GroundworkersMCPServer) -> None:
     """Register MCP prompt handlers for the text preprocessing operations.
 
     These prompts let MCP clients request the exact message sequences that would

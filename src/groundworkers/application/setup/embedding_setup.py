@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Protocol
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from omop_emb import EmbeddingBackend, EmbeddingClient
-from omop_emb.config import MetricType, OmopEmbConfig, ProviderType
-from omop_emb.embeddings.embedding_client import EmbeddingRole
+from oa_configurator import (
+    ResolvedModel,
+    ResolvedVectorStore,
+    Resolver,
+    safe_endpoint,  # type: ignore[import-untyped]
+)
+from omop_emb import EmbeddingBackend, MetricType
+from omop_llm import (
+    ModelBackend,
+    build_model_backend_from_resolved,
+    canonical_model_name,
+)
 
 from groundworkers.application.setup.databases import classify_connection_error
 from groundworkers.application.setup.models import (
@@ -22,73 +29,86 @@ from groundworkers.application.setup.models import (
     ProviderSnapshot,
     RegisteredEmbeddingModel,
 )
+from groundworkers.base.results import enum_value, required_enum_value
+from groundworkers.config import GroundworkersConfig
+
+ModelBackendFactory = Callable[[ResolvedModel], ModelBackend]
+ModelInventoryDiscoverer = Callable[[ResolvedModel], Sequence[str]]
 
 
-class ProviderProbeAdapter(Protocol):
-    provider_kind: str
-    api_base: str
-    model_name: str
-    capabilities: ProviderCapabilities
+def initialize_embedding_store(
+    snapshot: ConfigurationSnapshot,
+    *,
+    initializer: Callable[[ResolvedVectorStore], EmbeddingBackend] | None = None,
+) -> EmbeddingStoreSnapshot:
+    """Run the reviewed store-initialization operation.
 
-    def list_models(self) -> Sequence[str]: ...
+    This is the only setup service that is allowed to construct the writable
+    omop-emb backend. Coverage, model checks, and registry inspection use the
+    read-only omop-emb inspection API instead.
+    """
 
-    def encode_probe(self) -> int: ...
-
-
-class OpenAICompatibleProviderAdapter:
-    """Probe an Ollama, OpenAI, or compatible embeddings endpoint."""
-
-    def __init__(
-        self,
-        *,
-        provider_kind: str,
-        api_base: str,
-        api_key: str,
-        model_name: str,
-        supports_model_listing: bool = False,
-        pull_model: Callable[[str], None] | None = None,
-    ) -> None:
-        provider_type = (
-            ProviderType.OLLAMA
-            if provider_kind == ProviderType.OLLAMA.value
-            else ProviderType.OPENAI
+    configuration = load_embedding_configuration(snapshot)
+    if configuration is None or snapshot.stack is None:
+        return EmbeddingStoreSnapshot(
+            state=EmbeddingStoreState.UNCONFIGURED,
+            backend=None,
+            reachable=False,
         )
-        self.provider_kind = provider_kind
-        self.api_base = safe_api_base(api_base)
-        self.model_name = model_name
-        self._client = EmbeddingClient(
-            model=model_name,
-            api_base=api_base,
-            api_key=api_key,
-            provider_type=provider_type,
+    try:
+        groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
+        if groundworkers.vector_store_name is None:
+            raise ValueError("An embedding vector store is not configured.")
+        resolved = Resolver(snapshot.stack).resolve_vector_store(
+            groundworkers.vector_store_name
         )
-        self._pull_model = pull_model
-        self.capabilities = ProviderCapabilities(
-            list_models=supports_model_listing,
-            pull_model=pull_model is not None,
-            reported_dimensions=provider_type is ProviderType.OLLAMA,
-        )
+        if initializer is None:
+            from omop_emb.backends import initialize_resolved_vector_store
 
-    def list_models(self) -> Sequence[str]:
-        if not self.capabilities.list_models:
-            raise NotImplementedError(
-                "This provider does not advertise model inventory."
+            initializer = initialize_resolved_vector_store
+        backend = initializer(resolved)
+        try:
+            records = backend.get_registered_models()
+            models = tuple(
+                RegisteredEmbeddingModel(
+                    model_name=record.model_name,
+                    provider=required_enum_value(record.provider_type),
+                    dimensions=int(record.dimensions),
+                    metric=(
+                        enum_value(record.metric_type)
+                        if record.metric_type is not None
+                        else None
+                    ),
+                    index_type=required_enum_value(record.index_type),
+                    has_embeddings=backend.has_any_embeddings(
+                        model_name=record.model_name,
+                        metric_type=record.metric_type or MetricType.COSINE,
+                        _model_record=record,
+                    ),
+                )
+                for record in records
             )
-        response = self._client.base_client.models.list()
-        return tuple(str(item.id) for item in response.data)
-
-    def encode_probe(self) -> int:
-        vectors = self._client.embeddings(
-            "OMOP embedding setup probe",
-            embedding_role=EmbeddingRole.QUERY,
-            batch_size=1,
+        finally:
+            engine = getattr(backend, "emb_engine", None)
+            if engine is not None:
+                engine.dispose()
+    except Exception as exc:
+        return EmbeddingStoreSnapshot(
+            state=EmbeddingStoreState.UNREACHABLE,
+            backend=configuration.backend,
+            reachable=False,
+            failure=classify_connection_error(exc),
         )
-        return int(vectors.shape[1])
-
-    def pull_model(self) -> None:
-        if self._pull_model is None:
-            raise NotImplementedError("This provider does not advertise model pulling.")
-        self._pull_model(self.model_name)
+    return EmbeddingStoreSnapshot(
+        state=(
+            EmbeddingStoreState.POPULATED
+            if any(model.has_embeddings for model in models)
+            else EmbeddingStoreState.EMPTY
+        ),
+        backend=configuration.backend,
+        reachable=True,
+        models=models,
+    )
 
 
 def load_embedding_configuration(
@@ -97,36 +117,56 @@ def load_embedding_configuration(
     if snapshot.stack is None:
         return None
     stack = snapshot.stack
-    configured = "omop_emb" in stack.tools or bool(
-        stack.active_profile
-        and stack.active_profile in stack.profiles
-        and "omop_emb" in stack.profiles[stack.active_profile].tools
-    )
-    if not configured:
-        return None
     try:
-        config = OmopEmbConfig.from_stack(stack)
+        groundworkers = GroundworkersConfig.validate_candidate(stack)
+        if (
+            groundworkers.embedding_model_name is None
+            or groundworkers.vector_store_name is None
+        ):
+            return None
+        resolver = Resolver(stack)
+        model = resolver.resolve_model(groundworkers.embedding_model_name)
+        vector_store = resolver.resolve_vector_store(
+            groundworkers.vector_store_name
+        )
     except (KeyError, TypeError, ValueError):
         return None
+
+    vector_store_config = stack.vector_stores[groundworkers.vector_store_name]
+    database_config = stack.databases[vector_store_config.database]
+    connection_name = database_config.connection
+    connection_config = stack.connections[connection_name]
+    database_path = (
+        connection_config.database_name
+        if connection_config.dialect.startswith("sqlite")
+        else None
+    )
     config_base = snapshot.path.parent if snapshot.path is not None else None
-    sqlite_path_exists = (
-        _path_exists(config.sqlite_path, base=config_base)
-        if config.sqlite_path is not None
+    database_path_exists = (
+        _path_exists(database_path, base=config_base)
+        if database_path is not None
         else None
     )
     faiss_cache_dir_exists = (
-        _path_exists(config.faiss_cache_dir, base=config_base)
-        if config.faiss_cache_dir is not None
+        _path_exists(vector_store.faiss_cache_dir, base=config_base)
+        if vector_store.faiss_cache_dir is not None
         else None
     )
     return EmbeddingConfiguration(
-        backend=config.backend,
-        provider_kind=_enum_value(config.provider_type),
-        model_name=config.embedding_model,
-        api_base=safe_api_base(config.api_base),
-        sqlite_path=config.sqlite_path,
-        sqlite_path_exists=sqlite_path_exists,
-        faiss_cache_dir=config.faiss_cache_dir,
+        backend=vector_store.backend_type,
+        vector_store_name=vector_store.name,
+        database_name=vector_store.database.name,
+        connection_name=vector_store.database.connection.name,
+        database_safe_url=vector_store.database.connection.safe_url,
+        provider_name=model.provider.name,
+        provider_kind=model.provider.provider,
+        model_entry_name=model.name,
+        model_name=model.model,
+        embeddings_supported=model.embeddings,
+        api_base=(safe_endpoint(model.provider.base_url) if model.provider.base_url else None),
+        database_path=database_path,
+        database_path_exists=database_path_exists,
+        faiss_cache_dir=vector_store.faiss_cache_dir,
         faiss_cache_dir_exists=faiss_cache_dir_exists,
     )
 
@@ -153,23 +193,25 @@ def probe_embedding_store(
             has_embeddings = backend.has_any_embeddings(
                 model_name=record.model_name,
                 metric_type=metric,
+                _model_record=record,
             )
             models.append(
                 RegisteredEmbeddingModel(
                     model_name=record.model_name,
-                    provider=_enum_value(record.provider_type),
+                    provider=required_enum_value(record.provider_type),
                     dimensions=int(record.dimensions),
                     metric=(
-                        _enum_value(record.metric_type)
+                        enum_value(record.metric_type)
                         if record.metric_type is not None
                         else None
                     ),
-                    index_type=_enum_value(record.index_type),
+                    index_type=required_enum_value(record.index_type),
                     has_embeddings=has_embeddings,
                     concept_count=0 if not has_embeddings else None,
                 )
             )
-    except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
+    except Exception as exc:
+        # Broad except: converted to a safe setup state.
         return EmbeddingStoreSnapshot(
             state=EmbeddingStoreState.UNREACHABLE,
             backend=backend_type,
@@ -182,42 +224,131 @@ def probe_embedding_store(
             if any(model.has_embeddings for model in models)
             else EmbeddingStoreState.EMPTY
         ),
-        backend=backend_type or _enum_value(backend.backend_type),
+        backend=backend_type or enum_value(backend.backend_type),
         reachable=True,
         models=tuple(models),
     )
 
 
-def probe_provider(adapter: ProviderProbeAdapter) -> ProviderSnapshot:
-    """Run optional inventory and a bounded encode probe."""
+def probe_provider(
+    resolved_model: ResolvedModel,
+    *,
+    backend_factory: ModelBackendFactory = build_model_backend_from_resolved,
+    inventory_discoverer: ModelInventoryDiscoverer | None = None,
+) -> ProviderSnapshot:
+    """Probe one resolved model through omop-llm's provider-neutral backend."""
 
     inventory: tuple[str, ...] | None = None
-    inventory_reachable = False
-    if adapter.capabilities.list_models:
+    if inventory_discoverer is not None:
         try:
-            inventory = tuple(adapter.list_models())
-            inventory_reachable = True
-        except Exception:  # noqa: BLE001 - encode is the decisive probe
+            inventory = tuple(
+                canonical_model_name(resolved_model.provider.provider, model_name)
+                for model_name in inventory_discoverer(resolved_model)
+            )
+        except Exception:
+            # Broad except: encode is the decisive probe.
             inventory = None
 
     try:
-        dimensions = adapter.encode_probe()
-    except Exception as exc:  # noqa: BLE001 - converted to a safe setup state
+        backend = backend_factory(resolved_model)
+    except Exception as exc:
+        # Broad except: converted to a safe setup state.
         return ProviderSnapshot(
-            provider_kind=adapter.provider_kind,
-            api_base=adapter.api_base,
-            configured_model=adapter.model_name,
-            capabilities=adapter.capabilities,
-            reachable=inventory_reachable,
+            provider_name=resolved_model.provider.name,
+            provider_kind=resolved_model.provider.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_endpoint(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            # Canonical, as every other exit from this function is: the name is
+            # compared against the embedding store's registry, which holds
+            # canonical names, so an unreachable provider must not report a
+            # differently-spelled model from a reachable one.
+            configured_model=_canonical_or_raw(resolved_model),
+            capabilities=ProviderCapabilities(
+                list_models=inventory_discoverer is not None,
+                encode_probe=resolved_model.embeddings,
+                reported_dimensions=resolved_model.embedding_dim is not None,
+            ),
+            reachable=False,
+            encoding_succeeded=False,
+            inventory=inventory,
+            failure=classify_connection_error(exc),
+        )
+
+    capabilities = ProviderCapabilities(
+        list_models=inventory_discoverer is not None,
+        encode_probe=backend.capabilities.embeddings,
+        reported_dimensions=resolved_model.embedding_dim is not None,
+    )
+    if not backend.is_available():
+        return ProviderSnapshot(
+            provider_name=resolved_model.provider.name,
+            provider_kind=backend.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_endpoint(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=backend.model,
+            capabilities=capabilities,
+            reachable=False,
+            encoding_succeeded=False,
+            inventory=inventory,
+            failure=classify_connection_error(ConnectionError("provider unavailable")),
+        )
+
+    if not backend.capabilities.embeddings:
+        return ProviderSnapshot(
+            provider_name=resolved_model.provider.name,
+            provider_kind=backend.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_endpoint(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=backend.model,
+            capabilities=capabilities,
+            reachable=True,
+            encoding_succeeded=False,
+            inventory=inventory,
+        )
+
+    try:
+        dimensions = backend.dimensions()
+    except Exception as exc:
+        # Broad except: converted to a safe setup state.
+        return ProviderSnapshot(
+            provider_name=resolved_model.provider.name,
+            provider_kind=backend.provider,
+            model_entry_name=resolved_model.name,
+            api_base=(
+                safe_endpoint(resolved_model.provider.base_url)
+                if resolved_model.provider.base_url
+                else None
+            ),
+            configured_model=backend.model,
+            capabilities=capabilities,
+            reachable=True,
             encoding_succeeded=False,
             inventory=inventory,
             failure=classify_connection_error(exc),
         )
     return ProviderSnapshot(
-        provider_kind=adapter.provider_kind,
-        api_base=adapter.api_base,
-        configured_model=adapter.model_name,
-        capabilities=adapter.capabilities,
+        provider_name=resolved_model.provider.name,
+        provider_kind=backend.provider,
+        model_entry_name=resolved_model.name,
+        api_base=(
+            safe_endpoint(resolved_model.provider.base_url)
+            if resolved_model.provider.base_url
+            else None
+        ),
+        configured_model=backend.model,
+        capabilities=capabilities,
         reachable=True,
         encoding_succeeded=True,
         dimensions=dimensions,
@@ -225,17 +356,48 @@ def probe_provider(adapter: ProviderProbeAdapter) -> ProviderSnapshot:
     )
 
 
+def _canonical_or_raw(resolved_model: ResolvedModel) -> str:
+    """The model's canonical name, or its configured spelling if unrecognised."""
+
+    try:
+        return canonical_model_name(
+            resolved_model.provider.provider, resolved_model.model
+        )
+    except Exception:
+        # Broad except: an unregistered provider key is a configuration problem
+        # reported elsewhere, not a reason to lose the snapshot.
+        return resolved_model.model
+
+
 def reconcile_models(
     *,
     configured_model: str | None,
     registered_models: Sequence[RegisteredEmbeddingModel],
     provider: ProviderSnapshot | None,
+    store: EmbeddingStoreSnapshot | None = None,
 ) -> ModelReconciliation:
+    """Judge the configured model against the store that must hold its vectors
+    and the provider that must produce them.
+
+    *store* is optional only for callers that already know the registry was
+    read successfully. Without it an unreachable store is indistinguishable from
+    an empty one, and the empty reading is the reassuring one.
+    """
     diagnostics: list[ModelDiagnostic] = []
     registered = tuple(registered_models)
     selected = next(
         (item for item in registered if item.model_name == configured_model), None
     )
+
+    if store is not None and not store.reachable:
+        diagnostics.append(
+            _diagnostic(
+                "store_unreachable",
+                DiagnosticSeverity.ERROR,
+                "The embedding store could not be reached, so what it holds is unknown."
+                + (f" {store.failure.detail}" if store.failure is not None else ""),
+            )
+        )
 
     if configured_model is None and len(registered) > 1:
         diagnostics.append(
@@ -273,7 +435,32 @@ def reconcile_models(
             )
         )
     elif provider is not None:
-        if not provider.encoding_succeeded:
+        if not provider.reachable:
+            # Checked before the capability and encode branches below, which both
+            # read as verdicts about the model. An endpoint that never answered
+            # has told us nothing about the model, and sends the operator at the
+            # wrong fix.
+            diagnostics.append(
+                _diagnostic(
+                    "provider_unreachable",
+                    DiagnosticSeverity.ERROR,
+                    "The provider endpoint could not be reached."
+                    + (
+                        f" {provider.failure.detail}"
+                        if provider.failure is not None
+                        else ""
+                    ),
+                )
+            )
+        elif not provider.capabilities.encode_probe:
+            diagnostics.append(
+                _diagnostic(
+                    "provider_embeddings_unsupported",
+                    DiagnosticSeverity.ERROR,
+                    "The selected model is not configured for embedding operations.",
+                )
+            )
+        elif not provider.encoding_succeeded:
             diagnostics.append(
                 _diagnostic(
                     "provider_encode_failed",
@@ -316,6 +503,7 @@ def reconcile_models(
         registered_models=registered,
         provider=provider,
         diagnostics=tuple(diagnostics),
+        store=store,
     )
 
 
@@ -325,10 +513,6 @@ def _diagnostic(
     return ModelDiagnostic(code=code, severity=severity, message=message)
 
 
-def _enum_value(value: object) -> str:
-    return str(getattr(value, "value", value))
-
-
 def _path_exists(value: str, *, base: Path | None) -> bool:
     if value == ":memory:":
         return True
@@ -336,28 +520,3 @@ def _path_exists(value: str, *, base: Path | None) -> bool:
     if not path.is_absolute() and base is not None:
         path = base / path
     return path.exists()
-
-
-def safe_api_base(api_base: str) -> str:
-    parts = urlsplit(api_base)
-    host = _safe_netloc_host(parts.hostname or "")
-    if parts.port is not None:
-        host = f"{host}:{parts.port}"
-    safe_query = urlencode(
-        tuple(
-            (key, "***" if _sensitive_key(key) else value)
-            for key, value in parse_qsl(parts.query, keep_blank_values=True)
-        )
-    )
-    return urlunsplit((parts.scheme, host, parts.path, safe_query, ""))
-
-
-def _safe_netloc_host(hostname: str) -> str:
-    if ":" in hostname and not hostname.startswith("["):
-        return f"[{hostname}]"
-    return hostname
-
-
-def _sensitive_key(key: str) -> bool:
-    lowered = key.lower()
-    return any(token in lowered for token in ("key", "secret", "password", "token"))

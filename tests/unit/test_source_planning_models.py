@@ -1,10 +1,4 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.services.source_planning.models import (
     AnnotatedTable,
@@ -18,7 +12,10 @@ from groundworkers.services.source_planning.models import (
     SourceFormat,
 )
 from groundworkers.services.source_planning.provenance import HeaderProvenance
-from groundworkers.services.source_planning.warnings import PlanningError, PlanningWarning
+from groundworkers.services.source_planning.warnings import (
+    PlanningError,
+    PlanningWarning,
+)
 
 
 def _raw_table() -> RawTable:
@@ -120,17 +117,23 @@ def test_pre_ingest_bundle_is_an_envelope_not_an_alias_for_plan():
 def test_groundable_roles_and_uncertain_threshold_are_shared_singletons():
     """_GROUNDABLE_ROLES and UNCERTAIN_CONFIDENCE_THRESHOLD must be imported by reference
     from models so classifier and assisted never silently diverge from the canonical value."""
-    from groundworkers.services.source_planning.models import (
-        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_models,
-        _GROUNDABLE_ROLES as gr_models,
-    )
-    from groundworkers.services.source_planning.classifier import (
-        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_classifier,
-        _GROUNDABLE_ROLES as gr_classifier,
+    from groundworkers.services.source_planning.assisted import (
+        _GROUNDABLE_ROLES as gr_assisted,
     )
     from groundworkers.services.source_planning.assisted import (
         UNCERTAIN_CONFIDENCE_THRESHOLD as uct_assisted,
-        _GROUNDABLE_ROLES as gr_assisted,
+    )
+    from groundworkers.services.source_planning.classifier import (
+        _GROUNDABLE_ROLES as gr_classifier,
+    )
+    from groundworkers.services.source_planning.classifier import (
+        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_classifier,
+    )
+    from groundworkers.services.source_planning.models import (
+        _GROUNDABLE_ROLES as gr_models,
+    )
+    from groundworkers.services.source_planning.models import (
+        UNCERTAIN_CONFIDENCE_THRESHOLD as uct_models,
     )
     assert gr_classifier is gr_models, "classifier must share _GROUNDABLE_ROLES with models"
     assert gr_assisted is gr_models, "assisted must share _GROUNDABLE_ROLES with models"

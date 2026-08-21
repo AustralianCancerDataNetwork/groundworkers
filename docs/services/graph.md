@@ -1,13 +1,10 @@
 # GraphService
 
-`GraphService` is the direct Python surface for deterministic graph-backed
-concept operations. It sits above `OmopGraphAdapter` and packages the adapter's
-dependency-shaped primitives into caller-facing graph workflows.
+`GraphService` is the direct Python surface for deterministic graph-backed concept operations. It sits above `OmopGraphAdapter` and packages the adapter's dependency-shaped primitives into caller-facing graph workflows.
 
 ## Construction
 
-`GraphService` is wired by `build_application(...)` when the omop-graph backend
-is available.
+`GraphService` is wired by `build_application(...)` when the omop-graph backend is available.
 
 ```python
 from groundworkers.app import build_application
@@ -31,9 +28,7 @@ Use `GraphService` when you want:
 - shortest-path and equivalency-path queries
 - standard mapping from source vocabulary codes
 
-If you need caller-facing free-text grounding policy, use
-`ConceptGroundingService`. If you need lexical search over the shared vocabulary
-tables, use `VocabService`.
+If you need caller-facing free-text grounding policy, use `ConceptGroundingService`. If you need lexical search over the shared vocabulary tables, use `VocabService`.
 
 ## Core methods
 
@@ -47,14 +42,11 @@ Walk the OMOP hierarchy with bounded depth and serialized results.
 
 ### `get_edges(...)` and `get_neighbors(...)`
 
-Expose direct relationships or a bounded multi-hop neighborhood for one concept.
-`get_edges(...)` returns relationship summaries; `get_neighbors(...)` returns a
-bounded neighborhood packet with optional edges and termination metadata.
+Expose direct relationships or a bounded multi-hop neighborhood for one concept. `get_edges(...)` returns relationship summaries; `get_neighbors(...)` returns a bounded neighborhood packet with optional edges and termination metadata.
 
 ### `find_path(...)` and `find_equivalency_path(...)`
 
-Return shortest graph paths, either across all predicate kinds or restricted to
-identity-driven equivalence traversal.
+Return shortest graph paths, either across all predicate kinds or restricted to identity-driven equivalence traversal.
 
 ### `map_to_standard(...)`
 
@@ -62,6 +54,4 @@ Resolve a vocabulary code to standard OMOP concept targets.
 
 ## Relationship to transports
 
-The concept MCP tools delegate to this service. If you are already in Python,
-prefer `app.services.graph` over importing tool modules or calling adapter
-internals directly.
+The concept MCP tools delegate to this service. If you are already in Python, prefer `app.services.graph` over importing tool modules or calling adapter internals directly.

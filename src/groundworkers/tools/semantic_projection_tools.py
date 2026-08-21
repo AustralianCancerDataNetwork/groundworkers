@@ -5,7 +5,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.semantic_projection.models import (
     SemanticProjectionRequest,
     SemanticProjectionResult,
@@ -19,7 +19,7 @@ class SemanticProjector(Protocol):
     def project(self, request: SemanticProjectionRequest) -> SemanticProjectionResult: ...
 
 
-def register_semantic_projection_tools(server: GroundcrewServer, service: SemanticProjector) -> None:
+def register_semantic_projection_tools(server: GroundworkersMCPServer, service: SemanticProjector) -> None:
     @server.tool("semantic_project")
     def semantic_project(
         grounded_concept_id: int,
@@ -76,5 +76,3 @@ def register_semantic_projection_tools(server: GroundcrewServer, service: Semant
             return result.model_dump()
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

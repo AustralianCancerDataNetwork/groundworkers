@@ -1,17 +1,10 @@
-from pathlib import Path
 import os
-import sys
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
+from groundworkers.app import build_adapters
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config
-from groundworkers.server import build_adapters
 
 
 def _load_integration_adapter():
@@ -20,13 +13,14 @@ def _load_integration_adapter():
     except ImportError:
         pytest.skip("omop_emb is not installed in this environment")
 
-    config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv("GROUNDWORKERS_CONFIG")
-    profile = os.getenv("GROUNDWORKERS_PROFILE")
+    config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv(
+        "GROUNDWORKERS_CONFIG"
+    )
     try:
-        config = build_app_config(config_path=config_path, profile=profile)
+        config = build_app_config(config_path=config_path)
     except (FileNotFoundError, ValueError) as exc:
         pytest.skip(f"shared stack config is unavailable: {exc}")
-    if config.omop_emb is None:
+    if config.embedding_model is None or config.vector_store is None:
         pytest.skip("omop_emb is not enabled in the selected stack config")
     adapter = build_adapters(config).omop_emb
     if adapter is None:

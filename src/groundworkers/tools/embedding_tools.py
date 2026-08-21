@@ -5,10 +5,10 @@ from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 
 
-def register_embedding_resources(server: GroundcrewServer, emb_adapter: OmopEmbAdapter) -> None:
+def register_embedding_resources(server: GroundworkersMCPServer, emb_adapter: OmopEmbAdapter) -> None:
     @server.resource(
         "embedding://models",
         description=(
@@ -25,7 +25,7 @@ def register_embedding_resources(server: GroundcrewServer, emb_adapter: OmopEmbA
         })
 
 
-def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapter) -> None:
+def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEmbAdapter) -> None:
     @server.tool("embedding_index_status")
     def embedding_index_status() -> dict[str, Any]:
         """Returns status of the embedding backend and registered models."""
@@ -33,8 +33,6 @@ def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapt
             return emb_adapter.index_status()
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("embedding_neighbours")
     def embedding_neighbours(concept_id: int, limit: int = 10, model_name: str | None = None) -> dict[str, Any]:
@@ -52,11 +50,9 @@ def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapt
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("embedding_search")
-    def embedding_search(
+    async def embedding_search(
         query: str,
         limit: int = 10,
         domain: str | None = None,
@@ -70,7 +66,7 @@ def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapt
             return {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
         safe_limit = max(1, min(limit, 50))
         try:
-            return emb_adapter.search(
+            return await emb_adapter.async_search(
                 query=query,
                 limit=safe_limit,
                 domain=domain,
@@ -83,19 +79,15 @@ def register_embedding_tools(server: GroundcrewServer, emb_adapter: OmopEmbAdapt
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("embedding_encode")
-    def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
+    async def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
         """Encodes free text into one embedding vector using the configured model client."""
         if not text.strip():
             return {"error": True, "code": "INVALID_INPUT", "message": "text must be a non-empty string"}
         if model_name is not None and not model_name.strip():
             return {"error": True, "code": "INVALID_INPUT", "message": "model_name must be a non-empty string"}
         try:
-            return emb_adapter.encode(text=text, model_name=model_name)
+            return await emb_adapter.async_encode(text=text, model_name=model_name)
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

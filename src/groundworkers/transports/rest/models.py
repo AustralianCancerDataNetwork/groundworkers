@@ -29,8 +29,8 @@ class CandidateBundleRequest(BaseModel):
     include_hierarchy_context: bool = False
     include_relationship_summary: bool = False
     parent_ids: list[int] | None = None
-    per_channel_limit: int = Field(default=10, ge=1)
-    overall_limit: int = Field(default=30, ge=1)
+    per_channel_limit: int = Field(default=10, ge=1, le=20)
+    overall_limit: int = Field(default=30, ge=1, le=100)
     model_name: str | None = None
 
 

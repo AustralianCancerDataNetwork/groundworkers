@@ -1,20 +1,32 @@
 # groundworkers
 
-`groundworkers` is the reusable capability layer for OMOP-grounded lookup,
-mapping, source-planning, and knowledge-pack discovery. You can use it in three
-ways:
+`groundworkers` is a read-only capability layer for working with OMOP vocabularies, graph relationships, source metadata, and mapping context. It combines deterministic operations with optional embedding and model-assisted steps. It is available through three interfaces:
 
-- as an **MCP service** for agentic clients and tool discovery
+- as an **MCP service** for discoverable tool clients
 - as a **REST service** for controlled workflow applications
-- as a **direct Python library** when you want in-process orchestration
+- as a **direct Python library** for in-process applications
 
 ## Choose the interface that fits your application
 
 | Use case | Recommended interface |
 |---|---|
-| Agentic clients, tool discovery, shared remote service | MCP |
+| Discoverable tools or a shared remote service | MCP |
 | Fixed request/response workflows, typed HTTP clients, OpenAPI | REST |
 | In-process Python applications, batch evaluation, custom orchestration | Direct Python |
+
+## First time setting up locally?
+
+[Try here](from-scratch.md)
+
+## What it helps you do
+
+- retrieve concepts by exact, normalized, full-text, or embedding similarity;
+- ground free text with a tiered resolver and inspect how the result was found;
+- assemble mapping evidence and graph context for review;
+- plan source artifacts before ingestion and discover applicable knowledge packs;
+- optionally normalize text, classify structured fields, or project grounded concepts into CDM rows.
+
+Start with [Concepts and capability choices](concepts.md) for the mental model, then choose an integration path.
 
 ## At a glance
 
@@ -33,28 +45,16 @@ flowchart TD
     A --> LLM[LLM API]
 ```
 
-This is the conceptual shape of the package: transport choices stay thin,
-reusable workflow logic lives in `services/`, and concrete dependencies are
-isolated behind `adapters/`. Configuration and startup wiring are described in
-[Architecture](architecture.md); the home page keeps the focus on the layer
-boundaries that matter to most users.
-
-## What groundworkers provides
-
-- **Vocabulary and hierarchy lookup** over OMOP concepts
-- **Multi-channel mapping workflows** combining exact, normalized, full-text, and embedding retrieval
-- **Source planning** for stateless pre-ingest analysis
-- **Knowledge-pack discovery** over bundled baseline packs plus optional configured site/localisation packs
-- **LLM-backed text normalization and domain classification**
-- **Thin transports** over the same service layer
+The transport is thin, reusable workflow logic lives in `services/`, and concrete dependencies are isolated behind `adapters/`. See [Architecture](architecture.md) for configuration and startup wiring.
 
 ## Where to start
 
-- [Installation](usage/installation.md) for package install, stack prerequisites, and service startup
-- [Configuration](usage/configuration.md) for the shared-stack config model and ownership boundaries
-- [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage patterns
-- [Architecture](architecture.md) for composition, transport flow, and extension boundaries
-- [Extending groundworkers](development/extending.md) for adding adapters, services, MCP tools, or REST endpoints
+- [Concepts and capability choices](concepts.md) to understand grounding, mapping, retrieval, and optional infrastructure
+- [Installation](usage/installation.md) for package installation and prerequisites
+- [Initial local setup](from-scratch.md) for a fresh local deployment
+- [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage
+- [Configuration](usage/configuration.md) for the shared-stack config model and runtime combinations
+- [Tools overview](tools/overview.md) for the discoverable MCP surface
 
 ## Relation to groundcrew
 
@@ -63,6 +63,4 @@ boundaries that matter to most users.
 - `groundworkers` owns reusable stateless capabilities
 - `groundcrew` owns orchestration, session state, and job lifecycle
 
-In the usual deployment shape, `groundcrew` talks to `groundworkers` over MCP.
-If you are building your own Python application, you can call the same service
-layer directly through `build_application(...)`.
+In the usual deployment, `groundcrew` talks to `groundworkers` over MCP. A Python application can use the same service layer directly through `build_application(...)`.

@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from oa_configurator import StackConfig
+from oa_configurator import StackConfig  # type: ignore[import-untyped]
 
 
 class ConfigurationState(StrEnum):
@@ -43,7 +43,6 @@ class SetupIssue:
 class ConfigurationSnapshot:
     state: ConfigurationState
     path: Path
-    profile: str | None
     ownership: ConfigurationOwnership
     stack: StackConfig | None = field(default=None, repr=False)
     revision: str | None = None
@@ -66,13 +65,17 @@ class ConfigurationSaveResult:
 class DatabaseTarget:
     key: str
     label: str
-    resource_name: str
-    database_name: str
+    database_entry_name: str
+    connection_name: str
     safe_url: str
     cdm_schema: str
     vocabulary_schema: str
     connection_url: str = field(repr=False)
     role: str = "cdm"
+    # The schema omop-emb's registry and storage tables live in, when this target
+    # touches them. Distinct from cdm_schema, which is never None and falls back
+    # to a dialect default; None here means "no override, use the search path".
+    embedding_schema: str | None = None
     expected_embedding_model_name: str | None = None
     embedding_safe_url: str | None = None
     embedding_connection_url: str | None = field(default=None, repr=False)
@@ -81,8 +84,8 @@ class DatabaseTarget:
         return (
             "DatabaseTarget("
             f"key={self.key!r}, label={self.label!r}, "
-            f"resource_name={self.resource_name!r}, "
-            f"database_name={self.database_name!r}, safe_url={self.safe_url!r}, "
+            f"database_entry_name={self.database_entry_name!r}, "
+            f"connection_name={self.connection_name!r}, safe_url={self.safe_url!r}, "
             f"cdm_schema={self.cdm_schema!r}, "
             f"vocabulary_schema={self.vocabulary_schema!r})"
         )
@@ -138,9 +141,33 @@ class ConnectionResult:
 
 @dataclass(frozen=True)
 class GraphConfiguration:
-    resource_name: str
-    max_depth: int
-    max_paths: int
+    """Groundworkers-owned graph and grounding policy shown in setup.
+
+    Every value here is owned by Groundworkers. omop-graph's own package config is
+    internal to that package, and its traversal limits are per-call arguments, so
+    they are neither read nor displayed.
+    """
+
+    cdm_database_name: str
+    vocabulary_schema: str | None
+    grounding_max_depth: int
+    min_fulltext_overlap: float
+
+
+@dataclass(frozen=True)
+class LlmProviderDraft:
+    """An unsaved chat-provider answer set, as the setup wizard has it so far.
+
+    Deliberately not part of the persisted schema: once applied, these values
+    become a named ``[providers.*]`` entry plus a ``[models.*]`` entry that
+    ``groundworkers.llm_model_name`` points at. This type exists only so the
+    provider can be verified before any of that is written.
+    """
+
+    provider: str
+    api_base: str | None = None
+    api_key: str | None = None
+    default_model_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -215,11 +242,18 @@ class EmbeddingStoreState(StrEnum):
 @dataclass(frozen=True)
 class EmbeddingConfiguration:
     backend: str
+    vector_store_name: str
+    database_name: str
+    connection_name: str
+    database_safe_url: str
+    provider_name: str
     provider_kind: str
+    model_entry_name: str
     model_name: str
-    api_base: str
-    sqlite_path: str | None = None
-    sqlite_path_exists: bool | None = None
+    embeddings_supported: bool
+    api_base: str | None
+    database_path: str | None = None
+    database_path_exists: bool | None = None
     faiss_cache_dir: str | None = None
     faiss_cache_dir_exists: bool | None = None
 
@@ -255,8 +289,10 @@ class ProviderCapabilities:
 
 @dataclass(frozen=True)
 class ProviderSnapshot:
+    provider_name: str
     provider_kind: str
-    api_base: str
+    model_entry_name: str
+    api_base: str | None
     configured_model: str
     capabilities: ProviderCapabilities
     reachable: bool
@@ -285,12 +321,29 @@ class ModelReconciliation:
     registered_models: tuple[RegisteredEmbeddingModel, ...]
     provider: ProviderSnapshot | None
     diagnostics: tuple[ModelDiagnostic, ...]
+    store: EmbeddingStoreSnapshot | None = None
 
     @property
     def ready_for_population(self) -> bool:
         return not any(
             item.severity is DiagnosticSeverity.ERROR for item in self.diagnostics
         )
+
+    @property
+    def model_is_registered(self) -> bool:
+        """Whether the store already holds a registry entry for this model."""
+        return any(
+            item.model_name == self.configured_model
+            for item in self.registered_models
+        )
+
+    @property
+    def worst_severity(self) -> DiagnosticSeverity | None:
+        """The most serious thing found, or None when nothing was."""
+        for severity in (DiagnosticSeverity.ERROR, DiagnosticSeverity.WARNING):
+            if any(item.severity is severity for item in self.diagnostics):
+                return severity
+        return None
 
 
 @dataclass(frozen=True)
@@ -408,7 +461,7 @@ class EmbeddingPopulationRequest:
 
 
 @dataclass(frozen=True)
-class EmbeddingPopulationCommand:
+class MaintenanceCommand:
     argv: tuple[str, ...]
     environment: tuple[tuple[str, str], ...] = ()
 
@@ -420,10 +473,15 @@ class EmbeddingPopulationCommand:
 
 
 @dataclass(frozen=True)
-class EmbeddingPopulationLaunch:
-    command: EmbeddingPopulationCommand
+class MaintenanceLaunch:
+    command: MaintenanceCommand
     pid: int
     log_path: Path
+
+
+# Both maintenance workflows use the same command and launch records.
+EmbeddingPopulationCommand = MaintenanceCommand
+EmbeddingPopulationLaunch = MaintenanceLaunch
 
 
 def _shell_quote(value: str) -> str:

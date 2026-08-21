@@ -1,66 +1,50 @@
+import asyncio
+import inspect
+import threading
 from pathlib import Path
-import sys
-
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-import logging
+from typing import Any
 
 import pytest
-from oa_configurator import DatabaseConfig, ResourceConfig, StackConfig, ToolConfig
 
-from groundworkers.app import build_application
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.app import build_adapters, build_application
+from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.bootstrap import build_app_config_from_stack
-from groundworkers.server import build_adapters, create_server, main, parse_args, run_rest_api
+from groundworkers.server import create_server, main, parse_args, run_rest_api
+from tests.support.stack_config import (
+    add_chat_model,
+    build_cdm_stack,
+    build_embedding_stack,
+)
 
 
-def _stack_without_backends() -> StackConfig:
-    return StackConfig()
+def _stack_without_backends():
+    return build_cdm_stack()
 
 
-def _stack_with_cdm() -> StackConfig:
-    return StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-    )
+def _stack_with_cdm():
+    return build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
 
 
-def test_server_starts_without_domain_tools_when_no_adapters_configured():
+def test_cdm_only_stack_serves_graph_tools_without_embedding_tools():
+    """A CDM-only 1.x stack gets vocabulary, graph, and lexical grounding.
+
+    Graph availability follows the resolved CDM database. It is not gated on an
+    [tools.omop_graph] section: omop-graph 2.x made that config internal, so
+    requiring it left a valid CDM stack with no graph tools at all.
+    """
     config = build_app_config_from_stack(_stack_without_backends())
     server = create_server(config)
-    assert server.list_tools() == [
-        "knowledge_catalogue",
-        "knowledge_pack",
-        "source_plan",
-        "source_plan_assisted",
-        "system_status",
-        "system_vocabulary_catalogue",
-    ]
-    assert server.list_resources() == [
-        "config://active",
-        "knowledge://catalogue",
-        "source-planning://canonical-headers",
-        "source-planning://column-roles",
-        "source-planning://ingestion-strategies",
-        "vocabularies://catalogue",
-    ]
+    names = server.list_tools()
+    assert "concept_search_exact" in names
+    assert "concept_get" in names
+    assert "concept_ground" in names
+    # Embedding tools still require a vector store and model.
+    assert "embedding_index_status" not in names
+    assert "config://active" in server.list_resources()
 
 
-def test_server_registers_concept_tools_when_cdm_resource_is_configured():
+def test_server_registers_concept_tools_for_a_resolved_cdm_database():
     config = build_app_config_from_stack(_stack_with_cdm())
     server = create_server(config)
     names = server.list_tools()
@@ -71,30 +55,8 @@ def test_server_registers_concept_tools_when_cdm_resource_is_configured():
 
 
 def test_server_registers_embedding_tools_when_enabled(tmp_path: Path):
-    stack = StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-        tools={
-            "omop_emb": ToolConfig(
-                extra={
-                    "backend": "sqlitevec",
-                    "sqlite_path": str(tmp_path / "omop_emb.db"),
-                    "embedding_model": "bge-small-en-v1.5",
-                }
-            )
-        },
-    )
+    stack = build_embedding_stack()
+    stack.connections["embedding_main"].database_name = str(tmp_path / "omop_emb.db")
     config = build_app_config_from_stack(stack)
     server = create_server(config)
     names = server.list_tools()
@@ -102,100 +64,69 @@ def test_server_registers_embedding_tools_when_enabled(tmp_path: Path):
     assert "embedding_neighbours" in names
 
 
-def test_build_adapters_leaves_disabled_components_unset():
+def test_build_adapters_leaves_only_embedding_components_unset():
     config = build_app_config_from_stack(_stack_without_backends())
     adapters = build_adapters(config)
-    assert adapters.omop_graph is None
+    assert adapters.cdm is not None
+    # Graph follows the CDM database; embedding needs a vector store and model.
+    assert adapters.omop_graph is not None
+    assert adapters.omop_graph.embedding_resolver_active is False
     assert adapters.omop_emb is None
 
 
 def test_build_application_exposes_services_container():
     config = build_app_config_from_stack(_stack_without_backends())
     app = build_application(config)
-    assert app.adapters.omop_graph is None
-    assert app.services.mapping is None
+    assert app.adapters.omop_graph is not None
+    assert app.services.graph is not None
+    assert app.services.grounding is not None
+    assert app.services.mapping is not None
     assert app.services.source_planning is not None
 
 
 def test_runtime_config_masks_api_keys(tmp_path: Path):
-    stack = StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-        tools={
-            "groundworkers": ToolConfig(
-                extra={
-                    "llm": {
-                        "enabled": True,
-                        "api_base": "http://example.test/v1",
-                        "api_key": "secret",
-                    }
-                }
-            ),
-            "omop_emb": ToolConfig(
-                extra={
-                    "backend": "sqlitevec",
-                    "sqlite_path": str(tmp_path / "omop_emb.db"),
-                    "api_base": "http://embeddings.test/v1",
-                    "api_key": "emb-secret",
-                    "embedding_model": "bge-small-en-v1.5",
-                }
-            ),
-        }
-    )
+    stack = build_embedding_stack()
+    add_chat_model(stack, api_key="chat-secret")
+    stack.providers["embedding_provider"].api_key = "emb-secret"
+    stack.connections["embedding_main"].database_name = str(tmp_path / "omop_emb.db")
     config = build_app_config_from_stack(stack)
 
     described = config.describe()
 
-    assert described["groundworkers"]["llm"]["api_key"] == "***"
-    assert described["omop_emb"]["api_key"] == "***"
+    # Chat and embedding models are the same kind of entry and redact identically.
+    assert described["model"]["provider"]["api_key_configured"] is True
+    assert described["llm_model"]["provider"]["api_key_configured"] is True
+    assert "chat-secret" not in repr(described)
+    assert "emb-secret" not in repr(described)
 
 
-def test_embedding_wiring_failure_emits_warning(caplog, tmp_path: Path):
-    stack = StackConfig(
-        databases={
-            "cdm": DatabaseConfig(
-                dialect="sqlite",
-                database_name=":memory:",
-            )
-        },
-        resources={
-            "cdm_db": ResourceConfig(
-                database="cdm",
-                cdm_schema="omop",
-                vocab_schema="omop_vocab",
-            )
-        },
-        tools={
-            "omop_emb": ToolConfig(
-                extra={
-                    "backend": "sqlitevec",
-                    "sqlite_path": str(tmp_path / "emb.db"),
-                    "api_base": "http://localhost:9999/v1",
-                    "api_key": "test-key",
-                    "embedding_model": "bge-small-en-v1.5",
-                }
-            )
-        },
-    )
+def test_embedding_store_is_resolved_lazily_and_shared(monkeypatch, tmp_path: Path):
+    stack = build_embedding_stack()
+    stack.connections["embedding_main"].database_name = str(tmp_path / "emb.db")
     config = build_app_config_from_stack(stack)
-    with caplog.at_level(logging.WARNING, logger="groundworkers.app"):
-        build_adapters(config)
+    backend = object()
+    calls: list[object] = []
 
-    assert any("embedding tier" in r.message for r in caplog.records)
+    def resolve(resolved_store):
+        calls.append(resolved_store)
+        return backend
+
+    monkeypatch.setattr(
+        "omop_emb.backends.resolve_backend_from_resolved_vector_store", resolve
+    )
+
+    adapters = build_adapters(config)
+
+    assert calls == []
+    assert adapters.omop_emb is not None
+    assert adapters.omop_emb._get_backend() is backend
+    assert adapters.omop_emb._get_backend() is backend
+    assert calls == [config.vector_store]
 
 
-def test_streamable_http_transport_runs_in_stateless_json_mode(monkeypatch: pytest.MonkeyPatch):
+def test_streamable_http_transport_runs_in_stateless_json_mode(
+    monkeypatch: pytest.MonkeyPatch,
+):
     captured: dict[str, object] = {}
 
     class FakeFastMCP:
@@ -217,7 +148,7 @@ def test_streamable_http_transport_runs_in_stateless_json_mode(monkeypatch: pyte
 
     monkeypatch.setattr("mcp.server.fastmcp.FastMCP", FakeFastMCP)
 
-    server = GroundcrewServer("groundworkers-test")
+    server = GroundworkersMCPServer("groundworkers-test")
     server.run(transport="streamable-http", host="0.0.0.0", port=18080)
 
     assert captured["name"] == "groundworkers-test"
@@ -252,7 +183,7 @@ def test_stdio_transport_runs_without_json_responses(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("mcp.server.fastmcp.FastMCP", FakeFastMCP)
 
-    server = GroundcrewServer("groundworkers-test")
+    server = GroundworkersMCPServer("groundworkers-test")
     server.run(transport="stdio", host="127.0.0.1", port=18080)
 
     assert captured["name"] == "groundworkers-test"
@@ -262,6 +193,74 @@ def test_stdio_transport_runs_without_json_responses(monkeypatch: pytest.MonkeyP
         "port": 18080,
         "json_response": False,
         "stateless_http": True,
+    }
+
+
+def test_fastmcp_preserves_native_async_tool_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Model-facing tools stay on one persistent transport event loop."""
+
+    from mcp.server.fastmcp import FastMCP
+
+    captured: dict[str, Any] = {}
+    invocation_loops: list[asyncio.AbstractEventLoop] = []
+    caller_thread = threading.get_ident()
+
+    server = GroundworkersMCPServer("groundworkers-test")
+
+    @server.tool("embedding_encode")
+    async def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
+        invocation_loops.append(asyncio.get_running_loop())
+        assert threading.get_ident() == caller_thread
+        return {"text": text, "model_name": model_name}
+
+    @server.tool("backend_failure")
+    async def backend_failure() -> dict[str, Any]:
+        raise GroundworkersError("BACKEND_UNAVAIL", "provider unavailable")
+
+    def capture_run(app: FastMCP, transport: str) -> None:
+        captured["app"] = app
+        captured["transport"] = transport
+
+    monkeypatch.setattr(FastMCP, "run", capture_run)
+    server.run(transport="stdio")
+
+    app = captured["app"]
+    assert isinstance(app, FastMCP)
+    registered = app._tool_manager.get_tool("embedding_encode")
+    assert registered is not None
+    assert registered.is_async is True
+    assert inspect.signature(registered.fn) == inspect.signature(embedding_encode)
+
+    async def invoke() -> tuple[Any, Any, Any]:
+        first_result = await app.call_tool(
+            "embedding_encode",
+            {"text": "first", "model_name": "configured-model"},
+        )
+        second_result = await app.call_tool(
+            "embedding_encode",
+            {"text": "second", "model_name": "configured-model"},
+        )
+        failure_result = await app.call_tool("backend_failure", {})
+        return first_result, second_result, failure_result
+
+    first, second, failure = asyncio.run(invoke())
+
+    assert len(invocation_loops) == 2
+    assert invocation_loops[0] is invocation_loops[1]
+    _content, structured = first
+    assert structured == {
+        "text": "first",
+        "model_name": "configured-model",
+    }
+    _content, structured = second
+    assert structured["text"] == "second"
+    _failure_content, failure_structured = failure
+    assert failure_structured == {
+        "error": True,
+        "code": "BACKEND_UNAVAIL",
+        "message": "provider unavailable",
     }
 
 
@@ -276,17 +275,11 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = build_app_config_from_stack(
-        StackConfig(
-            tools={
-                "groundworkers": ToolConfig(
-                    extra={
-                        "mcp": {
-                            "transport": "stdio",
-                            "host": "0.0.0.0",
-                            "port": 18888,
-                        }
-                    }
-                )
+        build_cdm_stack(
+            groundworkers={
+                "mcp_transport": "stdio",
+                "mcp_host": "0.0.0.0",
+                "mcp_port": 18888,
             }
         )
     )
@@ -301,23 +294,21 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
                 "port": port,
             }
 
-    def fake_build_app_config(*, config_path=None, profile=None):
-        captured["build_app_config"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_build_app_config(*, config_path=None):
+        captured["build_app_config"] = {"config_path": config_path}
         return config
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server.build_application", lambda _: fake_application)
-    monkeypatch.setattr("groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer())
+    monkeypatch.setattr(
+        "groundworkers.server.build_application", lambda _: fake_application
+    )
+    monkeypatch.setattr(
+        "groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer()
+    )
 
     main([])
 
-    assert captured["build_app_config"] == {
-        "config_path": None,
-        "profile": None,
-    }
+    assert captured["build_app_config"] == {"config_path": None}
     assert captured["run"] == {
         "transport": "stdio",
         "host": "0.0.0.0",
@@ -325,25 +316,18 @@ def test_main_uses_configured_mcp_defaults_when_no_overrides_are_supplied(
     }
 
 
-def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_routes_rest_startup_to_rest_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     config = build_app_config_from_stack(
-        StackConfig(
-            tools={
-                "groundworkers": ToolConfig(
-                    extra={
-                        "mcp": {
-                            "transport": "streamable-http",
-                            "host": "127.0.0.1",
-                            "port": 18080,
-                        },
-                        "rest": {
-                            "enabled": True,
-                            "host": "127.0.0.1",
-                            "port": 18181,
-                            "base_path": "/v1",
-                        },
-                    }
-                )
+        build_cdm_stack(
+            groundworkers={
+                "mcp_transport": "streamable-http",
+                "mcp_host": "127.0.0.1",
+                "mcp_port": 18080,
+                "rest_host": "127.0.0.1",
+                "rest_port": 18181,
+                "rest_base_path": "/v1",
             }
         )
     )
@@ -358,11 +342,8 @@ def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest
                 "port": port,
             }
 
-    def fake_build_app_config(*, config_path=None, profile=None):
-        captured["build_app_config"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_build_app_config(*, config_path=None):
+        captured["build_app_config"] = {"config_path": config_path}
         return config
 
     def fake_run_rest_api(app_config, application, *, host: str, port: int) -> None:
@@ -374,16 +355,17 @@ def test_main_routes_profiled_rest_startup_to_rest_transport(monkeypatch: pytest
         }
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server.build_application", lambda _: fake_application)
-    monkeypatch.setattr("groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer())
+    monkeypatch.setattr(
+        "groundworkers.server.build_application", lambda _: fake_application
+    )
+    monkeypatch.setattr(
+        "groundworkers.server.create_server", lambda *_args, **_kwargs: FakeServer()
+    )
     monkeypatch.setattr("groundworkers.server.run_rest_api", fake_run_rest_api)
 
-    main(["--profile", "test", "--transport", "rest", "--host", "0.0.0.0", "--port", "19090"])
+    main(["--transport", "rest", "--host", "0.0.0.0", "--port", "19090"])
 
-    assert captured["build_app_config"] == {
-        "config_path": None,
-        "profile": "test",
-    }
+    assert captured["build_app_config"] == {"config_path": None}
     assert captured["rest"] == {
         "config": config,
         "application": fake_application,
@@ -398,62 +380,35 @@ def test_main_launches_setup_tui_without_building_runtime_config(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_build_app_config(*, config_path=None, profile=None):
+    def fake_build_app_config(*, config_path=None):
         raise AssertionError("setup TUI should handle config loading itself")
 
-    def fake_launch_tui(*, config_path=None, profile=None) -> None:
-        captured["launch"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_launch_tui(*, config_path=None) -> None:
+        captured["launch"] = {"config_path": config_path}
 
     monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server._launch_groundworkers_tui", fake_launch_tui)
+    monkeypatch.setattr(
+        "groundworkers.server._launch_groundworkers_tui", fake_launch_tui
+    )
 
-    main(["--tui", "--config-path", "/tmp/stack.toml", "--profile", "test"])
+    main(["--tui", "--config-path", "/tmp/stack.toml"])
 
-    assert captured["launch"] == {
-        "config_path": "/tmp/stack.toml",
-        "profile": "test",
-    }
+    assert captured["launch"] == {"config_path": "/tmp/stack.toml"}
 
 
 def test_main_launches_setup_tui_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_launch_tui(*, config_path=None, profile=None) -> None:
-        captured["launch"] = {
-            "config_path": config_path,
-            "profile": profile,
-        }
+    def fake_launch_tui(*, config_path=None) -> None:
+        captured["launch"] = {"config_path": config_path}
 
-    monkeypatch.setattr("groundworkers.server._launch_groundworkers_tui", fake_launch_tui)
+    monkeypatch.setattr(
+        "groundworkers.server._launch_groundworkers_tui", fake_launch_tui
+    )
 
-    main(["tui", "--profile", "test"])
+    main(["tui"])
 
-    assert captured["launch"] == {
-        "config_path": None,
-        "profile": "test",
-    }
-
-
-def test_main_launches_legacy_projection_tui(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_build_app_config(*, config_path=None, profile=None):
-        raise AssertionError("projection TUI does not need runtime config")
-
-    def fake_launch_tui() -> None:
-        captured["launch"] = True
-
-    monkeypatch.setattr("groundworkers.server.build_app_config", fake_build_app_config)
-    monkeypatch.setattr("groundworkers.server._launch_semantic_projection_tui", fake_launch_tui)
-
-    main(["projection-tui"])
-
-    assert captured["launch"] is True
+    assert captured["launch"] == {"config_path": None}
 
 
 def test_run_rest_api_uses_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -477,6 +432,71 @@ def test_run_rest_api_uses_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
     run_rest_api(config, app, host="0.0.0.0", port=18181)
 
     assert captured["application"] is app
-    assert captured["base_path"] == config.rest.base_path
+    assert captured["base_path"] == config.groundworkers.rest_base_path
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 18181
+
+
+def test_verbosity_flag_is_counted() -> None:
+    assert parse_args([]).verbose == 0
+    assert parse_args(["-vv"]).verbose == 2
+
+
+def test_logging_is_configured_before_the_stack_is_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordering matters: oa-configurator warns during load.
+
+    Its loose-file-permissions warning is emitted while reading config.toml, so
+    configuring logging afterwards would let it fall through to Python's bare
+    last-resort handler, unformatted.
+    """
+    configured: list[int] = []
+
+    def fake_configure_logging(config=None, *, verbosity=0, **_):
+        configured.append(verbosity)
+
+    def fail_to_load(*, config_path=None):
+        raise FileNotFoundError("config missing")
+
+    monkeypatch.setattr(
+        "groundworkers.config.GroundworkersConfig.configure_logging",
+        classmethod(lambda cls, config=None, *, verbosity=0, **kw: configured.append(verbosity)),
+    )
+    monkeypatch.setattr("groundworkers.server.build_app_config", fail_to_load)
+
+    with pytest.raises(SystemExit, match="groundworkers tui"):
+        main(["-vv"])
+
+    assert configured == [2]
+
+
+def test_logging_reapplies_with_the_stack_once_loaded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second call is what makes the [logging] section take effect."""
+    calls: list[object] = []
+    config = build_app_config_from_stack(_stack_without_backends())
+
+    monkeypatch.setattr(
+        "groundworkers.config.GroundworkersConfig.configure_logging",
+        classmethod(lambda cls, cfg=None, *, verbosity=0, **kw: calls.append(cfg)),
+    )
+    monkeypatch.setattr("groundworkers.server.build_app_config", lambda *, config_path=None: config)
+    monkeypatch.setattr("groundworkers.server.build_application", lambda cfg: object())
+    monkeypatch.setattr("groundworkers.server.create_server", lambda cfg, app: _DescribeStub())
+
+    main(["--describe"])
+
+    assert calls == [None, config.stack]
+
+
+class _DescribeStub:
+    def describe_tools(self):
+        return []
+
+    def describe_prompts(self):
+        return []
+
+    def describe_resources(self):
+        return []

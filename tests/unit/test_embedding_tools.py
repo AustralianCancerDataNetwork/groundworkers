@@ -1,13 +1,7 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.embedding_tools import register_embedding_tools
 
 
@@ -91,9 +85,15 @@ class StubEmbAdapter:
             "vector": [0.1, 0.2, 0.3],
         }
 
+    async def async_search(self, **kwargs) -> dict:
+        return self.search(**kwargs)
 
-def build_server(adapter) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+    async def async_encode(self, text: str, model_name: str | None) -> dict:
+        return self.encode(text=text, model_name=model_name)
+
+
+def build_server(adapter) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_embedding_tools(server, adapter)
     return server
 
@@ -195,7 +195,7 @@ def test_embedding_search_rejects_empty_query():
 
 def test_embedding_search_returns_error_dict_for_cava_error():
     class UnavailableAdapter(StubEmbAdapter):
-        def search(
+        async def async_search(
             self,
             query: str,
             limit: int,

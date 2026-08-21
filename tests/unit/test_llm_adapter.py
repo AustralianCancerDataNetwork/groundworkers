@@ -1,17 +1,11 @@
-from pathlib import Path
-import sys
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+import pytest
 
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.base.errors import GroundworkersError
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,54 +18,66 @@ def _make_response(content: str, model: str = "test-model") -> object:
     return SimpleNamespace(choices=[choice], model=model)
 
 
-def _make_models_list() -> object:
-    return SimpleNamespace(data=[SimpleNamespace(id="test-model")])
+def _make_backend(
+    *,
+    provider: str = "ollama",
+    model: str = "test-model",
+    structured_output: bool = True,
+) -> MagicMock:
+    """A stand-in for one resolved omop-llm ModelBackend."""
+    backend = MagicMock()
+    backend.provider = provider
+    backend.model = model
+    backend.capabilities = SimpleNamespace(structured_output=structured_output)
+    backend.is_available.return_value = True
+    backend.async_is_available = AsyncMock(return_value=True)
+    backend.async_complete = AsyncMock()
+    return backend
 
 
-def _adapter(*, client: object, provider: str = "openai-compatible",
-             default_model: str | None = "test-model") -> LLMAdapter:
-    return LLMAdapter(
-        provider=provider,
-        default_model_name=default_model,
-        client_factory=lambda: client,
-    )
+def _adapter(*, backend: object) -> LLMAdapter:
+    return LLMAdapter(backend_factory=lambda: backend)
 
 
 # ---------------------------------------------------------------------------
 # status()
 # ---------------------------------------------------------------------------
 
-def test_status_available_when_models_list_succeeds():
-    mock_client = MagicMock()
-    mock_client.models.list.return_value = _make_models_list()
-    adapter = _adapter(client=mock_client)
+def test_status_available_when_backend_is_reachable():
+    backend = _make_backend()
+    adapter = _adapter(backend=backend)
 
     result = adapter.status()
 
     assert result["available"] is True
-    assert result["provider"] == "openai-compatible"
+    assert result["provider"] == "ollama"
     assert result["default_model"] == "test-model"
     assert result["structured_output_supported"] is True
     assert result["detail"] is None
-    assert mock_client.models.list.call_args.kwargs["timeout"] == 2.0
+    backend.is_available.assert_called_once_with()
 
 
-def test_status_unavailable_when_models_list_raises():
-    mock_client = MagicMock()
-    mock_client.models.list.side_effect = ConnectionError("refused")
-    adapter = _adapter(client=mock_client)
+def test_status_reports_the_models_declared_structured_output_capability():
+    """Capability is read off the resolved entry, not assumed."""
+    adapter = _adapter(backend=_make_backend(structured_output=False))
+
+    assert adapter.status()["structured_output_supported"] is False
+
+
+def test_status_unavailable_when_backend_cannot_be_reached():
+    backend = _make_backend()
+    backend.is_available.return_value = False
+    adapter = _adapter(backend=backend)
 
     result = adapter.status()
 
     assert result["available"] is False
     assert result["detail"] is not None
-    assert "refused" in result["detail"]
 
 
-def test_status_never_raises_when_client_factory_fails():
+def test_status_never_raises_when_backend_factory_fails():
     adapter = LLMAdapter(
-        provider="openai-compatible",
-        client_factory=lambda: (_ for _ in ()).throw(RuntimeError("factory failed")),
+        backend_factory=lambda: (_ for _ in ()).throw(RuntimeError("factory failed")),
     )
     result = adapter.status()
     assert result["available"] is False
@@ -83,62 +89,62 @@ def test_status_never_raises_when_client_factory_fails():
 # ---------------------------------------------------------------------------
 
 def test_complete_text_returns_response():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response("Hello world")
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.return_value = _make_response("Hello world")
+    adapter = _adapter(backend=backend)
 
     result = adapter.complete_text("Say hello")
 
     assert result["text"] == "Hello world"
     assert result["model"] == "test-model"
-    assert result["provider"] == "openai-compatible"
-    assert mock_client.chat.completions.create.call_args.kwargs["timeout"] == 180.0
+    assert result["provider"] == "ollama"
+    assert backend.complete.call_args.kwargs["timeout"] == 180.0
 
 
 def test_complete_text_uses_system_prompt():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response("ok")
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.return_value = _make_response("ok")
+    adapter = _adapter(backend=backend)
 
     adapter.complete_text("Do X", system_prompt="You are a helper")
 
-    call_kwargs = mock_client.chat.completions.create.call_args[1]
-    messages = call_kwargs["messages"]
+    messages = backend.complete.call_args[0][0]
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == "You are a helper"
     assert messages[1]["role"] == "user"
 
 
-def test_complete_text_overrides_model_name():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response("ok", model="other-model")
-    adapter = _adapter(client=mock_client, default_model="default-model")
+def test_complete_text_accepts_the_configured_model_name():
+    backend = _make_backend(model="configured-model")
+    backend.complete.return_value = _make_response("ok", model="configured-model")
+    adapter = _adapter(backend=backend)
 
-    adapter.complete_text("Prompt", model_name="other-model")
+    adapter.complete_text("Prompt", model_name="configured-model")
 
-    call_kwargs = mock_client.chat.completions.create.call_args[1]
-    assert call_kwargs["model"] == "other-model"
+    assert backend.complete.called
+
+
+def test_complete_text_rejects_a_model_name_that_is_not_configured():
+    """One resolved [models.*] entry backs the adapter; it cannot switch model."""
+    backend = _make_backend(model="configured-model")
+    adapter = _adapter(backend=backend)
+
+    with pytest.raises(GroundworkersError) as exc_info:
+        adapter.complete_text("Prompt", model_name="some-other-model")
+
+    assert exc_info.value.code == "INVALID_INPUT"
+    assert not backend.complete.called
 
 
 def test_complete_text_raises_backend_unavail_on_api_error():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.side_effect = RuntimeError("timeout")
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.side_effect = RuntimeError("timeout")
+    adapter = _adapter(backend=backend)
 
     with pytest.raises(GroundworkersError) as exc_info:
         adapter.complete_text("Prompt")
 
     assert exc_info.value.code == "BACKEND_UNAVAIL"
-
-
-def test_complete_text_raises_invalid_input_with_no_model():
-    mock_client = MagicMock()
-    adapter = _adapter(client=mock_client, default_model=None)
-
-    with pytest.raises(GroundworkersError) as exc_info:
-        adapter.complete_text("Prompt")
-
-    assert exc_info.value.code == "INVALID_INPUT"
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +153,9 @@ def test_complete_text_raises_invalid_input_with_no_model():
 
 def test_complete_structured_parses_json_response():
     schema = {"type": "object", "properties": {"label": {"type": "string"}}}
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response('{"label": "diabetes"}')
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.return_value = _make_response('{"label": "diabetes"}')
+    adapter = _adapter(backend=backend)
 
     result = adapter.complete_structured("Classify this", schema)
 
@@ -158,35 +164,34 @@ def test_complete_structured_parses_json_response():
 
 def test_complete_structured_injects_schema_into_system_prompt():
     schema = {"type": "object", "properties": {"value": {"type": "integer"}}}
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response('{"value": 1}')
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.return_value = _make_response('{"value": 1}')
+    adapter = _adapter(backend=backend)
 
     adapter.complete_structured("Prompt", schema, system_prompt="Be concise")
 
-    call_kwargs = mock_client.chat.completions.create.call_args[1]
-    system_msg = call_kwargs["messages"][0]["content"]
+    system_msg = backend.complete.call_args[0][0][0]["content"]
     assert "Be concise" in system_msg
     assert "json" in system_msg.lower()
     assert "value" in system_msg
 
 
 def test_complete_structured_requests_json_object_format():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response('{"x": 1}')
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.return_value = _make_response('{"x": 1}')
+    adapter = _adapter(backend=backend)
 
     adapter.complete_structured("Prompt", {})
 
-    call_kwargs = mock_client.chat.completions.create.call_args[1]
+    call_kwargs = backend.complete.call_args.kwargs
     assert call_kwargs.get("response_format") == {"type": "json_object"}
     assert call_kwargs["timeout"] == 180.0
 
 
 def test_complete_structured_raises_query_error_on_invalid_json():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = _make_response("not json at all")
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.return_value = _make_response("not json at all")
+    adapter = _adapter(backend=backend)
 
     with pytest.raises(GroundworkersError) as exc_info:
         adapter.complete_structured("Prompt", {})
@@ -195,9 +200,9 @@ def test_complete_structured_raises_query_error_on_invalid_json():
 
 
 def test_complete_structured_raises_backend_unavail_on_api_error():
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.side_effect = RuntimeError("connection refused")
-    adapter = _adapter(client=mock_client)
+    backend = _make_backend()
+    backend.complete.side_effect = RuntimeError("connection refused")
+    adapter = _adapter(backend=backend)
 
     with pytest.raises(GroundworkersError) as exc_info:
         adapter.complete_structured("Prompt", {})
@@ -205,21 +210,52 @@ def test_complete_structured_raises_backend_unavail_on_api_error():
     assert exc_info.value.code == "BACKEND_UNAVAIL"
 
 
+def test_async_structured_completion_reuses_one_event_loop_without_sync_calls():
+    backend = _make_backend()
+    backend.async_complete.side_effect = [
+        _make_response('{"label": "first"}'),
+        _make_response('{"label": "second"}'),
+    ]
+    adapter = _adapter(backend=backend)
+
+    async def invoke_twice() -> tuple[dict, dict]:
+        return (
+            await adapter.async_complete_structured("First", {}),
+            await adapter.async_complete_structured("Second", {}),
+        )
+
+    first, second = asyncio.run(invoke_twice())
+
+    assert first == {"label": "first"}
+    assert second == {"label": "second"}
+    assert backend.async_complete.await_count == 2
+    backend.complete.assert_not_called()
+
+
+def test_async_status_uses_native_async_availability_probe():
+    backend = _make_backend()
+    adapter = _adapter(backend=backend)
+
+    result = asyncio.run(adapter.async_status())
+
+    assert result["available"] is True
+    backend.async_is_available.assert_awaited_once_with()
+    backend.is_available.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # close() and lifecycle
 # ---------------------------------------------------------------------------
 
-def test_close_drops_cached_client():
+def test_close_drops_cached_backend():
     call_count = 0
 
     def factory():
         nonlocal call_count
         call_count += 1
-        mock = MagicMock()
-        mock.models.list.return_value = _make_models_list()
-        return mock
+        return _make_backend()
 
-    adapter = LLMAdapter(provider="test", client_factory=factory)
+    adapter = LLMAdapter(backend_factory=factory)
     adapter.status()
     assert call_count == 1
     adapter.close()

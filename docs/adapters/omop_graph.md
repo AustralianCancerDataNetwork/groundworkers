@@ -1,9 +1,6 @@
 # OmopGraph Adapter
 
-`OmopGraphAdapter` wraps [omop-graph](https://australiancancerdatanetwork.github.io/omop-graph/)
-as the backend runtime for graph-backed concept operations. It owns the
-dependency-shaped interface to `omop-graph`; caller-facing graph workflows live
-one layer up in `GraphService` and `ConceptGroundingService`.
+`OmopGraphAdapter` wraps [omop-graph](https://australiancancerdatanetwork.github.io/omop-graph/) as the backend runtime for graph-backed concept operations. It owns the dependency-shaped interface to `omop-graph`; caller-facing graph workflows live one layer up in `GraphService` and `ConceptGroundingService`.
 
 ## What it owns
 
@@ -14,8 +11,7 @@ The adapter is responsible for:
 - translating backend failures into `GroundworkersError`
 - exposing one-operation primitives that services can compose into higher-level workflows
 
-It does not own caller-facing policy such as hierarchy-walk packaging,
-grounding tier selection, or REST/MCP response shaping.
+It does not own caller-facing policy such as hierarchy-walk packaging, grounding tier selection, or REST/MCP response shaping.
 
 ## Primitive surface
 
@@ -35,8 +31,7 @@ grounding tier selection, or REST/MCP response shaping.
 | `is_available()` | `system_status` |
 | `probe()` | `system_status` |
 
-`VocabService` uses `CDMAdapter` for lexical search operations and is separate from
-the omop-graph-backed graph service surface.
+`VocabService` uses `CDMAdapter` for lexical search operations and is separate from the omop-graph-backed graph service surface.
 
 ## Concept response shape
 
@@ -57,27 +52,16 @@ All methods that return concept data use a consistent dict shape:
 }
 ```
 
-`standard_concept` is a boolean (`true`/`false`), not the raw `"S"` / `null` string
-stored in the OMOP CDM.
+`standard_concept` is a boolean (`true`/`false`), not the raw `"S"` / `null` string stored in the OMOP CDM.
 
 ## Full-text search
 
-`ConceptGroundingService` runs a tiered resolver pipeline through this adapter.
-The FullText tier uses PostgreSQL tsvector sidecar columns
-(`concept_name_tsvector`, `concept_synonym_name_tsvector`) when they are present
-on the vocabulary tables. Detection is automatic. When the sidecar columns are
-absent, the FullText tier returns no results and the pipeline falls through to
-later tiers.
+`ConceptGroundingService` runs a tiered resolver pipeline through this adapter. The FullText tier uses PostgreSQL tsvector sidecar columns (`concept_name_tsvector`, `concept_synonym_name_tsvector`) when they are present on the vocabulary tables. Detection is automatic. When the sidecar columns are absent, the FullText tier returns no results and the pipeline falls through to later tiers.
 
-`concept_search_fulltext` (via `VocabService`) uses the same sidecar columns and
-exposes `tsvector_available` so callers can detect degraded mode.
+`concept_search_fulltext` (via `VocabService`) uses the same sidecar columns and exposes `tsvector_available` so callers can detect degraded mode.
 
 ## Error handling
 
-Adapter methods raise `GroundworkersError` on failure. Services propagate those
-errors unchanged; tools and REST routes translate them into transport-level
-responses.
+Adapter methods raise `GroundworkersError` on failure. Services propagate those errors unchanged; tools and REST routes translate them into transport-level responses.
 
-The underlying `KnowledgeGraph` is built lazily on first use rather than at
-server startup. If the database or graph layer is unavailable, callers receive a
-clear `GroundworkersError` instead of an opaque lower-level exception.
+The underlying `KnowledgeGraph` is built lazily on first use rather than at server startup. If the database or graph layer is unavailable, callers receive a clear `GroundworkersError` instead of an opaque lower-level exception.

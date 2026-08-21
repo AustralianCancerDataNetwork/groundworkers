@@ -1,13 +1,7 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.text import (
     DecomposeResult,
     DecomposeTerm,
@@ -18,7 +12,6 @@ from groundworkers.services.text import (
 )
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
 from groundworkers.tools.text_tools import register_text_prompts, register_text_tools
-
 
 # ---------------------------------------------------------------------------
 # Stub service
@@ -70,9 +63,50 @@ class StubTextService:
             raise self._raises
         return self._mapping_cleanup
 
+    async def async_normalize(self, text, *, domain_hint=None, model_name=None):
+        return self.normalize(text, domain_hint=domain_hint, model_name=model_name)
 
-def _server(service) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+    async def async_decompose(self, text, *, domain_hint=None, max_terms=10, model_name=None):
+        return self.decompose(
+            text,
+            domain_hint=domain_hint,
+            max_terms=max_terms,
+            model_name=model_name,
+        )
+
+    async def async_disambiguate(
+        self,
+        text,
+        *,
+        domain_hint=None,
+        max_interpretations=5,
+        model_name=None,
+    ):
+        return self.disambiguate(
+            text,
+            domain_hint=domain_hint,
+            max_interpretations=max_interpretations,
+            model_name=model_name,
+        )
+
+    async def async_mapping_cleanup(
+        self,
+        text,
+        *,
+        context=None,
+        domain_hint=None,
+        model_name=None,
+    ):
+        return self.mapping_cleanup(
+            text,
+            context=context,
+            domain_hint=domain_hint,
+            model_name=model_name,
+        )
+
+
+def _server(service) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_text_tools(server, service)
     return server
 
@@ -256,8 +290,8 @@ def test_text_disambiguate_passes_max_interpretations():
 # register_text_prompts
 # ---------------------------------------------------------------------------
 
-def _prompt_server() -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+def _prompt_server() -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_text_prompts(server)
     return server
 

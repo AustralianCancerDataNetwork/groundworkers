@@ -1,27 +1,29 @@
 [project]
 name = "groundworkers"
-version = "0.3.4"
+dynamic = ["version"]
 description = "Groundworkers MCP server — read-only agentive access to OMOP vocabularies, concept graphs, and embeddings."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110,<1.0",
   "mcp[cli]>=1,<2",
+  "numpy>=1.26,<3",
   "pydantic>=2,<3",
   "pyyaml>=6,<7",
   "SQLAlchemy>=2,<3",
   "psycopg[binary]>=3.1,<4",
-  "oa-configurator>=0.1.2,<1",
-  "omop-graph>=1.3.0",
-  "omop-emb>=1.2.0,<1.3",
-  "omop-semantics>=0.4.0",
+  "python-dotenv>=1,<2",
+  "psutil>=5.9,<8",
+  "oa-configurator>=1.2.1,<2",
+  "omop-alchemy>=1,<2",
+  "omop-graph>=2,<3",
+  "omop-emb>=2.1,<3",
+  "omop-llm>=1,<2",
+  "omop-semantics>=0.6,<1",
   "uvicorn[standard]>=0.29,<1.0",
 ]
 
 [project.optional-dependencies]
-llm = [
-  "openai>=1.0",
-]
 xlsx = [
   "openpyxl>=3.1,<4",
 ]
@@ -29,7 +31,13 @@ pdf = [
   "pdfplumber>=0.10",
 ]
 tui = [
-  "groundskeeping>=0.3.1,<0.4",
+  "groundskeeping>=0.6.1,<1",
+  "textual>=0.60",
+  "rich>=13,<15",
+]
+# Reads exported embedding bundles during embedding setup.
+embedding-artifacts = [
+  "h5py>=3.10,<4",
 ]
 docx = [
   "python-docx>=1.0",
@@ -40,10 +48,10 @@ all_source = [
   "python-docx>=1.0",
 ]
 embedding-pgvector = [
-  "omop-emb[pgvector]>=1.2.0,<1.3",
+  "omop-emb[pgvector]>=2.1,<3",
 ]
 embedding-faiss = [
-  "omop-emb[faiss-cpu]>=1.2.0,<1.3",
+  "omop-emb[faiss-cpu]>=2.1,<3",
 ]
 dev = [
   "httpx>=0.27,<1",
@@ -52,6 +60,7 @@ dev = [
   "pytest>=9.0.3",
   "pytest-cov>=4.0",
   "mypy>=1.8",
+  "ty>=0.0.59",
   "ruff>=0.4",
   "textual>=0.60",
   "mkdocs-material>=9.7.1",
@@ -68,20 +77,40 @@ groundworkers = "groundworkers.server:main"
 groundworkers = "groundworkers.config:GroundworkersConfig"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
-package-dir = {"" = "src"}
+[tool.hatch.version]
+source = "vcs"
+raw-options = { tag_regex = '^v?(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$' }
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/groundworkers"]
 
-[tool.setuptools.package-data]
-groundworkers = [
-  "knowledge/packs/*/*/*.md",
-  "knowledge/packs/*/*/*.yaml",
-]
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+
+[tool.uv.sources]
+# RELEASE BLOCKER: temporary source pin for local development only. It tracks the
+# unreleased `path_config` branch, which makes path-based config loading public
+# (see the oa-configurator issue on promoting `_load_from_path`). Delete this
+# section once that lands in a release and raise the version floor instead; no
+# published artifact or final lock may contain a source or editable dependency.
+# `tests/unit/test_migration_boundaries.py` pins this exact entry, so removing it
+# will fail that test until the assertion is restored to "no sources".
+oa-configurator = { git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git", branch = "path_config" }
+
+[tool.ruff]
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Pinned explicitly: ruff's implicit default rule set widens between releases
+# (0.16 pulled in flake8-bandit, flake8-blind-except and friends), which would
+# otherwise break CI on a ruff upgrade rather than on a code change.
+select = ["E4", "E7", "E9", "F", "I", "UP", "RUF"]
+
+[tool.ty.src]
+include = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

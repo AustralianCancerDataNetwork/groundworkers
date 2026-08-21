@@ -1,11 +1,8 @@
 # Concept Tools
 
-These graph-backed tools provide read-only access to OMOP concepts, hierarchy,
-relationships, neighborhoods, paths, and standard mappings. They are backed by
-`GraphService` and require the omop-graph backend.
+These graph-backed tools provide read-only access to OMOP concepts, hierarchy, relationships, neighborhoods, paths, and standard mappings. They are backed by `GraphService` and require the omop-graph backend.
 
-For free-text grounding see [Resolver Tools](resolver.md). For agent-composable
-lexical search primitives see [Search Tools](search.md).
+For free-text grounding see [Resolver Tools](resolver.md). For direct lexical search with retrieval signals see [Search Tools](search.md).
 
 ---
 
@@ -123,9 +120,7 @@ Returns all direct relationships (edges) for one concept, grouped by direction.
 
 ## `concept_equivalency_path`
 
-Returns the shortest path between two concepts traversing only identity (and optionally
-hierarchy) relationships.  Use this to find cross-vocabulary equivalences — for example,
-confirming that an ICD-10 code maps to the same SNOMED concept as a OMOP standard concept.
+Returns the shortest path between two concepts traversing only identity (and optionally hierarchy) relationships. Use this to find cross-vocabulary equivalences — for example, confirming that an ICD-10 code maps to the same SNOMED concept as a OMOP standard concept.
 
 ```json
 {
@@ -138,13 +133,9 @@ confirming that an ICD-10 code maps to the same SNOMED concept as a OMOP standar
 
 All parameters except `source_id` and `target_id` are optional.
 
-`allow_hierarchical_traversal=false` (default): only IDENTITY predicates (`Maps to`,
-`Concept same_as`, `Concept poss_eq`, etc.).  The connection found represents a direct
-cross-vocabulary equivalence with no loss of specificity.
+`allow_hierarchical_traversal=false` (default): only IDENTITY predicates (`Maps to`, `Concept same_as`, `Concept poss_eq`, etc.). The connection found represents a direct cross-vocabulary equivalence with no loss of specificity.
 
-`allow_hierarchical_traversal=true`: also allows HIERARCHY predicates (`Is a` /
-`Subsumes`).  A path may then step up or down the ancestry chain; the connection may
-be at a broader level of abstraction.
+`allow_hierarchical_traversal=true`: also allows HIERARCHY predicates (`Is a` / `Subsumes`). A path may then step up or down the ancestry chain; the connection may be at a broader level of abstraction.
 
 **Response** (same shape as `concept_path`):
 ```json
@@ -176,8 +167,7 @@ Returns `{"found": false, "paths": []}` when no path exists within `max_depth`.
 
 ## `concept_path`
 
-Finds the shortest path between two concepts across **all** relationship types
-(HIERARCHY, IDENTITY, ATTRIBUTE, COMPOSITION, ASSOCIATION).
+Finds the shortest path between two concepts across **all** relationship types (HIERARCHY, IDENTITY, ATTRIBUTE, COMPOSITION, ASSOCIATION).
 
 ```json
 {
@@ -188,9 +178,7 @@ Finds the shortest path between two concepts across **all** relationship types
 }
 ```
 
-`within_domain=true` (default) restricts traversal to edges where both endpoints share
-the same `domain_id`.  Set `false` to allow cross-domain traversal via attribute
-relationships.
+`within_domain=true` (default) restricts traversal to edges where both endpoints share the same `domain_id`. Set `false` to allow cross-domain traversal via attribute relationships.
 
 **Response**:
 ```json
@@ -216,11 +204,9 @@ relationships.
 }
 ```
 
-Returns `{"found": false, "paths": []}` when no path exists within `max_depth`.
-When `source_id == target_id`, returns `{"found": true, "paths": [{"length": 0, "steps": []}]}`.
+Returns `{"found": false, "paths": []}` when no path exists within `max_depth`. When `source_id == target_id`, returns `{"found": true, "paths": [{"length": 0, "steps": []}]}`.
 
-For cross-vocabulary equivalence queries, prefer `concept_equivalency_path` which
-restricts traversal to identity edges only.
+For cross-vocabulary equivalence queries, prefer `concept_equivalency_path` which restricts traversal to identity edges only.
 
 ---
 
@@ -273,15 +259,47 @@ All parameters except `concept_id` are optional.
 }
 ```
 
-Use this when you want a local relationship subgraph without committing to a
-single path or hierarchy-only traversal.
+Use this when you want a local relationship subgraph without committing to a single path or hierarchy-only traversal.
+
+---
+
+## `concept_associations`
+
+Enumerates classified `ASSOCIATION` edges such as therapeutic links between a regimen and its component drugs, or relationships between a drug and an indication. Use it when you need to discover associated concepts from one seed; `concept_neighbors` and `concept_relationships` do not provide this same classified association view.
+
+```json
+{
+  "concept_id": 1118084,
+  "direction": "out",
+  "predicate_subkinds": ["Therapeutic"],
+  "active_only": true,
+  "limit": 50
+}
+```
+
+`direction` is `out`, `in`, or `both`. `limit` is clamped to `1..200`. The result includes the related concept and relationship classification for each edge.
+
+## `concept_extended_inheritance`
+
+Enumerates raw `HIERARCHY`-classified relationship edges, including single-hop taxonomic and categorical/classification links. This differs from `concept_ancestors` and `concept_descendants`, which use the OMOP transitive ancestor closure for strict ancestry.
+
+```json
+{
+  "concept_id": 4119419,
+  "direction": "out",
+  "predicate_subkinds": ["Taxonomic - up"],
+  "active_only": true,
+  "limit": 50
+}
+```
+
+Use the ancestor/descendant tools for the usual “what is this a kind of?” question. Use this tool when the edge-level classification graph itself matters, including cross-vocabulary or non-standard relationships. `direction` is `out`, `in`, or `both`; `limit` is clamped to `1..200`.
 
 ---
 
 ## `concept_map_to_standard`
 
-Maps a non-standard concept (identified by vocabulary + code) to its standard OMOP
-equivalent via IDENTITY-type relationship edges.
+Maps a non-standard concept (identified by vocabulary + code) to its standard OMOP equivalent via IDENTITY-type relationship edges.
 
 ```json
 {"vocabulary_id": "ICD10CM", "concept_code": "C34.1"}
@@ -297,5 +315,4 @@ equivalent via IDENTITY-type relationship edges.
 }
 ```
 
-`standard_concepts` is an empty list if no standard mapping exists.  When the source
-concept is already standard, it is returned as-is in `standard_concepts`.
+`standard_concepts` is an empty list if no standard mapping exists. When the source concept is already standard, it is returned as-is in `standard_concepts`.

@@ -4,10 +4,9 @@ import json
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.source_planning import (
     COLUMN_ROLE_DESCRIPTIONS,
-    ColumnRole,
     IngestionStrategy,
     SourcePlanningService,
 )
@@ -28,7 +27,7 @@ _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
 
 
 def register_source_planning_tools(
-    server: GroundcrewServer,
+    server: GroundworkersMCPServer,
     source_planning_service: SourcePlanningService,
 ) -> None:
     @server.tool("source_plan")
@@ -60,11 +59,9 @@ def register_source_planning_tools(
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("source_plan_assisted")
-    def source_plan_assisted(
+    async def source_plan_assisted(
         content: str,
         filename: str | None = None,
         caller_hint: str | None = None,
@@ -81,7 +78,7 @@ def register_source_planning_tools(
 
         try:
             raw_content = decode_content(content, content_encoding)
-            bundle = source_planning_service.plan_source_assisted(
+            bundle = await source_planning_service.async_plan_source_assisted(
                 raw_content,
                 filename=filename,
                 caller_hint=caller_hint,
@@ -91,11 +88,9 @@ def register_source_planning_tools(
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
 
-def register_source_planning_resources(server: GroundcrewServer) -> None:
+def register_source_planning_resources(server: GroundworkersMCPServer) -> None:
     @server.resource(
         "source-planning://canonical-headers",
         description=(

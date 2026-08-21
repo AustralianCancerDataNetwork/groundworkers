@@ -1,15 +1,13 @@
 # Mapping Tools
 
-These tools are for mapping and review workflows where the caller usually wants
-more than a single "best guess". They help you gather evidence, inspect context,
-and compare candidates.
+These tools support mapping review when a single best result is not enough. They gather evidence, add context, and make candidate comparisons explicit.
 
 ## When to use these tools
 
 Use the mapping tools when you want to:
 
 - compare exact, normalized, full-text, and embedding retrieval side by side
-- build a reviewer or LLM-facing candidate packet
+- build a candidate packet for a reviewer or downstream mapping service
 - ask for broader parent concepts when a hit is too specific
 - assemble one context object for a chosen concept
 - expand simple concept expressions
@@ -33,10 +31,9 @@ flowchart TD
 
 ## `concept_ground` vs mapping tools
 
-`concept_ground` is still the simplest choice when you want one good answer fast.
+`concept_ground` is the simplest choice for a single ranked grounding result.
 
-The mapping tools are better when you want to inspect evidence and make an explicit
-selection.
+The mapping tools are better when you want to inspect evidence and make an explicit selection.
 
 | If you want... | Prefer... |
 |---|---|
@@ -47,8 +44,7 @@ selection.
 
 ## `concept_search_normalized`
 
-Deterministic normalized equality search over concept labels, with optional synonym
-matching and explicit normalization metadata in the response.
+Deterministic normalized equality search over concept labels, with optional synonym matching and explicit normalization metadata in the response.
 
 ```json
 {
@@ -101,9 +97,7 @@ Representative response sections:
 
 ## `concept_nearest_standard_ancestor`
 
-Finds the nearest standard ancestor of a concept by walking the OMOP concept hierarchy.
-Accepts either a free-text query or an explicit `concept_id`. Useful when a source concept
-is too specific or non-standard and you need a broader standard parent.
+Finds the nearest standard ancestor of a concept by walking the OMOP concept hierarchy. Accepts either a free-text query or an explicit `concept_id`. Useful when a source concept is too specific or non-standard and you need a broader standard parent.
 
 ```json
 {
@@ -123,8 +117,7 @@ Useful response fields:
 
 ## `concept_mapping_context`
 
-Builds one deterministic context packet for a known concept ID so the caller does
-not have to stitch together multiple lower-level calls.
+Builds one deterministic context packet for a known concept ID so the caller does not have to stitch together multiple lower-level calls.
 
 ```json
 {
@@ -182,8 +175,7 @@ Expands a simple list of concept items with support for:
 
 ## `mapping_evaluate_candidates`
 
-Compares predicted mappings with a reference mapping set using
-`standard_concept_id` agreement.
+Compares predicted mappings with a reference mapping set using `standard_concept_id` agreement.
 
 ```json
 {

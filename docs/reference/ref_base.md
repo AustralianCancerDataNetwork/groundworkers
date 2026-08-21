@@ -1,6 +1,6 @@
 # Base — API Reference
 
-## GroundcrewServer
+## GroundworkersMCPServer
 
 ::: groundworkers.base.server
 

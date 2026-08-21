@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-
 SYSTEM_PROMPTS: dict[str, str] = {
     "normalize": (
         "You are a clinical terminology expert for OMOP (Observational Medical Outcomes Partnership) vocabularies. "

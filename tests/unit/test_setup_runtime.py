@@ -1,45 +1,64 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from types import SimpleNamespace
 
 from groundworkers.application.setup.configuration import load_configuration
+from groundworkers.application.setup.models import LlmModelMetadata
 from groundworkers.application.setup.runtime_setup import (
     load_chat_configuration,
     load_graph_configuration,
     load_llm_provider_configuration,
     verify_llm_provider,
 )
-from groundworkers.application.setup.models import LlmModelMetadata
 
 
-def test_runtime_sections_load_from_the_effective_profile_and_redact_secrets(
+class _JsonResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self._payload).encode()
+
+
+def test_runtime_sections_load_from_plain_tool_mappings_and_redact_secrets(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "config.toml"
     path.write_text(
         """
-active_profile = "local"
-
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[profiles.local.tools.omop_graph.extra]
-max_depth = 4
-max_paths = 8
+[tools.groundworkers]
+cdm_db = "cdm_db"
+llm_model_name = "chat_model"
 
-[profiles.local.tools.groundworkers.extra.llm]
-enabled = true
-provider = "openai-compatible"
-api_base = "https://provider.example/v1?api_key=secret"
+grounding_min_fulltext_overlap = 0.25
+grounding_max_depth = 4
+
+[providers.chat_provider]
+provider = "openai"
+base_url = "https://provider.example/v1?api_key=secret"
 api_key = "also-secret"
-default_model_name = "chat-model"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "chat-model"
+structured_output = true
 """,
         encoding="utf-8",
     )
@@ -50,10 +69,14 @@ default_model_name = "chat-model"
     chat = load_chat_configuration(provider)
 
     assert graph is not None
-    assert graph.max_depth == 4
-    assert graph.max_paths == 8
+    # Graph/grounding policy comes from Groundworkers' own configuration, not from
+    # omop-graph's internal package config.
+    assert graph.cdm_database_name == "cdm_db"
+    assert graph.vocabulary_schema == "main"
+    assert graph.grounding_max_depth == 4
+    assert graph.min_fulltext_overlap == 0.25
     assert provider is not None
-    assert provider.api_base == "https://provider.example/v1?api_key=%2A%2A%2A"
+    assert provider.api_base == "https://provider.example/v1?api_key=***"
     assert provider.credentials_configured is True
     assert "secret" not in repr(provider)
     assert chat is not None
@@ -66,13 +89,14 @@ def test_runtime_sections_do_not_treat_package_defaults_as_configuration(
     path = tmp_path / "config.toml"
     path.write_text(
         """
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 """,
         encoding="utf-8",
@@ -90,7 +114,7 @@ def test_llm_provider_check_reports_available_configured_model(tmp_path: Path) -
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model", "other-model")),
+        inventory_factory=lambda _llm: ("chat-model", "other-model"),
     )
 
     assert result is not None
@@ -109,7 +133,7 @@ def test_llm_provider_check_reports_missing_configured_model(tmp_path: Path) -> 
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model",)),
+        inventory_factory=lambda _llm: ("chat-model",),
     )
 
     assert result is not None
@@ -117,6 +141,43 @@ def test_llm_provider_check_reports_missing_configured_model(tmp_path: Path) -> 
     assert result.model_available is False
     assert result.ready is False
     assert result.has_errors is True
+
+
+def test_ollama_inventory_uses_native_endpoint_with_or_without_v1(
+    monkeypatch, tmp_path: Path
+) -> None:
+    path = _write_llm_config(
+        tmp_path,
+        model="snowflake-arctic-embed2:local-2026-06-30",
+        provider="ollama",
+        api_base="http://localhost:11434/v1",
+    )
+    snapshot = load_configuration(config_path=path)
+    requested: list[str] = []
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        requested.append(request if isinstance(request, str) else request.full_url)
+        return _JsonResponse(
+            {
+                "models": [
+                    {
+                        "name": "snowflake-arctic-embed2:local-2026-06-30",
+                        "details": {"embedding_length": 1024},
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.runtime_setup.urlopen", fake_urlopen
+    )
+    result = verify_llm_provider(snapshot)
+
+    assert result is not None
+    assert result.reachable is True
+    assert result.model_available is True
+    assert requested == ["http://localhost:11434/api/tags"]
 
 
 def test_llm_provider_check_enriches_ollama_model_metadata(tmp_path: Path) -> None:
@@ -130,7 +191,7 @@ def test_llm_provider_check_enriches_ollama_model_metadata(tmp_path: Path) -> No
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model",)),
+        inventory_factory=lambda _llm: ("chat-model",),
         metadata_factory=lambda _llm: (
             LlmModelMetadata(
                 name="chat-model",
@@ -164,7 +225,7 @@ def test_llm_provider_check_merges_ollama_metadata_into_inventory(
 
     result = verify_llm_provider(
         snapshot,
-        client_factory=lambda _llm: _FakeLlmClient(("chat-model",)),
+        inventory_factory=lambda _llm: ("chat-model",),
         metadata_factory=lambda _llm: (
             LlmModelMetadata(name="chat-model"),
             LlmModelMetadata(name="other-model"),
@@ -176,47 +237,39 @@ def test_llm_provider_check_merges_ollama_metadata_into_inventory(
     assert result.model_available is True
 
 
-class _FakeModels:
-    def __init__(self, model_ids: tuple[str, ...]) -> None:
-        self._model_ids = model_ids
-
-    def list(self, *, timeout: float):
-        assert timeout > 0
-        return SimpleNamespace(
-            data=tuple(SimpleNamespace(id=model_id) for model_id in self._model_ids)
-        )
-
-
-class _FakeLlmClient:
-    def __init__(self, model_ids: tuple[str, ...]) -> None:
-        self.models = _FakeModels(model_ids)
-
-
 def _write_llm_config(
     tmp_path: Path,
     *,
     model: str,
-    provider: str = "openai-compatible",
+    provider: str = "openai",
     api_base: str = "https://provider.example/v1?api_key=secret",
 ) -> Path:
     path = tmp_path / "config.toml"
     path.write_text(
         f"""
-[databases.main]
+[connections.main]
 dialect = "sqlite"
 database_name = ":memory:"
 
-[resources.cdm_db]
-database = "main"
-cdm_schema = "main"
+[databases.cdm_db]
+kind = "cdm"
+connection = "main"
+schema_name = "main"
 vocab_schema = "main"
 
-[tools.groundworkers.extra.llm]
-enabled = true
+[tools.groundworkers]
+cdm_db = "cdm_db"
+llm_model_name = "chat_model"
+
+[providers.chat_provider]
 provider = "{provider}"
-api_base = "{api_base}"
+base_url = "{api_base}"
 api_key = "also-secret"
-default_model_name = "{model}"
+
+[models.chat_model]
+provider = "chat_provider"
+model = "{model}"
+structured_output = true
 """,
         encoding="utf-8",
     )

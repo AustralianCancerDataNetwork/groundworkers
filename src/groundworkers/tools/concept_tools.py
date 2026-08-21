@@ -3,18 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.graph import GraphService
 
 
-def register_concept_tools(server: GroundcrewServer, graph_service: GraphService) -> None:
+def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphService) -> None:
     """Register deterministic concept lookup tools against the MCP server.
 
     These tools take a known identifier (concept_id, vocabulary+code) and return
     a fact — they are deterministic lookups, not text matching.
 
     For free-text grounding see resolver_tools.py.
-    For agent-composable search primitives see search_tools.py.
+    For direct lexical search with retrieval signals see search_tools.py.
     """
 
     @server.tool("concept_get")
@@ -29,8 +29,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return concept
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_by_code")
     def concept_by_code(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
@@ -50,8 +48,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return {"concepts": concepts}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_ancestors")
     def concept_ancestors(concept_id: int, max_depth: int = 5) -> dict[str, Any]:
@@ -64,8 +60,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return {"concept_id": concept_id, "ancestors": ancestors}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_descendants")
     def concept_descendants(concept_id: int, max_depth: int = 3) -> dict[str, Any]:
@@ -78,8 +72,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return {"concept_id": concept_id, "descendants": descendants}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_relationships")
     def concept_relationships(concept_id: int) -> dict[str, Any]:
@@ -91,8 +83,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return {"concept_id": concept_id, **edges}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_equivalency_path")
     def concept_equivalency_path(
@@ -129,8 +119,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return {"source_id": source_id, "target_id": target_id, **result}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_path")
     def concept_path(
@@ -164,8 +152,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return {"source_id": source_id, "target_id": target_id, **result}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_neighbors")
     def concept_neighbors(
@@ -195,9 +181,9 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
           Valid values: HIERARCHY, IDENTITY, ATTRIBUTE, COMPOSITION, ASSOCIATION.
           When omitted, all relationship types are traversed.
 
-        max_depth: maximum hops from the seed (1–4, server-enforced).
+        max_depth: maximum hops from the seed (1-4, server-enforced).
 
-        max_nodes: stop after visiting this many distinct concepts (10–500,
+        max_nodes: stop after visiting this many distinct concepts (10-500,
           server-enforced).  terminated_early=true and terminated_reason="max_nodes"
           in the response indicate the traversal was cut short.
 
@@ -219,8 +205,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_associations")
     def concept_associations(
@@ -246,7 +230,7 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
         direction: "out" (default; edges where this concept is the subject), "in", or "both".
         predicate_subkinds: optional filter on the classification subkind, e.g. ["Therapeutic"].
         active_only: when true (default) exclude invalid/deprecated relationships.
-        limit: max edges returned per direction (1–200, server-enforced).
+        limit: max edges returned per direction (1-200, server-enforced).
         """
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
@@ -263,8 +247,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_extended_inheritance")
     def concept_extended_inheritance(
@@ -295,9 +277,9 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
         graph (e.g. classification memberships, cross-vocabulary hierarchy links).
 
         direction: "out" (default; edges where this concept is the subject), "in", or "both".
-        predicate_subkinds: optional filter, e.g. ["Taxonomic – up"], ["Categorical – up"].
+        predicate_subkinds: optional filter, e.g. ["Taxonomic - up"], ["Categorical - up"].
         active_only: when true (default) exclude invalid/deprecated relationships.
-        limit: max edges returned per direction (1–200, server-enforced).
+        limit: max edges returned per direction (1-200, server-enforced).
         """
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
@@ -314,8 +296,6 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             )
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_map_to_standard")
     def concept_map_to_standard(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
@@ -328,5 +308,3 @@ def register_concept_tools(server: GroundcrewServer, graph_service: GraphService
             return graph_service.map_to_standard(vocabulary_id, concept_code)
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

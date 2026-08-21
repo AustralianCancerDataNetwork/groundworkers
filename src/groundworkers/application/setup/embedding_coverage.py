@@ -11,7 +11,6 @@ from groundworkers.application.setup.models import (
     VocabularyCoverage,
 )
 
-
 FILTERED_AGGREGATE_BLOCKER = (
     "The installed omop-emb aggregate cannot apply standard, validity, or domain "
     "filters. Filtered population planning is disabled until the backend exposes "

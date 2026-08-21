@@ -1,13 +1,12 @@
 # groundworkers
 
-`groundworkers` is the reusable capability layer for OMOP-grounded lookup,
-mapping, source planning, and knowledge-pack discovery.
+`groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source planning, and knowledge-pack discovery.
 
-You can use it in three ways:
+It is available through three interfaces:
 
-- as an **MCP service** for agentic clients and tool discovery
+- as an **MCP service** for discoverable tool clients
 - as a **REST service** for fixed workflow applications
-- as a **direct Python library** for in-process orchestration
+- as a **direct Python library** for in-process applications
 
 No patient-level writes. No session state. No transport-specific business logic.
 
@@ -20,15 +19,11 @@ No patient-level writes. No session state. No transport-specific business logic.
 - bundled baseline knowledge packs for reusable mapping and planning context
 - LLM-backed text normalization and domain classification
 
-## Knowledge Packs
+## Knowledge packs
 
-`groundworkers` ships with bundled baseline knowledge packs inside the package.
-These packs are available by default and provide reusable guidance and rules
-that apply broadly across deployments.
+`groundworkers` ships with bundled baseline knowledge packs inside the package. These packs are available by default and provide reusable guidance and rules that apply broadly across deployments.
 
-Site-specific or localisation packs are added through the shared stack config
-via `tools.groundworkers.knowledge.packs_root`. When a configured pack has the
-same `layer` and `name` as a bundled baseline pack, the configured copy wins.
+Site-specific or localisation packs are added through the shared stack config via `tools.groundworkers.knowledge_packs_root`. When a configured pack has the same `layer` and `name` as a bundled baseline pack, the configured copy wins.
 
 ## Runtime model
 
@@ -48,11 +43,7 @@ flowchart TD
     API --> SVC
 ```
 
-`build_application(...)` is the composition root. It builds one reusable
-runtime container with transport-agnostic services plus dependency-facing
-adapters. Most caller-facing workflows go through services; some MCP tools are
-intentionally adapter-backed when the capability is closer to a backend
-primitive than a domain service.
+`build_application(...)` is the composition root. It builds one reusable runtime container with transport-agnostic services plus dependency-facing adapters. Most caller-facing workflows go through services; some MCP tools are intentionally adapter-backed when the capability is closer to a backend primitive than a domain service.
 
 ## Quick start
 
@@ -65,7 +56,7 @@ pip install groundworkers
 Optional extras:
 
 ```bash
-pip install "groundworkers[llm,embedding-pgvector]"
+pip install "groundworkers[tui,embedding-pgvector]"
 ```
 
 ### Configure the shared stack
@@ -114,7 +105,7 @@ bundle = mapping.concept_candidate_bundle(
 
 | Surface | Best for |
 |---|---|
-| MCP tools | Tool discovery, agent interoperability, shared capability services |
+| MCP tools | Discoverable tools and shared remote capabilities |
 | REST routes | Typed HTTP workflows such as candidate bundles and assisted source planning |
 | `app.services.*` | In-process Python applications and batch workflows |
 | `app.adapters.*` | Backend wrappers used when you intentionally need dependency-shaped primitives |

@@ -1,13 +1,7 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.resolver_tools import register_resolver_tools
 
@@ -149,7 +143,7 @@ class StubGraphAdapter:
         result = {"concept_id": concept_id, "predicate_kind": "Hierarchy"}
         if direction in ("out", "both"):
             result["outbound"] = [{
-                "relationship_id": "Is a", "predicate_subkind": "Taxonomic – up",
+                "relationship_id": "Is a", "predicate_subkind": "Taxonomic - up",
                 "target_concept_id": 200, "target_concept_name": "Diabetes mellitus",
                 "vocabulary_id": "SNOMED", "domain_id": "Condition", "concept_class_id": "Clinical Finding",
                 "standard_concept": True, "valid": True,
@@ -234,6 +228,8 @@ class StubGroundingService:
         domain: str | None,
         vocabulary_id: str | None,
         parent_ids: tuple[int, ...] | None = None,
+        standard_only: bool = False,
+        active_only: bool = False,
     ) -> dict:
         self.calls.append(("ground", {
             "query": query,
@@ -241,6 +237,8 @@ class StubGroundingService:
             "domain": domain,
             "vocabulary_id": vocabulary_id,
             "parent_ids": parent_ids,
+            "standard_only": standard_only,
+            "active_only": active_only,
         }))
         all_results = [
             _ground_result(100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"),
@@ -253,12 +251,17 @@ class StubGroundingService:
                 "used_embedding": False,
                 "effective_parent_ids": list(parent_ids) if parent_ids else [],
                 "parent_ids_source": "explicit" if parent_ids else "none",
+                "standard_only": standard_only,
+                "active_only": active_only,
             },
         }
 
+    async def async_ground(self, query: str, **kwargs) -> dict:
+        return self.ground(query, **kwargs)
 
-def build_server(adapter, grounding_service=None) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
+
+def build_server(adapter, grounding_service=None) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
     register_concept_tools(server, adapter)
     register_resolver_tools(server, grounding_service or StubGroundingService())
     return server
@@ -715,7 +718,7 @@ def test_concept_extended_inheritance_uses_its_own_method_not_ancestors():
     result = server.call("concept_extended_inheritance", concept_id=1)
 
     assert result["predicate_kind"] == "Hierarchy"
-    assert result["outbound"][0]["predicate_subkind"] == "Taxonomic – up"
+    assert result["outbound"][0]["predicate_subkind"] == "Taxonomic - up"
     called = [c[0] for c in adapter.calls]
     assert "get_extended_inheritance" in called
     # It must NOT fall back to the concept_ancestor closure.

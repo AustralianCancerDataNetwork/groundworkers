@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
-import h5py
 from omop_emb.storage.embedding_bundle import ExportMetadata
 
 from groundworkers.application.setup.models import (
@@ -23,7 +22,8 @@ def discover_embedding_artifacts(paths: Iterable[str | Path]) -> ArtifactDiscove
     for path in _candidate_paths(paths):
         try:
             artifacts.append(_inspect_bundle(path))
-        except Exception:  # noqa: BLE001 - corrupt files become typed discovery issues
+        except Exception:
+            # Broad except: corrupt files become typed discovery issues.
             issues.append(
                 SetupIssue(
                     code="artifact_unreadable",
@@ -96,6 +96,10 @@ def check_artifact_compatibility(
 
 
 def _inspect_bundle(path: Path) -> ArtifactMetadata:
+    # Imported lazily: reading exported bundles is an optional capability behind the
+    # `embedding-artifacts` extra, and a core install must still import this module.
+    import h5py
+
     with h5py.File(path, "r") as bundle:
         metadata = ExportMetadata.from_h5_attrs(bundle.attrs)
         vocabularies = _optional_csv(bundle.attrs.get("groundworkers_vocabularies"))
@@ -106,7 +110,7 @@ def _inspect_bundle(path: Path) -> ArtifactMetadata:
         model_name=metadata.model_name,
         dimensions=metadata.dimensions,
         metric=metadata.metric_type.value,
-        provider=metadata.provider_type.value,
+        provider=metadata.provider_type,
         row_count=metadata.row_count,
         vocabularies=vocabularies,
         standard_only=standard_only,

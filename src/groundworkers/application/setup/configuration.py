@@ -1,19 +1,17 @@
+"""Load and persist the authoritative oa-configurator 1.x stack."""
+
 from __future__ import annotations
 
 import hashlib
-import os
-from pathlib import Path
-import shutil
-import tempfile
 import tomllib
+from pathlib import Path
 
 from oa_configurator import (
-    DEFAULT_CONFIG_PATH,
-    Resolver,
+    ConfigurationError,
     StackConfig,
     save_stack_config,
 )
-from omop_emb.config import BackendType, OmopEmbConfig
+from oa_configurator import loader as _loader
 from pydantic import ValidationError
 
 from groundworkers.application.setup.models import (
@@ -23,28 +21,52 @@ from groundworkers.application.setup.models import (
     ConfigurationState,
     SetupIssue,
 )
-from groundworkers.config import (
-    resolve_cdm_resource_name,
-    resolve_embedding_resource_name,
-)
+from groundworkers.config import GroundworkersConfig, split_vocabulary_connection
+
+
+class ConfigurationConflictError(RuntimeError):
+    """Raised when a save would overwrite configuration changed elsewhere."""
+
+
+def resolved_config_path() -> Path:
+    """The stack configuration the running process would load on its own.
+
+    ``OA_CONFIG_PATH`` when set, otherwise ``~/.config/omop/config.toml``.
+
+    Read through the module attribute rather than imported as a name, so this
+    returns the same value ``load_stack_config`` will: oa-configurator resolves
+    ``CONFIG_PATH`` once at import, and the setup console must not resolve a
+    second, differently-timed answer. The console previously defaulted to
+    ``DEFAULT_CONFIG_PATH``, which ignores the environment variable entirely --
+    so with it set, the console edited one file and ``groundworkers serve`` read
+    another.
+    """
+
+    return Path(_loader.CONFIG_PATH)
+
+
+def missing_revision(path: str | Path) -> str:
+    """Return the opaque revision representing an absent destination."""
+
+    resolved = Path(path).expanduser().resolve()
+    return "missing:" + hashlib.sha256(str(resolved).encode("utf-8")).hexdigest()
 
 
 def load_configuration(
     *,
     config_path: str | Path | None = None,
-    profile: str | None = None,
     ownership: ConfigurationOwnership | None = None,
 ) -> ConfigurationSnapshot:
     """Load setup configuration without constructing the runtime application."""
 
-    path = Path(config_path or DEFAULT_CONFIG_PATH).expanduser().resolve()
+    path = Path(config_path or resolved_config_path()).expanduser().resolve()
     ownership = ownership or ConfigurationOwnership()
     if not path.exists():
         return ConfigurationSnapshot(
             state=ConfigurationState.MISSING,
             path=path,
-            profile=profile,
             ownership=ownership,
+            revision=missing_revision(path),
             issues=(
                 SetupIssue(
                     code="config_missing",
@@ -61,7 +83,6 @@ def load_configuration(
         return ConfigurationSnapshot(
             state=ConfigurationState.MALFORMED,
             path=path,
-            profile=profile,
             ownership=ownership,
             issues=(_load_issue(exc),),
         )
@@ -73,23 +94,18 @@ def load_configuration(
         return ConfigurationSnapshot(
             state=ConfigurationState.MALFORMED,
             path=path,
-            profile=profile,
             ownership=ownership,
             revision=revision,
             issues=_validation_issues(exc),
         )
 
     stack.bind_loaded_path(path)
-    if profile is not None:
-        stack.active_profile = profile
-
     issues = _incomplete_issues(stack)
     return ConfigurationSnapshot(
         state=(
             ConfigurationState.INCOMPLETE if issues else ConfigurationState.UNVERIFIED
         ),
         path=path,
-        profile=stack.active_profile,
         ownership=ownership,
         stack=stack,
         revision=revision,
@@ -104,160 +120,87 @@ def save_configuration(
     expected_revision: str | None,
     ownership: ConfigurationOwnership,
 ) -> ConfigurationSaveResult:
-    """Validate and atomically persist an authoritative stack configuration."""
+    """Compare, validate, and atomically persist an authoritative stack."""
 
     if not ownership.editable:
         raise PermissionError(
             "This configuration is read-only; use its controlling source to edit it."
         )
     validated = StackConfig.model_validate(stack.model_dump(mode="python"))
+    groundworkers = GroundworkersConfig.validate_candidate(validated)
+    split = split_vocabulary_connection(validated, groundworkers.cdm_db)
+    if split is not None:
+        primary, vocabulary = split
+        raise ValueError(
+            f"The CDM database reads its vocabulary from connection {vocabulary!r} and "
+            f"its clinical tables from {primary!r}. Groundworkers uses one connection "
+            "for both; separate them with vocab_schema instead."
+        )
     destination = Path(path).expanduser().resolve()
     existed = destination.exists()
     if existed:
         current_revision = hashlib.sha256(destination.read_bytes()).hexdigest()
         if expected_revision is None or current_revision != expected_revision:
-            raise RuntimeError(
+            raise ConfigurationConflictError(
                 "The configuration changed after it was opened; reload before saving."
             )
-    elif expected_revision is not None:
-        raise RuntimeError(
-            "The configuration path no longer exists; reload before saving."
+    elif expected_revision not in (None, missing_revision(destination)):
+        raise ConfigurationConflictError(
+            "The configuration path changed after it was opened; reload before saving."
         )
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    backup_path = (
-        destination.with_suffix(f"{destination.suffix}.bak") if existed else None
-    )
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=destination.parent,
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-        save_stack_config(validated, temporary_path)
-        os.chmod(temporary_path, 0o600)
-        with temporary_path.open("rb") as written:
-            os.fsync(written.fileno())
-        if backup_path is not None:
-            shutil.copy2(destination, backup_path)
-        os.replace(temporary_path, destination)
-        temporary_path = None
-    finally:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
-
+    save_stack_config(validated, destination)
     reloaded = load_configuration(
         config_path=destination,
-        profile=validated.active_profile,
         ownership=ownership,
     )
     if not reloaded.usable:
-        if backup_path is not None:
-            shutil.copy2(backup_path, destination)
         raise RuntimeError("Saved configuration failed reload verification.")
     return ConfigurationSaveResult(
         snapshot=reloaded,
-        backup_path=backup_path,
+        backup_path=(
+            destination.with_name(f"{destination.name}.bak") if existed else None
+        ),
         replaced_existing=existed,
     )
 
 
 def _incomplete_issues(stack: StackConfig) -> tuple[SetupIssue, ...]:
-    issues: list[SetupIssue] = []
-    if stack.active_profile is not None and stack.active_profile not in stack.profiles:
-        issues.append(
-            SetupIssue(
-                code="active_profile_missing",
-                field="active_profile",
-                message=f"Active profile {stack.active_profile!r} is not defined.",
-            )
-        )
-        return tuple(issues)
-
-    resolver = Resolver(stack)
     try:
-        cdm_resource_name = resolve_cdm_resource_name(stack)
-        resolver.resolve_resource(cdm_resource_name)
-    except Exception:  # noqa: BLE001 - converted to a stable setup issue
-        issues.append(
+        groundworkers = GroundworkersConfig.validate_candidate(stack)
+    except (ConfigurationError, ValidationError, ValueError) as exc:
+        return (
             SetupIssue(
-                code="cdm_resource_unresolved",
-                field="resources",
-                message="A CDM resource with CDM and vocabulary schemas is required.",
-            )
+                code="groundworkers_config_incomplete",
+                field="tools.groundworkers",
+                message=(
+                    "Groundworkers needs a valid CDM database reference before it can start. "
+                    f"Validation failed with {type(exc).__name__}."
+                ),
+            ),
         )
-
-    tool = _effective_tool(stack, OmopEmbConfig.tool_name)
-    if tool is None:
-        return tuple(issues)
-
-    try:
-        embedding_config = OmopEmbConfig.from_stack(stack)
-    except (KeyError, TypeError, ValueError, ValidationError):
-        issues.append(
+    # Reference-valid but unrunnable: the runtime refuses this at bootstrap, so
+    # the console must not present it as merely unverified.
+    split = split_vocabulary_connection(stack, groundworkers.cdm_db)
+    if split is not None:
+        primary, vocabulary = split
+        return (
             SetupIssue(
-                code="embedding_config_invalid",
-                field="tools.omop_emb",
-                message="The embedding tool configuration is incomplete or invalid.",
-            )
+                code="vocabulary_connection_split",
+                field=f"databases.{groundworkers.cdm_db}.vocab_connection",
+                message=(
+                    f"The CDM database reads its vocabulary from connection {vocabulary!r} "
+                    f"and its clinical tables from {primary!r}. Groundworkers uses one "
+                    "connection for both; separate them with vocab_schema instead."
+                ),
+            ),
         )
-        return tuple(issues)
-
-    try:
-        backend = BackendType(embedding_config.backend)
-    except ValueError:
-        if str(embedding_config.backend).lower() == "faiss":
-            message = (
-                "FAISS is a cache accelerator, not an embedding backend. "
-                "Set backend to 'sqlitevec' or 'pgvector' and configure faiss_cache_dir instead."
-            )
-        else:
-            message = "The embedding backend is not supported by this installation."
-        issues.append(
-            SetupIssue(
-                code="embedding_backend_invalid",
-                field="tools.omop_emb.extra.backend",
-                message=message,
-            )
-        )
-        return tuple(issues)
-
-    if backend is BackendType.SQLITEVEC and not embedding_config.sqlite_path:
-        issues.append(
-            SetupIssue(
-                code="embedding_path_missing",
-                field="tools.omop_emb.extra.sqlite_path",
-                message="The sqlite-vec backend requires an embedding database path.",
-            )
-        )
-    if backend is BackendType.PGVECTOR:
-        try:
-            resolver.resolve_resource(resolve_embedding_resource_name(stack))
-        except Exception:  # noqa: BLE001 - converted to a stable setup issue
-            issues.append(
-                SetupIssue(
-                    code="embedding_resource_unresolved",
-                    field="resources",
-                    message="The pgvector backend requires a resolvable embedding resource.",
-                )
-            )
-    return tuple(issues)
-
-
-def _effective_tool(stack: StackConfig, name: str):
-    if stack.active_profile and stack.active_profile in stack.profiles:
-        profile_tool = stack.profiles[stack.active_profile].tools.get(name)
-        if profile_tool is not None:
-            return profile_tool
-    return stack.tools.get(name)
+    return ()
 
 
 def _validation_issues(exc: ValidationError) -> tuple[SetupIssue, ...]:
     issues = []
-    for error in exc.errors(include_input=False, include_url=False):
+    for error in exc.errors(include_input=False, include_url=False, include_context=False):
         location = ".".join(str(part) for part in error["loc"]) or None
         issues.append(
             SetupIssue(

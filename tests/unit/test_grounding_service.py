@@ -8,8 +8,14 @@ class StubOmopGraphAdapter:
     """Minimal stand-in for OmopGraphAdapter, exposing only the members that
     GraphService delegates to. Used to exercise the real GraphService façade."""
 
-    def __init__(self, *, embedding_resolver_active: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        embedding_resolver_active: bool = False,
+        raw_flags: dict[int, str | None] | None = None,
+    ) -> None:
         self._embedding_resolver_active = embedding_resolver_active
+        self._raw_flags = {201826: "S"} if raw_flags is None else raw_flags
         self.calls: list[tuple[str, object]] = []
 
     def canonicalize_domain(self, domain: str | None) -> str | None:
@@ -48,8 +54,13 @@ class StubOmopGraphAdapter:
                 "domain_id": "Condition",
                 "concept_class_id": "Clinical Finding",
                 "standard_concept": True,
+                "is_active": True,
             }
         }
+
+    def raw_standard_flags(self, concept_ids):
+        self.calls.append(("raw_standard_flags", tuple(concept_ids)))
+        return {cid: self._raw_flags[cid] for cid in concept_ids if cid in self._raw_flags}
 
 
 class StubGraphAdapter:
@@ -116,6 +127,9 @@ def test_grounding_service_builds_plan_with_explicit_parent_ids() -> None:
         "used_embedding": False,
         "effective_parent_ids": [4002649],
         "parent_ids_source": "explicit",
+        "standard_only": False,
+        "active_only": False,
+        "embedding_tier_detail": None,
     }
 
 

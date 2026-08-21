@@ -17,13 +17,13 @@ from .prompts import SYSTEM_PROMPTS, build_user_prompt
 from .service import TextService
 
 __all__ = [
+    "SYSTEM_PROMPTS",
     "DecomposeResult",
     "DecomposeTerm",
     "DisambiguateResult",
     "Interpretation",
     "MappingCleanupResult",
     "NormalizeResult",
-    "SYSTEM_PROMPTS",
     "TextService",
     "build_user_prompt",
 ]

@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services import MappingService
 
 
-def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingService) -> None:
+def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: MappingService) -> None:
     @server.tool("concept_search_normalized")
     def concept_search_normalized(
         query: str,
@@ -41,11 +41,9 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_candidate_bundle")
-    def concept_candidate_bundle(
+    async def concept_candidate_bundle(
         query: str,
         domain: str | None = None,
         vocabulary_id: str | None = None,
@@ -74,10 +72,8 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         the specified concept_ids; the embedding channel does not apply this filter.
         active_only filters out retired (invalid) concepts.
         """
-        channel_limit = max(1, min(per_channel_limit, 20))
-        safe_union_limit = max(1, min(overall_limit, 100))
         try:
-            return mapping_service.concept_candidate_bundle(
+            return await mapping_service.async_concept_candidate_bundle(
                 query,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
@@ -91,19 +87,17 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
                 include_hierarchy_context=include_hierarchy_context,
                 include_relationship_summary=include_relationship_summary,
                 parent_ids=parent_ids,
-                per_channel_limit=channel_limit,
-                overall_limit=safe_union_limit,
+                per_channel_limit=per_channel_limit,
+                overall_limit=overall_limit,
                 model_name=model_name,
             )
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_nearest_standard_ancestor")
-    def concept_nearest_standard_ancestor(
+    async def concept_nearest_standard_ancestor(
         query: str | None = None,
         concept_id: int | None = None,
         domain: str | None = None,
@@ -122,7 +116,7 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
         safe_depth = max(1, min(max_depth, 10))
         safe_limit = max(1, min(candidate_limit, 20))
         try:
-            return mapping_service.concept_nearest_standard_ancestor(
+            return await mapping_service.async_concept_nearest_standard_ancestor(
                 query=query,
                 concept_id=concept_id,
                 domain=domain,
@@ -135,8 +129,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_mapping_context")
     def concept_mapping_context(
@@ -178,8 +170,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_map_to_value")
     def concept_map_to_value(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
@@ -190,8 +180,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("concept_resolve_mapping_expression")
     def concept_resolve_mapping_expression(
@@ -218,8 +206,6 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}
 
     @server.tool("mapping_evaluate_candidates")
     def mapping_evaluate_candidates(
@@ -247,5 +233,3 @@ def register_mapping_tools(server: GroundcrewServer, mapping_service: MappingSer
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
-        except Exception as exc:
-            return {"error": True, "code": "QUERY_ERROR", "message": repr(exc)}

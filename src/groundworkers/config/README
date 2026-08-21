@@ -1,0 +1,6 @@
+These files are copies of omop-graph's `config/` predicate CSVs.
+
+omop-graph keeps its copies at the repository root, outside `src/omop_graph/`, so hatchling does not include them in its wheel. Packaging them here lets `omop-graph relationship-classification` run from an installed Groundworkers environment.
+
+The setup console uses these files as the default source for **Prepare graph**;
+callers can still provide another directory when needed.

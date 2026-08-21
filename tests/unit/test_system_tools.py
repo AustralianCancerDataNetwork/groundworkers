@@ -1,15 +1,7 @@
-from pathlib import Path
-import sys
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
-from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundcrewServer
+from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.system_tools import register_system_tools
-
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -34,17 +26,29 @@ class StubGraphAdapter:
 
 class StubEmbAdapter:
     def __init__(self, *, available: bool = True, backend_type: str = "sqlitevec",
-                 model_count: int = 1, has_client: bool = True,
-                 raise_on_status: bool = False, detail: str | None = None):
+                 model_count: int = 1, has_model_backend: bool = True,
+                 raise_on_status: bool = False, detail: str | None = None,
+                 live_available: bool = True):
         self._available = available
         self._backend_type = backend_type
         self._model_count = model_count
-        self._has_client = has_client
+        self._has_model_backend = has_model_backend
         self._raise_on_status = raise_on_status
         self._detail = detail
+        self._live_available = live_available
 
-    def has_client(self) -> bool:
-        return self._has_client
+    def has_model_backend(self) -> bool:
+        return self._has_model_backend
+
+    def probe_live_query(self) -> tuple[bool, str | None]:
+        return (
+            (True, None)
+            if self._live_available
+            else (False, "embedding smoke probe failed")
+        )
+
+    async def async_probe_live_query(self) -> tuple[bool, str | None]:
+        return self.probe_live_query()
 
     def index_status(self) -> dict:
         if self._raise_on_status:
@@ -82,10 +86,40 @@ class StubLLMAdapter:
             result["detail"] = self._detail
         return result
 
+    async def async_status(self) -> dict:
+        return self.status()
 
-def _server(graph=None, emb=None, llm=None) -> GroundcrewServer:
-    server = GroundcrewServer("test-server")
-    register_system_tools(server, graph_adapter=graph, emb_adapter=emb, llm_adapter=llm)
+
+class StubVocabService:
+    def __init__(self, *, live_available: bool = True) -> None:
+        self._live_available = live_available
+        self.calls = 0
+
+    def probe_fulltext(self) -> tuple[bool, str | None]:
+        self.calls += 1
+        return (
+            (True, None)
+            if self._live_available
+            else (False, "full-text smoke probe failed")
+        )
+
+
+def _server(
+    graph=None,
+    emb=None,
+    llm=None,
+    embedding_configuration_detail: str | None = None,
+    vocab=None,
+) -> GroundworkersMCPServer:
+    server = GroundworkersMCPServer("test-server")
+    register_system_tools(
+        server,
+        graph_adapter=graph,
+        emb_adapter=emb,
+        llm_adapter=llm,
+        embedding_configuration_detail=embedding_configuration_detail,
+        vocab_service=vocab,
+    )
     return server
 
 
@@ -172,18 +206,59 @@ def test_system_status_embedding_resolver_active_true_when_wired():
 
 def test_system_status_omop_emb_component_shape():
     server = _server(emb=StubEmbAdapter(available=True, backend_type="sqlitevec",
-                                        model_count=2, has_client=True))
+                                        model_count=2, has_model_backend=True))
     result = server.call("system_status")
     comp = result["components"]["omop_emb"]
     assert comp["available"] is True
     assert comp["backend_type"] == "sqlitevec"
     assert comp["model_count"] == 2
-    assert comp["client_configured"] is True
+    assert comp["model_backend_configured"] is True
     assert comp["detail"] is None
 
 
+def test_system_status_reports_live_embedding_failure_separately_from_store():
+    server = _server(emb=StubEmbAdapter(live_available=False))
+
+    result = server.call("system_status")
+
+    comp = result["components"]["omop_emb"]
+    assert result["overall"] == "unavailable"
+    assert comp["available"] is False
+    assert comp["store_available"] is True
+    assert comp["live_query_available"] is False
+    assert "smoke probe failed" in comp["detail"]
+
+
+def test_system_status_reports_fulltext_smoke_failure():
+    server = _server(
+        graph=StubGraphAdapter(),
+        vocab=StubVocabService(live_available=False),
+    )
+
+    result = server.call("system_status")
+
+    comp = result["components"]["omop_graph"]
+    assert result["overall"] == "unavailable"
+    assert comp["available"] is False
+    assert comp["db_connected"] is True
+    assert comp["fulltext_available"] is False
+    assert "smoke probe failed" in comp["detail"]
+
+
+def test_system_status_caches_live_probes_briefly():
+    vocab = StubVocabService()
+    server = _server(graph=StubGraphAdapter(), vocab=vocab)
+
+    server.call("system_status")
+    server.call("system_status")
+
+    assert vocab.calls == 1
+
+
 def test_system_status_omop_emb_backend_failure_reflected_in_component():
-    server = _server(emb=StubEmbAdapter(raise_on_status=True, has_client=False))
+    server = _server(
+        emb=StubEmbAdapter(raise_on_status=True, has_model_backend=False)
+    )
     result = server.call("system_status")
     comp = result["components"]["omop_emb"]
     assert comp["available"] is False
@@ -195,7 +270,7 @@ def test_system_status_omop_emb_detail_propagated_from_index_status():
     # Mirrors the real OmopEmbAdapter behaviour: index_status never raises but
     # includes a 'detail' field when the backend is unreachable.
     server = _server(emb=StubEmbAdapter(
-        available=False, model_count=0, has_client=False,
+        available=False, model_count=0, has_model_backend=False,
         detail="GroundworkersError('BACKEND_UNAVAIL', 'Embedding backend is unavailable: ...')",
     ))
     result = server.call("system_status")
@@ -203,6 +278,27 @@ def test_system_status_omop_emb_detail_propagated_from_index_status():
     assert comp["available"] is False
     assert comp["detail"] is not None
     assert "BACKEND_UNAVAIL" in comp["detail"]
+
+
+def test_system_status_reports_model_without_vector_store():
+    server = _server(
+        embedding_configuration_detail=(
+            "The embedding model is configured without a vector store."
+        )
+    )
+
+    result = server.call("system_status")
+
+    assert result["overall"] == "unavailable"
+    assert result["components"]["omop_emb"] == {
+        "available": False,
+        "backend_type": None,
+        "model_count": 0,
+        "model_backend_configured": True,
+        "store_available": False,
+        "live_query_available": None,
+        "detail": "The embedding model is configured without a vector store.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +400,7 @@ def test_vocabulary_catalogue_returns_data_when_graph_configured():
     assert "concept_classes" in result
 
 
-def test_vocabulary_catalogue_returns_query_error_on_adapter_exception():
+def test_vocabulary_catalogue_returns_internal_error_on_adapter_exception():
     class FailingGraphAdapter(StubGraphAdapter):
         def get_vocabulary_catalogue(self) -> dict:
             raise RuntimeError("db timeout")
@@ -312,4 +408,5 @@ def test_vocabulary_catalogue_returns_query_error_on_adapter_exception():
     server = _server(graph=FailingGraphAdapter())
     result = server.call("system_vocabulary_catalogue")
     assert result["error"] is True
-    assert result["code"] == "QUERY_ERROR"
+    assert result["code"] == "INTERNAL_ERROR"
+    assert "Incident ID" in result["message"]

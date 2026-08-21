@@ -16,7 +16,6 @@ Use extras to match the capabilities you plan to run:
 
 | Extra | Enables |
 |---|---|
-| `llm` | LLM-backed text and domain services |
 | `embedding-pgvector` | pgvector embedding backend support |
 | `embedding-faiss` | FAISS sidecar acceleration for embedding search |
 | `xlsx` | XLSX source-planning input support |
@@ -28,33 +27,34 @@ Use extras to match the capabilities you plan to run:
 Examples:
 
 ```bash
-pip install "groundworkers[llm,embedding-pgvector]"
+pip install "groundworkers[tui,embedding-pgvector]"
 pip install "groundworkers[all_source]"
 ```
 
 ## Shared stack prerequisite
 
-`groundworkers` runs against the shared OMOP stack config managed by
-`oa-configurator`. In a typical setup you configure:
+`groundworkers` runs against the shared OMOP stack config managed by `oa-configurator`. In a typical setup you configure:
 
 ```bash
-omop-config configure omop_alchemy
-omop-config configure omop_graph
 omop-config configure groundworkers
-# optional, only if you want embedding-backed capabilities
-omop-config configure omop_emb
 ```
 
-By default the runtime reads:
+That writes the `[tools.groundworkers]` section and the `[connections.*]` and `[databases.*]` entries it references. Embedding-backed capabilities need two further named entries — a `[models.*]` embedding model and a `[vector_stores.*]` store — which the setup console can create for you:
 
-- `~/.config/omop/config.toml`
-- the active profile declared in that file
+```bash
+groundworkers --tui
+```
 
-You can override those at startup with:
+Groundworkers reads only its own package section plus the named entries it references. It does not read `[tools.omop_graph]` or `[tools.omop_emb]`.
+
+By default the runtime reads `~/.config/omop/config.toml`.
+
+You can override that at startup with:
 
 - `OA_CONFIG_PATH`
-- `OA_ACTIVE_PROFILE`
-- `groundworkers --config-path ... --profile ...`
+- `groundworkers --config-path ...`
+
+Use separate config files for separate environments and select one with `--config-path` or `OA_CONFIG_PATH`.
 
 ## Run as an MCP service
 
@@ -73,8 +73,7 @@ groundworkers \
   --port 8000
 ```
 
-Inspect the active runtime and registered MCP surface without starting the
-service:
+Inspect the active runtime and registered MCP surface without starting the service:
 
 ```bash
 groundworkers --describe
@@ -82,8 +81,7 @@ groundworkers --describe
 
 ## Run as a REST service
 
-`groundworkers` also exposes a curated REST transport over the same service
-layer:
+`groundworkers` also exposes a curated REST transport over the same service layer:
 
 ```bash
 groundworkers \
@@ -110,8 +108,7 @@ app = build_application(config)
 mapping = app.services.mapping
 ```
 
-Build the application once at startup and reuse it. The same runtime object
-works for direct Python calls, MCP registration, and REST startup.
+Build the application once at startup and reuse it. The same runtime object works for direct Python calls, MCP registration, and REST startup.
 
 ## Development install
 

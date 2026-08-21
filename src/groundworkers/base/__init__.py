@@ -1,14 +1,24 @@
-from .errors import GroundworkersError, ERROR_CODES
-from .results import DatasetStatus, DetailResult, ListResult, SearchHit, SearchResult
-from .server import GroundcrewServer
+from .errors import ERROR_CODES, GroundworkersError
+from .results import (
+    DatasetStatus,
+    DetailResult,
+    ListResult,
+    SearchHit,
+    SearchResult,
+    enum_value,
+    required_enum_value,
+)
+from .server import GroundworkersMCPServer
 
 __all__ = [
-    "GroundworkersError",
-    "GroundcrewServer",
+    "ERROR_CODES",
     "DatasetStatus",
     "DetailResult",
-    "ERROR_CODES",
+    "GroundworkersError",
+    "GroundworkersMCPServer",
     "ListResult",
     "SearchHit",
     "SearchResult",
+    "enum_value",
+    "required_enum_value",
 ]

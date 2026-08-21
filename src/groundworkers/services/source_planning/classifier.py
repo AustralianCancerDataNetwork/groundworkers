@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import re
 
-from groundworkers.services.source_planning.canonical_headers import lookup as lookup_canonical_header
+from groundworkers.services.source_planning.canonical_headers import (
+    lookup as lookup_canonical_header,
+)
 from groundworkers.services.source_planning.models import (
+    _GROUNDABLE_ROLES,
+    UNCERTAIN_CONFIDENCE_THRESHOLD,
     AnnotatedTable,
     ColumnAnnotation,
     ColumnRole,
+    DetectionTier,
     NormalisedTable,
     SourceFormat,
-    UNCERTAIN_CONFIDENCE_THRESHOLD,
-    _GROUNDABLE_ROLES,
 )
 from groundworkers.services.source_planning.warnings import PlanningWarning
 
@@ -106,8 +109,8 @@ class ColumnRoleClassifier:
                 is_grounding_target=False,
                 non_target_reason=f"Table name {table.name!r} is a known non-target.",
                 annotation_notes=["table rejected by non-target name check"],
-                warnings=list(table.warnings)
-                + [
+                warnings=[
+                    *table.warnings,
                     PlanningWarning(
                         code="NON_TARGET_TABLE",
                         message=f"Table {table.name!r} was rejected by name.",
@@ -124,8 +127,8 @@ class ColumnRoleClassifier:
                 is_grounding_target=False,
                 non_target_reason="Workbook cover sheet rejected by positional heuristic.",
                 annotation_notes=["table rejected by xlsx cover-sheet heuristic"],
-                warnings=list(table.warnings)
-                + [
+                warnings=[
+                    *table.warnings,
                     PlanningWarning(
                         code="XLSX_COVER_SHEET_REJECTED",
                         message="Workbook cover sheet had too few groundable columns.",
@@ -393,7 +396,7 @@ def _overall_confidence(column_annotations: dict[str, ColumnAnnotation]) -> floa
     )
 
 
-def _max_tier(left: str, right: str) -> str:
+def _max_tier(left: DetectionTier, right: DetectionTier) -> DetectionTier:
     order = {"A": 0, "B": 1, "C": 2, "D": 3, "LLM": 4}
     return left if order[left] >= order[right] else right
 

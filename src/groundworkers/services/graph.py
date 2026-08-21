@@ -10,11 +10,14 @@ from typing import Any
 from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Relationship
 from omop_graph.extensions.omop_alchemy import PredicateKind
 from omop_graph.reasoning.grounding import GroundingConstraints
-from omop_graph.reasoning.resolvers.resolvers import FullTextResolver, FullTextSynonymResolver
+from omop_graph.reasoning.resolvers.resolvers import (
+    FullTextResolver,
+    FullTextSynonymResolver,
+)
 from sqlalchemy import Text, cast, column, select, table
 
 from groundworkers.adapters.cdm import CDMAdapter
-from groundworkers.adapters.omop_graph import OmopGraphAdapter
+from groundworkers.adapters.omop_graph import EmbeddingTierUnavailable, OmopGraphAdapter
 from groundworkers.base.errors import GroundworkersError
 
 __all__ = ["GraphService", "GroundingPlan"]
@@ -197,19 +200,9 @@ class GraphService:
         }
 
     # ------------------------------------------------------------------
-    # Classified-edge traversal (association / extended inheritance)
-    #
-    # NOTE (temporary shim — should move into core omop-graph):
-    # These two traversals query the CDM directly (concept_relationship joined to
-    # the relationship_mapping classification sidecar) rather than going through
-    # OmopGraphAdapter, because the omop-graph KG edge view only *enumerates*
-    # IDENTITY / ATTRIBUTE / COMPOSITION edges. HIERARCHY is reachable only via the
-    # concept_ancestor closure (get_ancestors/get_descendants) and ASSOCIATION only
-    # via path-finding (find_path) — neither kind can be enumerated for a single
-    # concept through the adapter today. Once omop-graph grows a kind-filterable
-    # edge accessor, these should be re-backed by OmopGraphAdapter and this direct
-    # CDM dependency (and the _RELATIONSHIP_MAPPING table above) removed, so the
-    # service returns to composing adapter primitives only.
+    # Classified-edge traversal (association / extended inheritance). These
+    # queries use the CDM relationship table and its classification sidecar
+    # because the graph adapter does not expose these edge kinds directly.
     # ------------------------------------------------------------------
 
     def get_associations(
@@ -266,7 +259,7 @@ class GraphService:
     ) -> dict[str, Any]:
         if self._cdm is None:
             raise GroundworkersError(
-                "UNAVAILABLE",
+                "BACKEND_UNAVAIL",
                 "This tool needs a direct CDM connection, which is not configured.",
             )
         if self._adapter.get_concept(concept_id) is None:
@@ -504,13 +497,24 @@ class GraphService:
         )
 
         results: list[dict[str, Any]] = []
+        embedding_tier_detail: str | None = None
         for tier in request.tiers:
             tier_started = time.perf_counter()
             tier_name = "+".join(type(r).__name__ for r in tier)
             is_fts_tier = any(isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier)
-            hits = self._adapter.run_ground_tier(
-                tier, request.query, constraints=request.constraints, limit=request.limit
-            )
+            try:
+                hits = self._adapter.run_ground_tier(
+                    tier, request.query, constraints=request.constraints, limit=request.limit
+                )
+            except EmbeddingTierUnavailable as exc:
+                # Skip this tier only. The remaining lexical tiers are still useful,
+                # and the reason is reported rather than silently dropped.
+                embedding_tier_detail = exc.message
+                logger.warning(
+                    "concept_ground tier skipped query=%r tier=%s detail=%s",
+                    _short_text(request.query), tier_name, exc.message,
+                )
+                continue
             # Drop FTS hits where fewer than min_fulltext_overlap of the query tokens
             # appear in the matched concept name, then fall through to a higher-quality tier.
             if hits and is_fts_tier and request.min_fulltext_overlap > 0.0:
@@ -531,19 +535,120 @@ class GraphService:
 
         concept_ids = tuple(dict.fromkeys(h["concept_id"] for h in results))
         views = self._adapter.concept_views(concept_ids)
+        # omop-graph anchors its identity walks on the combined standard-or-
+        # classification flag, so a grounded result can be a classification ('C')
+        # concept. Groundworkers' public contract keeps those distinct, so read the
+        # raw flag for exactly the concepts being returned.
+        raw_flags = self._adapter.raw_standard_flags(concept_ids)
 
         matched_tier = results[0]["match_kind"] if results else None
         used_embedding = any(h["embedding_score"] is not None for h in results)
         payload = {
-            "results": [self._merge_ground_view(h, views.get(h["concept_id"])) for h in results],
+            "results": [
+                self._merge_ground_view(
+                    h,
+                    views.get(h["concept_id"]),
+                    raw_flags.get(h["concept_id"]),
+                )
+                for h in results
+            ],
             "matched_tier": matched_tier,
             "used_embedding": used_embedding,
+            "embedding_tier_detail": embedding_tier_detail,
         }
         logger.info(
             "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r used_embedding=%s result_count=%d",
             _short_text(request.query),
             (time.perf_counter() - overall_started) * 1000.0,
             matched_tier, used_embedding, len(payload["results"]),
+        )
+        return payload
+
+    async def async_ground_with_plan(self, request: GroundingPlan) -> dict[str, Any]:
+        """Async grounding path that keeps query encoding on the MCP event loop."""
+
+        overall_started = time.perf_counter()
+        logger.info(
+            "concept_ground plan query=%r parent_ids=%s tiers=%s",
+            _short_text(request.query),
+            list(request.constraints.parent_ids)
+            if request.constraints.parent_ids is not None
+            else None,
+            ["+".join(type(r).__name__ for r in tier) for tier in request.tiers],
+        )
+
+        results: list[dict[str, Any]] = []
+        embedding_tier_detail: str | None = None
+        for tier in request.tiers:
+            tier_started = time.perf_counter()
+            tier_name = "+".join(type(r).__name__ for r in tier)
+            is_fts_tier = any(
+                isinstance(r, (FullTextResolver, FullTextSynonymResolver))
+                for r in tier
+            )
+            try:
+                hits = await self._adapter.async_run_ground_tier(
+                    tier,
+                    request.query,
+                    constraints=request.constraints,
+                    limit=request.limit,
+                )
+            except EmbeddingTierUnavailable as exc:
+                embedding_tier_detail = exc.message
+                logger.warning(
+                    "concept_ground tier skipped query=%r tier=%s detail=%s",
+                    _short_text(request.query),
+                    tier_name,
+                    exc.message,
+                )
+                continue
+            if hits and is_fts_tier and request.min_fulltext_overlap > 0.0:
+                query_tokens = set(request.query.lower().split())
+                results = [
+                    hit
+                    for hit in hits
+                    if self._fts_overlap(query_tokens, hit["matched_label"] or "")
+                    >= request.min_fulltext_overlap
+                ]
+            else:
+                results = list(hits)
+            logger.info(
+                "concept_ground tier done query=%r tier=%s duration_ms=%.1f raw=%d kept=%d",
+                _short_text(request.query),
+                tier_name,
+                (time.perf_counter() - tier_started) * 1000.0,
+                len(hits),
+                len(results),
+            )
+            if results:
+                break
+
+        concept_ids = tuple(dict.fromkeys(hit["concept_id"] for hit in results))
+        views = self._adapter.concept_views(concept_ids)
+        raw_flags = self._adapter.raw_standard_flags(concept_ids)
+        matched_tier = results[0]["match_kind"] if results else None
+        used_embedding = any(hit["embedding_score"] is not None for hit in results)
+        payload = {
+            "results": [
+                self._merge_ground_view(
+                    hit,
+                    views.get(hit["concept_id"]),
+                    raw_flags.get(hit["concept_id"]),
+                )
+                for hit in results
+            ],
+            "matched_tier": matched_tier,
+            "used_embedding": used_embedding,
+            "embedding_tier_detail": embedding_tier_detail,
+        }
+        logger.info(
+            "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r "
+            "used_embedding=%s result_count=%d",
+            _short_text(request.query),
+            (time.perf_counter() - overall_started) * 1000.0,
+            matched_tier,
+            used_embedding,
+            len(payload["results"]),
         )
         return payload
 
@@ -564,14 +669,28 @@ class GraphService:
         return len(query_tokens & label_tokens) / len(query_tokens)
 
     @staticmethod
-    def _merge_ground_view(hit: dict[str, Any], view: dict[str, Any] | None) -> dict[str, Any]:
+    def _merge_ground_view(
+        hit: dict[str, Any],
+        view: dict[str, Any] | None,
+        raw_standard_flag: str | None,
+    ) -> dict[str, Any]:
+        """Shape one grounded hit, reporting strict standard/classification flags.
+
+        ``standard_concept`` is true only for raw OMOP flag ``'S'`` and
+        ``classification_concept`` only for ``'C'``, per Groundworkers' public
+        concept contract. Both are false when the flag is unknown or unset — the
+        previous unconditional ``standard_concept: True`` was safe only while
+        omop-graph 1.x anchored standardization on ``'S'`` alone.
+        """
         return {
             "concept_id": hit["concept_id"],
             "concept_name": hit["concept_name"],
             "vocabulary_id": view["vocabulary_id"] if view else None,
             "domain_id": view["domain_id"] if view else None,
             "concept_class_id": view["concept_class_id"] if view else None,
-            "standard_concept": True,
+            "standard_concept": raw_standard_flag == "S",
+            "classification_concept": raw_standard_flag == "C",
+            "is_active": view["is_active"] if view else None,
             "match_kind": hit["match_kind"],
             "matched_label": hit["matched_label"],
             "total_score": hit["total_score"],
