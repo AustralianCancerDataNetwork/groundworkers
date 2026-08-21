@@ -1,12 +1,10 @@
 # Embedding Tools
 
-Four tools expose the embedding index.  All require `omop_emb` to be enabled in the
-config.
+Four tools expose the embedding index. All require `omop_emb` to be enabled in the config.
 
 ## `embedding_index_status`
 
-Returns the status of the embedding backend and all registered models.  Takes no
-arguments.
+Returns the status of the embedding backend and all registered models. Takes no arguments.
 
 **Response**:
 ```json
@@ -25,21 +23,17 @@ arguments.
 }
 ```
 
-When the backend is unavailable or no models are registered, `"available"` is `false`
-and `"models"` is an empty array.  This tool never returns an error dict — it degrades
-gracefully.
+When the backend is unavailable or no models are registered, `"available"` is `false` and `"models"` is an empty array. This tool never returns an error dict — it degrades gracefully.
 
 ## `embedding_neighbours`
 
-Returns the nearest embedding-space neighbours for one OMOP concept by looking up its
-existing vector in the index.
+Returns the nearest embedding-space neighbours for one OMOP concept by looking up its existing vector in the index.
 
 ```json
 {"concept_id": 4119419, "limit": 10, "model_name": "qwen3-embedding:0.6b"}
 ```
 
-`model_name` is optional; if omitted the default model is used.  `limit` is clamped
-to `[1, 50]`.
+`model_name` is optional; if omitted the default model is used. `limit` is clamped to `[1, 50]`.
 
 **Response**:
 ```json
@@ -98,5 +92,4 @@ Encodes a text string into one query embedding vector.
 }
 ```
 
-Like `embedding_search`, this requires `omop_emb.api_base` and `omop_emb.api_key` to
-be configured.
+Like `embedding_search`, this requires `omop_emb.api_base` and `omop_emb.api_key` to be configured.

@@ -40,7 +40,7 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
         standard_only: bool = False,
         active_only: bool = False,
     ) -> dict[str, Any]:
-        """Ground free text to matching OMOP standard concepts ranked by relevance.
+        """Ground free text to ranked OMOP concept candidates.
 
         Runs a tiered resolver pipeline (Exact → FullText → Embedding → Partial)
         and short-circuits on the first tier that returns results. Each tier

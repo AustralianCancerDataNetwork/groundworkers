@@ -1,10 +1,8 @@
 # Domain Tools
 
-`domain_classify` is the MCP surface for batch OMOP domain classification of
-structured field labels. It is registered only when `llm` is configured.
+`domain_classify` is the MCP surface for batch OMOP domain classification of structured field labels. It is registered only when `llm` is configured.
 
-This tool is meant for structured sources such as data dictionaries, schema-like
-field inventories, and form definitions. It is not a concept grounding tool.
+This tool is meant for structured sources such as data dictionaries, schema-like field inventories, and form definitions. It is not a concept grounding tool.
 
 It is a thin wrapper over `DomainService`.
 
@@ -12,8 +10,7 @@ It is a thin wrapper over `DomainService`.
 
 ## `domain_classify`
 
-Classifies field labels into OMOP domains using the label text and any example
-response values supplied by the caller.
+Classifies field labels into OMOP domains using the label text and any example response values supplied by the caller.
 
 ```json
 {
@@ -26,11 +23,9 @@ response values supplied by the caller.
 }
 ```
 
-`label_values` is required. It maps each field label to a list of example
-response-value strings. Use an empty list when no values are known.
+`label_values` is required. It maps each field label to a list of example response-value strings. Use an empty list when no values are known.
 
-`model_name` is optional and overrides the default model from the LLM config for
-this call.
+`model_name` is optional and overrides the default model from the LLM config for this call.
 
 **Response:**
 
@@ -44,9 +39,7 @@ this call.
 }
 ```
 
-Only confident classifications are returned. Labels that the model cannot place
-confidently into a single OMOP domain are omitted so the caller can continue
-with fallback logic.
+Only confident classifications are returned. Labels that the model cannot place confidently into a single OMOP domain are omitted so the caller can continue with fallback logic.
 
 Valid returned domains are:
 
@@ -57,6 +50,8 @@ Valid returned domains are:
 - `Drug`
 - `Device`
 
+The classifier can also return `Metadata` and `Identifier`. These are Groundcrew-facing sentinel values, not OMOP CDM domains: they identify administrative/data-collection fields and record-linkage fields that downstream ingestion should skip rather than ground.
+
 **When to use it:**
 
 Use `domain_classify` when:
@@ -65,8 +60,7 @@ Use `domain_classify` when:
 - you want domain hints before concept grounding or source planning
 - your caller already knows the source is field-oriented rather than free text
 
-Prefer text tools when you need to normalize or decompose clinical phrases.
-Prefer mapping or search tools when you already have a term to ground.
+Prefer text tools when you need to normalize or decompose clinical phrases. Prefer mapping or search tools when you already have a term to ground.
 
 **Error cases:**
 
@@ -84,6 +78,4 @@ flowchart TD
     H --> G[downstream mapping or grounding workflow]
 ```
 
-The tool is deliberately narrow: it helps a caller decide what OMOP domain to
-search within, but it does not attempt to return OMOP concepts or candidate
-mappings itself.
+The tool is deliberately narrow: it helps a caller decide what OMOP domain to search within, but it does not attempt to return OMOP concepts or candidate mappings itself.

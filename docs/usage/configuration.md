@@ -122,19 +122,9 @@ Settings are flat, grouped by name prefix. For example, `omop-config configure g
 
 A CDM-only stack is valid: omit `embedding_model_name` and `vector_store_name` and every lexical feature still works. See [Runtime combinations](#what-becomes-available-at-runtime).
 
-When both embedding references are configured, the setup console also writes
-`[tools.omop_emb]` with the same `cdm_db`, model, and vector-store names.
-`oa-configurator` gives each package a typed tool section; the database, model,
-provider, and store definitions remain single shared entries. This binding is
-required because managed population runs execute the `omop-emb` CLI. The setup
-change is planned and saved atomically with `[tools.groundworkers]`.
+When both embedding references are configured, the setup console also writes `[tools.omop_emb]` with the same `cdm_db`, model, and vector-store names. `oa-configurator` gives each package a typed tool section; the database, model, provider, and store definitions remain single shared entries. This binding is required because managed population runs execute the `omop-emb` CLI. The setup change is planned and saved atomically with `[tools.groundworkers]`.
 
-CDM setup similarly writes `[tools.omop_alchemy]` and `[tools.omop_graph]`
-with the same `cdm_db` reference. Groundworkers launches those packages' schema,
-full-text, index, and relationship-classification maintenance CLIs, which resolve
-their own typed package sections. Groundworkers' runtime graph adapter continues
-to receive its engine and optional embedding dependencies directly; it does not
-read omop-graph's traversal or embedding configuration.
+CDM setup similarly writes `[tools.omop_alchemy]` and `[tools.omop_graph]` with the same `cdm_db` reference. Groundworkers launches those packages' schema, full-text, index, and relationship-classification maintenance CLIs, which resolve their own typed package sections. Groundworkers' runtime graph adapter continues to receive its engine and optional embedding dependencies directly; it does not read omop-graph's traversal or embedding configuration.
 
 ### Reference fields
 
@@ -145,12 +135,7 @@ read omop-graph's traversal or embedding configuration.
 | `llm_model_name` | a `[models.*]` entry | no |
 | `vector_store_name` | a `[vector_stores.*]` entry | no |
 
-`embedding_model_name` is the model used for concept-document embeddings and
-compatible query encoding; `llm_model_name` is the chat model. Both name
-`[models.*]` entries. They may share a provider or model entry when that entry
-declares the required capabilities, may point at different providers, or one may
-be unset. There is no separate on/off flag: chat is available exactly when
-`llm_model_name` resolves.
+`embedding_model_name` is the model used for concept-document embeddings and compatible query encoding; `llm_model_name` is the chat model. Both name `[models.*]` entries. They may share a provider or model entry when that entry declares the required capabilities, may point at different providers, or one may be unset. There is no separate on/off flag: chat is available exactly when `llm_model_name` resolves.
 
 ## groundworkers-owned fields
 
@@ -176,8 +161,7 @@ Default MCP startup settings used when you do not override them on the CLI.
 
 ### REST transport (`rest_*`)
 
-REST is selected explicitly with `--transport rest`; it is not started alongside
-MCP. These settings provide defaults when that transport is selected.
+REST is selected explicitly with `--transport rest`; it is not started alongside MCP. These settings provide defaults when that transport is selected.
 
 | Field | Type | Default |
 |---|---|---|
@@ -313,7 +297,7 @@ You additionally get:
 - `TextService`
 - `DomainService`
 - text and domain MCP tools
-- LLM-assisted source planning when `source_planning.llm_assisted_enabled = true`
+- LLM-assisted source planning when `source_planning_llm_assisted_enabled = true`
 
 ### With `semantic_projection_enabled = true`
 
@@ -341,7 +325,7 @@ Equivalent environment override:
 
 - `OA_CONFIG_PATH`
 
-There is no profile selection. Profiles, resource aliases, and `[resources.*]` bundles were removed with the 1.0 stack; keep separate config files and select them with `--config-path` or `OA_CONFIG_PATH` instead.
+There is no Groundworkers profile selector. Keep separate stack files when you need separate environments and select one with `--config-path` or `OA_CONFIG_PATH`.
 
 ## Direct Python example
 

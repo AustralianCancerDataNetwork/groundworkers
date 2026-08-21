@@ -33,24 +33,19 @@ pip install "groundworkers[all_source]"
 
 ## Shared stack prerequisite
 
-`groundworkers` runs against the shared OMOP stack config managed by
-`oa-configurator`. In a typical setup you configure:
+`groundworkers` runs against the shared OMOP stack config managed by `oa-configurator`. In a typical setup you configure:
 
 ```bash
 omop-config configure groundworkers
 ```
 
-That writes the `[tools.groundworkers]` section and the `[connections.*]` and
-`[databases.*]` entries it references. Embedding-backed capabilities need two
-further named entries — a `[models.*]` embedding model and a `[vector_stores.*]`
-store — which the setup console can create for you:
+That writes the `[tools.groundworkers]` section and the `[connections.*]` and `[databases.*]` entries it references. Embedding-backed capabilities need two further named entries — a `[models.*]` embedding model and a `[vector_stores.*]` store — which the setup console can create for you:
 
 ```bash
 groundworkers --tui
 ```
 
-Groundworkers reads only its own package section plus the named entries it
-references. It does not read `[tools.omop_graph]` or `[tools.omop_emb]`.
+Groundworkers reads only its own package section plus the named entries it references. It does not read `[tools.omop_graph]` or `[tools.omop_emb]`.
 
 By default the runtime reads `~/.config/omop/config.toml`.
 
@@ -59,7 +54,7 @@ You can override that at startup with:
 - `OA_CONFIG_PATH`
 - `groundworkers --config-path ...`
 
-There is no profile selection; use separate config files instead.
+Use separate config files for separate environments and select one with `--config-path` or `OA_CONFIG_PATH`.
 
 ## Run as an MCP service
 
@@ -78,8 +73,7 @@ groundworkers \
   --port 8000
 ```
 
-Inspect the active runtime and registered MCP surface without starting the
-service:
+Inspect the active runtime and registered MCP surface without starting the service:
 
 ```bash
 groundworkers --describe
@@ -87,8 +81,7 @@ groundworkers --describe
 
 ## Run as a REST service
 
-`groundworkers` also exposes a curated REST transport over the same service
-layer:
+`groundworkers` also exposes a curated REST transport over the same service layer:
 
 ```bash
 groundworkers \
@@ -115,8 +108,7 @@ app = build_application(config)
 mapping = app.services.mapping
 ```
 
-Build the application once at startup and reuse it. The same runtime object
-works for direct Python calls, MCP registration, and REST startup.
+Build the application once at startup and reuse it. The same runtime object works for direct Python calls, MCP registration, and REST startup.
 
 ## Development install
 

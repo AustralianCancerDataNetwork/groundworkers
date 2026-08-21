@@ -1,7 +1,6 @@
 # OmopEmb Adapter
 
-`OmopEmbAdapter` wraps [omop-emb](https://australiancancerdatanetwork.github.io/omop-emb/)
-for embedding-backed concept retrieval.
+`OmopEmbAdapter` wraps [omop-emb](https://australiancancerdatanetwork.github.io/omop-emb/) for embedding-backed concept retrieval.
 
 ## What it owns
 
@@ -11,22 +10,18 @@ The adapter is responsible for:
 - optional on-the-fly query encoding through an embedding client
 - exposing backend availability and registered model metadata
 
-The adapter does **not** resolve stack config itself. `build_application(...)`
-constructs it from the already-resolved `omop-emb` package config and any
-required engines.
+The adapter does **not** resolve stack config itself. `build_application(...)` constructs it from the already-resolved `omop-emb` package config and any required engines.
 
 ## Backends
 
-`groundworkers` supports the same primary storage backends it wires from
-`omop-emb`:
+`groundworkers` supports the same primary storage backends it wires from `omop-emb`:
 
 | Backend | omop-emb config |
 |---|---|
 | `sqlitevec` | `backend = "sqlitevec"` plus `sqlite_path` |
 | `pgvector` | a `[vector_stores.*]` entry with `backend_type = "pgvector"` and a `database` reference |
 
-FAISS remains a sidecar acceleration layer rather than a standalone primary
-backend.
+FAISS remains a sidecar acceleration layer rather than a standalone primary backend.
 
 ## Operation modes
 
@@ -46,9 +41,7 @@ Requires an embedding client configured through `omop-emb` package settings.
 
 ## Availability model
 
-The underlying backend is built lazily on first use. If the backend cannot be
-opened, the adapter reports unavailability rather than failing application
-construction for callers that do not need embedding-backed operations.
+The underlying backend is built lazily on first use. If the backend cannot be opened, the adapter reports unavailability rather than failing application construction for callers that do not need embedding-backed operations.
 
 Representative `index_status()` shape:
 

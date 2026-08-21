@@ -1,18 +1,12 @@
 # DomainService
 
-`DomainService` provides LLM-backed batch OMOP domain classification for
-structured field labels. It is intended for callers that already have a set of
-data-dictionary-style field labels and, optionally, example response values for
-each field.
+`DomainService` provides LLM-backed batch OMOP domain classification for structured field labels. It is intended for callers that already have a set of data-dictionary-style field labels and, optionally, example response values for each field.
 
-The service returns only confident classifications. Uncertain labels are omitted
-so the caller can fall through to its next resolution tier rather than being
-forced to accept a weak guess.
+The service returns only confident classifications. Uncertain labels are omitted so the caller can fall through to its next resolution tier rather than being forced to accept a weak guess.
 
 ## Construction
 
-`DomainService` requires a configured `LLMAdapter`. It is constructed
-automatically by `build_application()` when `llm` is configured.
+`DomainService` requires a configured `LLMAdapter`. It is constructed automatically by `build_application()` when `llm` is configured.
 
 ```python
 from groundworkers.app import build_application
@@ -37,9 +31,7 @@ domain.classify_attributes(
 ) -> dict[str, str]
 ```
 
-Accepts a mapping of field label text to a list of example response values.
-Example values are optional but strongly improve classification quality when the
-label is broad or ambiguous.
+Accepts a mapping of field label text to a list of example response values. Example values are optional but strongly improve classification quality when the label is broad or ambiguous.
 
 Typical input:
 
@@ -61,7 +53,7 @@ Typical output:
 }
 ```
 
-Only recognized OMOP domains are returned:
+Recognized clinical domains are:
 
 - `Measurement`
 - `Condition`
@@ -70,11 +62,11 @@ Only recognized OMOP domains are returned:
 - `Drug`
 - `Device`
 
-Labels mapped by the model to `null` or to an unrecognized value are excluded
-from the result.
+The classifier may also return `Metadata` or `Identifier`. These are Groundcrew-facing sentinel values rather than OMOP domains; downstream ingestion uses them to skip administrative or record-linkage fields.
 
-`model_name` overrides the `default_model_name` from the LLM config for this
-call.
+Labels mapped by the model to `null` or to an unrecognized value are excluded from the result.
+
+`model_name` overrides the `default_model_name` from the LLM config for this call.
 
 ## When to use it
 
@@ -95,8 +87,7 @@ Those belong to `MappingService`, `VocabService`, or `TextService`.
 
 ## Relationship to downstream mapping
 
-`DomainService` does not ground concepts. It only narrows the OMOP domain search
-space for later steps.
+`DomainService` does not ground concepts. It only narrows the OMOP domain search space for later steps.
 
 Typical flow:
 
@@ -110,8 +101,6 @@ flowchart TD
 ## Error handling
 
 - Returns `{}` immediately for empty input.
-- Raises `GroundworkersError(BACKEND_UNAVAIL)` when the LLM API is unreachable or
-  authentication fails.
-- Raises `GroundworkersError(QUERY_ERROR)` when the model response is not valid
-  JSON.
+- Raises `GroundworkersError(BACKEND_UNAVAIL)` when the LLM API is unreachable or authentication fails.
+- Raises `GroundworkersError(QUERY_ERROR)` when the model response is not valid JSON.
 - Never returns MCP-style error dicts — that is the tool layer's responsibility.

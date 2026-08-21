@@ -1,13 +1,10 @@
 # MappingService
 
-`MappingService` is the main direct-Python API for mapping and adjudication
-workflows. It coordinates lexical retrieval, graph context, and optional
-embedding retrieval into review-friendly packets.
+`MappingService` is the main direct-Python API for mapping and adjudication workflows. It coordinates lexical retrieval, graph context, and optional embedding retrieval into review-friendly packets.
 
 ## Construction
 
-`MappingService` is wired by `build_application(...)` when the shared CDM
-runtime is available.
+`MappingService` is wired by `build_application(...)` when the shared CDM runtime is available.
 
 ```python
 from groundworkers.app import build_application
@@ -19,12 +16,9 @@ app = build_application(config)
 mapping = app.services.mapping
 ```
 
-`mapping` is `None` only when the runtime could not build the shared vocabulary
-layer.
+`mapping` is `None` only when the runtime could not build the shared vocabulary layer.
 
-Graph-backed enrichment is optional. When `GraphService` is unavailable,
-graph-dependent methods either degrade gracefully with warnings or raise
-`BACKEND_UNAVAIL` for operations that require the omop-graph backend.
+Graph-backed enrichment is optional. When `GraphService` is unavailable, graph-dependent methods either degrade gracefully with warnings or raise `BACKEND_UNAVAIL` for operations that require the omop-graph backend.
 
 ## What it is for
 
@@ -35,8 +29,7 @@ Use `MappingService` when you want:
 - standard-value navigation helpers
 - evaluation utilities for predicted mappings
 
-If you only need one lexical retrieval primitive, use `VocabService`. If you
-want the review-oriented orchestration layer, use `MappingService`.
+If you only need one lexical retrieval primitive, use `VocabService`. If you want the review-oriented orchestration layer, use `MappingService`.
 
 ## Core methods
 
@@ -68,13 +61,11 @@ This is useful after a candidate has already been selected.
 
 ### `concept_search_normalized(...)`
 
-Exposes the normalized lexical search layer directly when you want a lighter
-operation than a full candidate bundle.
+Exposes the normalized lexical search layer directly when you want a lighter operation than a full candidate bundle.
 
 ### `concept_nearest_standard_ancestor(...)`
 
-Finds a standard backoff target when the seed concept or grounded phrase lands
-on a non-standard concept.
+Finds a standard backoff target when the seed concept or grounded phrase lands on a non-standard concept.
 
 ### `concept_map_to_value(...)`
 
@@ -82,13 +73,11 @@ Follows `"Maps to value"` links for value-domain workflows.
 
 ### `concept_resolve_mapping_expression(...)`
 
-Resolves a short mapping expression through the available search channels in a
-best-effort order.
+Resolves a short mapping expression through the available search channels in a best-effort order.
 
 ### `mapping_evaluate_candidates(...)`
 
-Compares predicted candidates against reference concept IDs and summarizes their
-relationship to the reference set.
+Compares predicted candidates against reference concept IDs and summarizes their relationship to the reference set.
 
 ## Typical usage pattern
 
@@ -114,6 +103,4 @@ if top is not None:
 
 ## Relationship to transports
 
-The mapping MCP tools and the REST `candidate-bundle` endpoint both delegate to
-this service. If you are already in Python, prefer calling the service directly
-instead of going through a transport wrapper.
+The mapping MCP tools and the REST `candidate-bundle` endpoint both delegate to this service. If you are already in Python, prefer calling the service directly instead of going through a transport wrapper.

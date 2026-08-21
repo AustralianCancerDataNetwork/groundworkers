@@ -1,12 +1,10 @@
 # System Tools
 
-Two tools report on overall availability and the OMOP vocabulary catalogue for a
-`groundworkers` deployment. Both are always registered.
+Two tools report on overall availability and the OMOP vocabulary catalogue for a `groundworkers` deployment. Both are always registered.
 
 ## `system_status`
 
-Returns availability and health details for each configured backend. Takes no
-arguments.
+Returns availability and health details for each configured backend. Takes no arguments.
 
 **Response**:
 
@@ -37,8 +35,7 @@ arguments.
 - `degraded`: at least one configured component is unavailable
 - `unavailable`: no configured components are available, or none are configured
 
-`components` only includes backends that are configured for the current runtime.
-For `omop_emb`, `available` means the vector store can be inspected and contains at least one registered model. `model_backend_configured` tells you whether live text search and encoding can call the configured embedding model. Stored-neighbour lookup can still work when this is `false`.
+`components` only includes backends that are configured for the current runtime. For `omop_emb`, `available` means the vector store can be inspected and contains at least one registered model. `model_backend_configured` tells you whether live text search and encoding can call the configured embedding model. Stored-neighbour lookup can still work when this is `false`.
 
 Use this tool when you want to confirm:
 
@@ -48,11 +45,9 @@ Use this tool when you want to confirm:
 
 ## `system_vocabulary_catalogue`
 
-Returns vocabularies, domains, and concept classes from the OMOP vocabulary
-database.
+Returns vocabularies, domains, and concept classes from the OMOP vocabulary database.
 
-This requires the omop-graph backend to be configured and returns `BACKEND_UNAVAIL`
-otherwise.
+This requires the omop-graph backend to be configured and returns `BACKEND_UNAVAIL` otherwise.
 
 **Response**:
 
@@ -70,5 +65,4 @@ otherwise.
 }
 ```
 
-Clients often cache this response so they can present vocabulary and domain choices
-without re-querying the server repeatedly.
+Clients often cache this response so they can present vocabulary and domain choices without re-querying the server repeatedly.

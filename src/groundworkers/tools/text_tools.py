@@ -24,7 +24,8 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         domain_hint optionally scopes normalization to a specific OMOP domain (e.g. Condition, Drug,
         Measurement) when the term is likely to be domain-specific.
 
-        Returns: normalized, original, confidence (high/medium/low), notes.
+        The result preserves the original text and includes the normalized phrase,
+        the model's categorical confidence, and optional notes about ambiguity.
         """
         try:
             result = text_service.normalize(text, domain_hint=domain_hint, model_name=model_name)
@@ -48,7 +49,8 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         Accepts optional context such as parent label, sibling values, child values,
         source code, or preferred domain to keep the rewrite faithful to the source.
 
-        Returns: replacement, original, changed, confidence (high/medium/low), notes.
+        The result includes the replacement phrase, whether it changed, the model's
+        categorical confidence, and optional notes.
         """
         try:
             result = text_service.mapping_cleanup(
@@ -80,7 +82,8 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         domain_hint optionally scopes extraction to a specific OMOP domain.
         max_terms controls the upper bound on terms returned (clamped 1-20).
 
-        Returns: terms (list of {term, domain_hint}), original.
+        The result contains normalized terms with optional domain hints and the
+        original input text.
         """
         try:
             result = text_service.decompose(text, domain_hint=domain_hint, max_terms=max_terms, model_name=model_name)
@@ -107,8 +110,8 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
         domain_hint optionally scopes disambiguation to a specific OMOP domain.
         max_interpretations controls the upper bound on candidates returned (clamped 1-10).
 
-        Returns: interpretations (list of {interpretation, domain_hint, context_clues}),
-        original, is_ambiguous.
+        The result contains ranked interpretations with optional domain hints and
+        context clues, plus the original input and an ambiguity flag.
         """
         try:
             result = text_service.disambiguate(

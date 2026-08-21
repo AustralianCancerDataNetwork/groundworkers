@@ -1,18 +1,14 @@
 # Search Tools
 
-These tools expose lexical concept search with its retrieval signals. They are
-backed by `VocabService` and require shared OMOP vocabulary access.
+These tools expose lexical concept search with its retrieval signals. They are backed by `VocabService` and require shared OMOP vocabulary access.
 
-Unlike `concept_ground`, which runs a tiered pipeline and stops at the first tier
-with results, these tools let the client choose a strategy, inspect its signals,
-and handle non-standard candidates explicitly.
+Unlike `concept_ground`, which runs a tiered pipeline and stops at the first tier with results, these tools let the client choose a strategy, inspect its signals, and handle non-standard candidates explicitly.
 
 ---
 
 ## `concept_search_exact`
 
-Case-insensitive exact match of a query string against `concept_name` and (optionally)
-`concept_synonym_name`.
+Case-insensitive exact match of a query string against `concept_name` and (optionally) `concept_synonym_name`.
 
 ```json
 {
@@ -25,11 +21,9 @@ Case-insensitive exact match of a query string against `concept_name` and (optio
 }
 ```
 
-All parameters except `query` are optional.  `limit` is clamped to `[1, 50]`.
+All parameters except `query` are optional. `limit` is clamped to `[1, 50]`.
 
-`standard_only` defaults to `false` — results include non-standard concepts so the
-caller can inspect `standard_concept` and decide whether to call
-`concept_navigate_to_standard`.
+`standard_only` defaults to `false` — results include non-standard concepts so the caller can inspect `standard_concept` and decide whether to call `concept_navigate_to_standard`.
 
 **Response**:
 ```json
@@ -52,19 +46,15 @@ caller can inspect `standard_concept` and decide whether to call
 }
 ```
 
-`match_source` is `"name"` when `concept_name` matched, or `"synonym"` when a
-`concept_synonym_name` matched.  `matched_synonym` contains the synonym string when
-`match_source` is `"synonym"`, otherwise `null`.
+`match_source` is `"name"` when `concept_name` matched, or `"synonym"` when a `concept_synonym_name` matched. `matched_synonym` contains the synonym string when `match_source` is `"synonym"`, otherwise `null`.
 
-Name matches are returned before synonym matches.  Concepts are de-duplicated — a
-concept that matches both its name and a synonym appears only once (under `"name"`).
+Name matches are returned before synonym matches. Concepts are de-duplicated — a concept that matches both its name and a synonym appears only once (under `"name"`).
 
 ---
 
 ## `concept_search_fulltext`
 
-PostgreSQL full-text search against the `concept_name_tsvector` GIN-indexed sidecar
-column, with `ts_rank` scores exposed.
+PostgreSQL full-text search against the `concept_name_tsvector` GIN-indexed sidecar column, with `ts_rank` scores exposed.
 
 ```json
 {
@@ -78,13 +68,9 @@ column, with `ts_rank` scores exposed.
 }
 ```
 
-All parameters except `query` are optional.  `min_rank` must be in `[0.0, 1.0]` and
-is applied server-side before returning results (useful to avoid very large result
-sets); set to `0.0` to disable.
+All parameters except `query` are optional. `min_rank` must be in `[0.0, 1.0]` and is applied server-side before returning results (useful to avoid very large result sets); set to `0.0` to disable.
 
-`tsvector_available` in the response indicates whether the sidecar column was detected.
-When `false`, `results` is always `[]` and the caller should fall through to
-`embedding_search` or `concept_search_exact`.
+`tsvector_available` in the response indicates whether the sidecar column was detected. When `false`, `results` is always `[]` and the caller should fall through to `embedding_search` or `concept_search_exact`.
 
 **Response**:
 ```json
@@ -109,12 +95,9 @@ When `false`, `results` is always `[]` and the caller should fall through to
 }
 ```
 
-Results are sorted by `ts_rank` descending.  The `ts_rank` field is only present in
-results from this tool (not `concept_search_exact`).
+Results are sorted by `ts_rank` descending. The `ts_rank` field is only present in results from this tool (not `concept_search_exact`).
 
-Synonym FTS is included when the `concept_synonym_name_tsvector` sidecar is also
-present.  If the synonym sidecar is absent, synonym results are silently omitted —
-it is not an error.
+Synonym FTS is included when the `concept_synonym_name_tsvector` sidecar is also present. If the synonym sidecar is absent, synonym results are silently omitted — it is not an error.
 
 !!! note "FTS sidecar detection is automatic"
     The tsvector sidecar columns are detected by inspecting the database schema on
@@ -124,10 +107,7 @@ it is not an error.
 
 ## `concept_navigate_to_standard`
 
-Given a list of `concept_id` values, returns their standard OMOP equivalents by
-following `"Maps to"` relationship edges.  Batch version of `concept_map_to_standard`,
-intended to be called after `concept_search_exact`, `concept_search_fulltext`, or
-`embedding_search` to resolve non-standard candidates in one round-trip.
+Given a list of `concept_id` values, returns their standard OMOP equivalents by following `"Maps to"` relationship edges. Batch version of `concept_map_to_standard`, intended to be called after `concept_search_exact`, `concept_search_fulltext`, or `embedding_search` to resolve non-standard candidates in one round-trip.
 
 ```json
 {"concept_ids": [45542442, 4119419]}
@@ -173,7 +153,4 @@ At most 100 concept IDs per call.
 }
 ```
 
-For concepts that are already standard: `standard_concepts` contains the concept
-itself with `relationship_id = "self"`.  For concepts with no `"Maps to"` edge:
-`standard_concepts` is `[]`.  Concept IDs not found in the vocabulary are silently
-omitted from results.
+For concepts that are already standard: `standard_concepts` contains the concept itself with `relationship_id = "self"`. For concepts with no `"Maps to"` edge: `standard_concepts` is `[]`. Concept IDs not found in the vocabulary are silently omitted from results.

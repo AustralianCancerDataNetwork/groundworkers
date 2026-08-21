@@ -1,6 +1,6 @@
 # groundworkers
 
-`groundworkers` is the reusable capability layer for OMOP-grounded lookup, mapping, source planning, and knowledge-pack discovery. It is available through three interfaces:
+`groundworkers` is a read-only capability layer for working with OMOP vocabularies, graph relationships, source metadata, and mapping context. It combines deterministic operations with optional embedding and model-assisted steps. It is available through three interfaces:
 
 - as an **MCP service** for discoverable tool clients
 - as a **REST service** for controlled workflow applications
@@ -17,6 +17,16 @@
 ## First time setting up locally?
 
 [Try here](from-scratch.md)
+
+## What it helps you do
+
+- retrieve concepts by exact, normalized, full-text, or embedding similarity;
+- ground free text with a tiered resolver and inspect how the result was found;
+- assemble mapping evidence and graph context for review;
+- plan source artifacts before ingestion and discover applicable knowledge packs;
+- optionally normalize text, classify structured fields, or project grounded concepts into CDM rows.
+
+Start with [Concepts and capability choices](concepts.md) for the mental model, then choose an integration path.
 
 ## At a glance
 
@@ -37,22 +47,14 @@ flowchart TD
 
 The transport is thin, reusable workflow logic lives in `services/`, and concrete dependencies are isolated behind `adapters/`. See [Architecture](architecture.md) for configuration and startup wiring.
 
-## What groundworkers provides
-
-- **Vocabulary and hierarchy lookup** over OMOP concepts
-- **Multi-channel mapping workflows** combining exact, normalized, full-text, and embedding retrieval
-- **Source planning** for stateless pre-ingest analysis
-- **Knowledge-pack discovery** over bundled baseline packs plus optional site or localisation packs
-- **LLM-backed text normalization and domain classification**
-- **Thin transports** over the same service layer
-
 ## Where to start
 
-- [Installation](usage/installation.md) for package install, stack prerequisites, and service startup
-- [Configuration](usage/configuration.md) for the shared-stack config model and ownership boundaries
-- [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage patterns
-- [Architecture](architecture.md) for composition, transport flow, and extension boundaries
-- [Extending groundworkers](development/extending.md) for adding adapters, services, MCP tools, or REST endpoints
+- [Concepts and capability choices](concepts.md) to understand grounding, mapping, retrieval, and optional infrastructure
+- [Installation](usage/installation.md) for package installation and prerequisites
+- [Initial local setup](from-scratch.md) for a fresh local deployment
+- [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage
+- [Configuration](usage/configuration.md) for the shared-stack config model and runtime combinations
+- [Tools overview](tools/overview.md) for the discoverable MCP surface
 
 ## Relation to groundcrew
 
@@ -61,5 +63,4 @@ The transport is thin, reusable workflow logic lives in `services/`, and concret
 - `groundworkers` owns reusable stateless capabilities
 - `groundcrew` owns orchestration, session state, and job lifecycle
 
-In the usual deployment, `groundcrew` talks to `groundworkers` over MCP. A Python
-application can use the same service layer directly through `build_application(...)`.
+In the usual deployment, `groundcrew` talks to `groundworkers` over MCP. A Python application can use the same service layer directly through `build_application(...)`.

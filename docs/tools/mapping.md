@@ -1,7 +1,6 @@
 # Mapping Tools
 
-These tools support mapping review when a single best result is not enough. They
-gather evidence, add context, and make candidate comparisons explicit.
+These tools support mapping review when a single best result is not enough. They gather evidence, add context, and make candidate comparisons explicit.
 
 ## When to use these tools
 
@@ -34,8 +33,7 @@ flowchart TD
 
 `concept_ground` is the simplest choice for a single ranked grounding result.
 
-The mapping tools are better when you want to inspect evidence and make an explicit
-selection.
+The mapping tools are better when you want to inspect evidence and make an explicit selection.
 
 | If you want... | Prefer... |
 |---|---|
@@ -46,8 +44,7 @@ selection.
 
 ## `concept_search_normalized`
 
-Deterministic normalized equality search over concept labels, with optional synonym
-matching and explicit normalization metadata in the response.
+Deterministic normalized equality search over concept labels, with optional synonym matching and explicit normalization metadata in the response.
 
 ```json
 {
@@ -100,9 +97,7 @@ Representative response sections:
 
 ## `concept_nearest_standard_ancestor`
 
-Finds the nearest standard ancestor of a concept by walking the OMOP concept hierarchy.
-Accepts either a free-text query or an explicit `concept_id`. Useful when a source concept
-is too specific or non-standard and you need a broader standard parent.
+Finds the nearest standard ancestor of a concept by walking the OMOP concept hierarchy. Accepts either a free-text query or an explicit `concept_id`. Useful when a source concept is too specific or non-standard and you need a broader standard parent.
 
 ```json
 {
@@ -122,8 +117,7 @@ Useful response fields:
 
 ## `concept_mapping_context`
 
-Builds one deterministic context packet for a known concept ID so the caller does
-not have to stitch together multiple lower-level calls.
+Builds one deterministic context packet for a known concept ID so the caller does not have to stitch together multiple lower-level calls.
 
 ```json
 {
@@ -181,8 +175,7 @@ Expands a simple list of concept items with support for:
 
 ## `mapping_evaluate_candidates`
 
-Compares predicted mappings with a reference mapping set using
-`standard_concept_id` agreement.
+Compares predicted mappings with a reference mapping set using `standard_concept_id` agreement.
 
 ```json
 {

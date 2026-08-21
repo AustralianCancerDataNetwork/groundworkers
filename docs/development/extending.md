@@ -1,10 +1,8 @@
 # Extending groundworkers
 
-This guide is for contributors adding new adapters, services, MCP tools, or
-REST endpoints. The main rule is simple:
+This guide is for contributors adding new adapters, services, MCP tools, or REST endpoints. The main rule is simple:
 
-**keep business logic above the transport layer and keep dependency details
-below it.**
+**keep business logic above the transport layer and keep dependency details below it.**
 
 ## Current extension points
 
@@ -24,7 +22,7 @@ Use an adapter when the main job is to wrap one external system cleanly.
 Adapter expectations:
 
 - accept already-resolved handles or explicit constructor values
-- do not read TOML, environment variables, or profiles directly
+- do not read TOML or environment variables directly
 - expose dependency-shaped operations with predictable Python errors
 - raise `GroundworkersError` for backend-facing failures that callers should
   reason about
@@ -43,8 +41,7 @@ Poor adapter candidates:
 
 ## Adding a new service
 
-Use a service when the capability contains reusable domain logic that a Python
-caller should be able to use directly.
+Use a service when the capability contains reusable domain logic that a Python caller should be able to use directly.
 
 Service expectations:
 
@@ -62,8 +59,7 @@ Typical pattern:
 
 ## Adding an MCP tool
 
-Add an MCP tool when the capability should participate in tool discovery or be
-available to remote clients.
+Add an MCP tool when the capability should participate in tool discovery or be available to remote clients.
 
 Tool expectations:
 
@@ -92,8 +88,7 @@ Route expectations:
 
 ## Updating configuration
 
-Before adding a new config field, decide which package actually owns that
-concern.
+Before adding a new config field, decide which package actually owns that concern.
 
 Use this rough split:
 
@@ -102,8 +97,7 @@ Use this rough split:
 - `omop-emb`: embedding store and embedding model settings
 - `groundworkers`: transport defaults, LLM worker behavior, source-planning behavior, knowledge-pack behavior
 
-If the setting belongs to `groundworkers`, add it to `GroundworkersConfig` in
-`config.py` and let `bootstrap.py` thread it into the runtime.
+If the setting belongs to `groundworkers`, add it to `GroundworkersConfig` in `config.py` and let `bootstrap.py` thread it into the runtime.
 
 ## Testing new capabilities
 
@@ -114,8 +108,7 @@ Preferred test seams:
 - test MCP registration through `create_server(...)`
 - test REST routes with `fastapi.testclient.TestClient`
 
-The goal is to keep each layer testable without needing the full deployment
-stack.
+The goal is to keep each layer testable without needing the full deployment stack.
 
 ## Practical checklist
 

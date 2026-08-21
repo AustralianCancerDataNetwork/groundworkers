@@ -1,8 +1,6 @@
 # Integrating groundworkers
 
-How to drive Groundworkers from Python against the same steady-state
-configuration the setup console produces. Nothing here imports Textual,
-Groundskeeping, or another application's setup code.
+How to drive Groundworkers from Python against the same steady-state configuration the setup console produces. Nothing here imports Textual, Groundskeeping, or another application's setup code.
 
 ## Build the runtime
 
@@ -14,8 +12,7 @@ config = build_app_config(config_path="/path/to/config.toml")
 app = build_application(config)
 ```
 
-`build_app_config` resolves the stack and returns an `AppConfig` holding only
-Groundworkers-owned values:
+`build_app_config` resolves the stack and returns an `AppConfig` holding only Groundworkers-owned values:
 
 | Attribute | Type |
 |---|---|
@@ -29,8 +26,7 @@ Omitting `config_path` uses `OA_CONFIG_PATH` or the default stack location.
 
 ## Available services
 
-`app.services` attributes are `None` only when their prerequisites are absent, so
-check before use:
+`app.services` attributes are `None` only when their prerequisites are absent, so check before use:
 
 ```python
 services = app.services
@@ -44,8 +40,7 @@ services.domain         # only when groundworkers.llm_model_name resolves
 services.source_planning
 ```
 
-A CDM-only configuration is fully supported. Graph availability follows the
-resolved CDM database — there is no separate section to enable.
+A CDM-only configuration is fully supported. Graph availability follows the resolved CDM database — there is no separate section to enable.
 
 ## Grounding free text
 
@@ -68,8 +63,7 @@ for hit in result["results"]:
         print("classification:", hit["concept_id"], hit["concept_name"])
 ```
 
-`limit` must be positive; a non-positive value raises `GroundworkersError` with
-code `INVALID_INPUT`.
+`limit` must be positive; a non-positive value raises `GroundworkersError` with code `INVALID_INPUT`.
 
 ### Interpreting the explanation
 
@@ -80,10 +74,7 @@ explanation["used_embedding"]         # bool
 explanation["embedding_tier_detail"]  # None, or why the embedding tier was skipped
 ```
 
-Tiers run in order and the first one that yields results wins. When
-`embedding_tier_detail` is set, the embedding tier was planned but could not run —
-usually an unreachable provider — and the answer came from lexical tiers alone.
-Treat a set value as "this result may be incomplete".
+Tiers run in order and the first one that yields results wins. When `embedding_tier_detail` is set, the embedding tier was planned but could not run — usually an unreachable provider — and the answer came from lexical tiers alone. Treat a set value as "this result may be incomplete".
 
 ## Error handling
 
@@ -98,8 +89,7 @@ except GroundworkersError as exc:
     print(exc.code, exc.message)   # NOT_FOUND | INVALID_INPUT | BACKEND_UNAVAIL | QUERY_ERROR | …
 ```
 
-Messages are safe to log and surface: provider and database failures are
-translated so they do not carry credentials or connection strings.
+Messages are safe to log and surface: provider and database failures are translated so they do not carry credentials or connection strings.
 
 ## Concept flag contract
 
@@ -109,16 +99,11 @@ translated so they do not carry credentials or connection strings.
 | `classification_concept` | true only for raw `standard_concept = 'C'` |
 | `is_active` | `invalid_reason` unset, treating blank and whitespace-only as active |
 
-Do not derive standardness from omop-graph's `ConceptView.standard_concept`: that
-field is a single boolean covering both `'S'` and `'C'`. Groundworkers reads the
-raw flag at its adapter boundary so callers get the distinction.
+Do not derive standardness from omop-graph's `ConceptView.standard_concept`: that field is a single boolean covering both `'S'` and `'C'`. Groundworkers reads the raw flag at its adapter boundary so callers get the distinction.
 
 ## Writing configuration
 
-Configuration writes are a local console concern, not part of the integration
-surface. If you are embedding the setup console in another host application, drive
-`GroundworkersConfigMutationService` through Groundskeeping's
-`ConfigWizardController`:
+Configuration writes are a local console concern, not part of the integration surface. If you are embedding the setup console in another host application, drive `GroundworkersConfigMutationService` through Groundskeeping's `ConfigWizardController`:
 
 ```python
 from groundskeeping.configurator import ConfigWizardController, MutationOperation
@@ -142,12 +127,6 @@ operation = (
 controller = ConfigWizardController(cdm_setup_workflow(operation), service)
 ```
 
-The same shape covers `MODEL_SETUP_TARGET` / `model_setup_workflow` and
-`LLM_SETUP_TARGET` / `llm_setup_workflow`. The provider decides create-versus-update
-from the current file, owns revision checking and redaction, and returns
-`conflicted` rather than clobbering another writer. `model_discoverer` is the
-injected seam for live model inventory; supply your own to avoid network calls in
-tests.
+The same shape covers `MODEL_SETUP_TARGET` / `model_setup_workflow` and `LLM_SETUP_TARGET` / `llm_setup_workflow`. The provider decides create-versus-update from the current file, owns revision checking and redaction, and returns `conflicted` rather than clobbering another writer. `model_discoverer` is the injected seam for live model inventory; supply your own to avoid network calls in tests.
 
-This requires the `tui` extra for Groundskeeping, but not Textual — the provider
-and controller are host-agnostic.
+This requires the `tui` extra for Groundskeeping, but not Textual — the provider and controller are host-agnostic.

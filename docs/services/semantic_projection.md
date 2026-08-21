@@ -1,11 +1,8 @@
 # SemanticProjectionService
 
-`SemanticProjectionService` deterministically projects a grounded OMOP concept
-into one or more CDM rows. It wraps [`omop-semantics`](https://australiancancerdatanetwork.github.io/omop-semantics/)'s
-`OutputDefinitionRuntime`; it makes no LLM or database calls, and the same input
-always produces the same output.
+`SemanticProjectionService` deterministically projects a grounded OMOP concept into one or more CDM rows. It wraps [`omop-semantics`](https://australiancancerdatanetwork.github.io/omop-semantics/)'s `OutputDefinitionRuntime`; it makes no LLM or database calls, and the same input always produces the same output.
 
-It exists for cases a single grounded `concept_id` can't express on its own — a diagnosis paired with a separately-collected role/status field, a family- history statement where the grounded condition belongs in the OMOP value slot, or a Yes/No field whose negative answer should produce no record at all. Ordinary single-concept mappings don't need it.
+It exists for cases a single grounded `concept_id` can't express on its own — a diagnosis paired with a separately-collected role/status field, a family-history statement where the grounded condition belongs in the OMOP value slot, or a Yes/No field whose negative answer should produce no record at all. Ordinary single-concept mappings don't need it.
 
 ## Construction
 
@@ -66,8 +63,7 @@ service.project(request: SemanticProjectionRequest) -> SemanticProjectionResult
 
 ### Selecting a definition
 
-Pass `definition_hint` to select a definition explicitly; otherwise the service
-matches on `grounded_domain` alone.
+Pass `definition_hint` to select a definition explicitly; otherwise the service matches on `grounded_domain` alone.
 
 ### Result
 

@@ -1,8 +1,6 @@
 # Architecture
 
-`groundworkers` is organised so that configuration, domain logic, and transport
-concerns stay separate. The same service layer is reused across MCP, REST, and
-direct Python integrations.
+`groundworkers` is organised so that configuration, domain logic, and transport concerns stay separate. The same service layer is reused across MCP, REST, and direct Python integrations.
 
 ## Composition
 
@@ -37,15 +35,11 @@ flowchart TD
     API --> SVC
 ```
 
-Most transport-facing workflows call services. MCP also exposes a small number
-of intentionally adapter-shaped capabilities, such as embedding and system
-status surfaces, where introducing a service layer would add indirection without
-adding domain value.
+Most transport-facing workflows call services. MCP also exposes a small number of intentionally adapter-shaped capabilities, such as embedding and system status surfaces, where introducing a service layer would add indirection without adding domain value.
 
 ## Dependency flow
 
-Services coordinate reusable domain logic. Adapters isolate concrete
-dependencies.
+Services coordinate reusable domain logic. Adapters isolate concrete dependencies.
 
 ```mermaid
 flowchart TD
@@ -60,8 +54,7 @@ flowchart TD
 
 ### Shared stack configuration
 
-The source of truth is the shared OMOP stack configuration loaded through
-`oa-configurator`.
+The source of truth is the shared OMOP stack configuration loaded through `oa-configurator`.
 
 - `omop-alchemy` owns the CDM and vocabulary models
 - `omop-graph` owns graph-specific package settings
@@ -73,10 +66,9 @@ The source of truth is the shared OMOP stack configuration loaded through
 
 ### `bootstrap.py`
 
-`bootstrap.py` resolves the active stack config into the runtime `AppConfig`.
-That includes:
+`bootstrap.py` resolves the active stack config into the runtime `AppConfig`. That includes:
 
-- selecting the active stack file and profile
+- selecting the active stack file
 - resolving the named CDM database and its engine
 - loading sibling package config (`omop_graph`, `omop_emb`)
 - loading `groundworkers` package-owned settings
@@ -92,26 +84,22 @@ If you need to change how configuration is resolved, this is the layer to edit.
 - services from those adapters
 - a `GroundworkersApp` container that transports can reuse
 
-This keeps the rest of the codebase free of config-file and profile-selection
-knowledge.
+This keeps the rest of the codebase free of config-file selection knowledge.
 
 ### `adapters/`
 
-Adapters are dependency-facing wrappers. Each adapter should wrap one external
-system cleanly:
+Adapters are dependency-facing wrappers. Each adapter should wrap one external system cleanly:
 
 - `CDMAdapter` wraps the SQLAlchemy engine/session factory
 - `OmopGraphAdapter` wraps the omop-graph backend runtime
 - `OmopEmbAdapter` wraps omop-emb index and query behavior
 - `LLMAdapter` wraps the configured model backend
 
-Adapters are intentionally config-agnostic. They should accept already-built
-handles or explicit constructor values, not TOML sections or loader logic.
+Adapters are intentionally config-agnostic. They should accept already-built handles or explicit constructor values, not TOML sections or loader logic.
 
 ### `services/`
 
-Services contain reusable domain logic that should work the same regardless of
-transport:
+Services contain reusable domain logic that should work the same regardless of transport:
 
 - `VocabService` for lexical retrieval and OMOP navigation
 - `GraphService` for deterministic graph-backed lookup, traversal, paths, and neighborhood exploration
@@ -123,11 +111,9 @@ transport:
 - `SemanticProjectionService` for deterministic output-definition projection
   over `omop-semantics` — grounded concept in, one or more CDM rows out
 
-If the logic is something a Python caller would reasonably want without going
-through MCP, it probably belongs in a service.
+If the logic is something a Python caller would reasonably want without going through MCP, it probably belongs in a service.
 
-Some services also depend on other services or optional adapters as part of the
-assembled runtime:
+Some services also depend on other services or optional adapters as part of the assembled runtime:
 
 - `ConceptGroundingService` depends on `GraphService`
 - `MappingService` depends on `VocabService` and can also use graph, embedding,
@@ -135,12 +121,7 @@ assembled runtime:
 - `SourcePlanningService` is always present and can be LLM-assisted when that
   adapter is configured
 
-`SemanticProjectionService` is the one exception to the `Services`/adapter
-composition described above: it needs no adapter (no database, no LLM — the
-same properties that make `omop-semantics` itself portable), so it is not part
-of `app.services`. It's constructed directly and registered behind its own
-config flag, the same way `KnowledgeCatalogue` is. See
-[SemanticProjectionService](services/semantic_projection.md).
+`SemanticProjectionService` is the one exception to the `Services`/adapter composition described above: it needs no adapter (no database, no LLM — the same properties that make `omop-semantics` itself portable), so it is not part of `app.services`. It's constructed directly and registered behind its own config flag, the same way `KnowledgeCatalogue` is. See [SemanticProjectionService](services/semantic_projection.md).
 
 ### Transport layers
 
@@ -187,17 +168,14 @@ sequenceDiagram
     T-->>C: MCP / REST / Python response
 ```
 
-For adapter-backed MCP primitives, the `T->>S` and `S->>A` steps collapse into a
-direct transport-to-adapter call by design.
+For adapter-backed MCP primitives, the `T->>S` and `S->>A` steps collapse into a direct transport-to-adapter call by design.
 
 ## Design rules for contributors
 
-- Put resource and profile resolution in `bootstrap.py`, not in adapters.
+- Put resource resolution in `bootstrap.py`, not in adapters.
 - Keep adapters dependency-shaped and reusable.
 - Keep services transport-agnostic.
 - Add MCP tools only when the capability should participate in tool discovery.
 - Add REST endpoints only for curated workflow operations, not every internal method.
 
-The extension guide in [Extending groundworkers](development/extending.md)
-spells out the expected shape for new adapters, services, MCP tools, and REST
-routes.
+The extension guide in [Extending groundworkers](development/extending.md) spells out the expected shape for new adapters, services, MCP tools, and REST routes.

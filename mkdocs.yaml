@@ -29,17 +29,14 @@ theme:
 
 nav:
   - Home: index.md
-  - Initial Local Setup: from-scratch.md
-  - Architecture: architecture.md
+  - Understand Groundworkers:
+      - Concepts and capability choices: concepts.md
   - Getting Started:
       - Installation: usage/installation.md
+      - Initial local setup: from-scratch.md
       - Setup journey: usage/setup_journey.md
       - Configuration: usage/configuration.md
       - Integrations: usage/integrations.md
-      - Testing: usage/testing.md
-  - Development:
-      - Integrating groundworkers: development/integration.md
-      - Extending groundworkers: development/extending.md
   - Tools:
       - Overview: tools/overview.md
       - Concept Tools: tools/concept.md
@@ -49,6 +46,8 @@ nav:
       - Embedding Tools: tools/embedding.md
       - Text Tools: tools/text.md
       - Domain Tools: tools/domain.md
+      - Knowledge Tools: tools/knowledge.md
+      - Source Planning Tools: tools/source_planning.md
       - System Tools: tools/system.md
       - Semantic Projection Tools: tools/semantic_projection.md
   - Services:
@@ -60,10 +59,14 @@ nav:
       - Text Service: services/text.md
       - Domain Service: services/domain.md
       - Semantic Projection Service: services/semantic_projection.md
-  - Adapters:
-      - CDM: adapters/cdm.md
-      - OmopGraph: adapters/omop_graph.md
-      - OmopEmb: adapters/omop_emb.md
+  - Development and architecture:
+      - Architecture: architecture.md
+      - Python integration details: development/integration.md
+      - Extending groundworkers: development/extending.md
+      - Testing: usage/testing.md
+      - CDM adapter: adapters/cdm.md
+      - OMOP graph adapter: adapters/omop_graph.md
+      - OMOP embedding adapter: adapters/omop_emb.md
   - API Reference:
       - Tools: reference/ref_tools.md
       - Services: reference/ref_services.md

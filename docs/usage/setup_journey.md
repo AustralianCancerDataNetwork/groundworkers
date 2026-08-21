@@ -11,8 +11,6 @@ The setup console is organized by the capability being configured:
 7. **View Configuration** — redacted stack configuration; and
 8. **Runs** — progress and history for durable maintenance work.
 
-For a minimal local setup, use **Overview → Configure CDM → Test connections**.
-Optional capabilities can be configured later. Configuration changes show the
-redacted entries that will be written before they are applied.
+For a minimal local setup, use **Overview → Configure CDM → Test connections**. Optional capabilities can be configured later. Configuration changes show the redacted entries that will be written before they are applied.
 
 See [Initial local setup](../from-scratch.md) for a complete example.

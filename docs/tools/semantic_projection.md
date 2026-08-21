@@ -24,7 +24,7 @@ It is not a grounding tool. Callers ground a concept first (`concept_ground`, or
 
 `definition_hint` selects a definition explicitly. Omit it only when exactly one registered definition applies to `grounded_domain`.
 
-`context` carries whatever the selected definition needs beyond the grounded concept itself — see the field-by-field description in [SemanticProjectionService](../services/semantic_projection.md#method). 
+`context` carries whatever the selected definition needs beyond the grounded concept itself — see the field-by-field description in [SemanticProjectionService](../services/semantic_projection.md#method).
 
 **Response (row kept):**
 
