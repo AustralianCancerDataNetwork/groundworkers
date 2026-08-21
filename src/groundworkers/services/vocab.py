@@ -117,6 +117,36 @@ class VocabService:
         self._detect_fts_sidecars()
         return bool(self._fts_name_sidecar)
 
+    def probe_fulltext(self) -> tuple[bool, str | None]:
+        """Smoke-test PostgreSQL full-text search with a representative term.
+
+        A sidecar column and GIN index can exist while all sidecar values are
+        NULL. Requiring one real match makes that state visible to health
+        reporting instead of treating schema presence as operational readiness.
+        """
+
+        try:
+            with self._cdm.session() as session:
+                probe_label = session.execute(
+                    select(Concept.concept_name)
+                    .where(Concept.concept_name.is_not(None))
+                    .where(Concept.concept_name != "")
+                    .order_by(Concept.concept_id)
+                    .limit(1)
+                ).scalar_one_or_none()
+            if not probe_label:
+                return False, "No non-empty concept label is available for probing."
+            results, available = self.search_fulltext(str(probe_label), limit=1)
+        except GroundworkersError as exc:
+            return False, exc.message
+        except Exception as exc:
+            return False, f"Full-text query probe failed with {type(exc).__name__}."
+        if not available:
+            return False, "Full-text sidecar columns are unavailable."
+        if not results:
+            return False, "Full-text smoke query returned no results."
+        return True, None
+
     # ------------------------------------------------------------------
     # search_exact
     # ------------------------------------------------------------------

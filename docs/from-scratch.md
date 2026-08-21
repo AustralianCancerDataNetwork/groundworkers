@@ -2,6 +2,18 @@
 
 This is the supported fresh-local setup for Groundworkers. It assumes an OMOP CDM database whose vocabulary tables are already populated. Groundworkers does not load vocabulary data or silently create embedding stores.
 
+### Current Status
+
+The TUI is offered for convenience and should be considered experimental - we don't persist state centrally so you will probably notice that you need to re-test connections if you move around the interface.
+
+The examples below show the most thoroughly validated workflow at this time. FAISS and sqlite options for storage and anything other than ollama configuration is yours to experiment with.
+
+### Maintenance tasks
+
+Long running tasks (like embedding population) will be spawned and polled, and you can review progress on the `Runs` tab. These tasks should persist even if you close and re-open groundworkers because they are spawned as maintenance tasks. This is all best-effort at this time, with a primary goal of supporting a centralised configuration workflow only, not being an actual groundworkers interface for real agentive work.
+
+Open **Runs** to follow progress, inspect a safe log tail, cancel active work, retry a safe failed step, or export commands. Postflight is shown only for plans that actually define postflight checks.
+
 ## Install
 
 Install the setup console and the capabilities you intend to use:
@@ -9,9 +21,6 @@ Install the setup console and the capabilities you intend to use:
 ```bash
 uv pip install "groundworkers[tui,embedding-pgvector]"
 ```
-
-Add `embedding-faiss` when you also want the optional FAISS query cache; it is not a replacement vector-store backend. Add `all_source` when source-planning file formats are needed.
-
 ## Run the setup console
 
 ```bash
@@ -26,22 +35,23 @@ Configure the CDM connection and logical database. The review shows the exact re
 
 Run **Test connections** or **Overview → Verify all**. A connected CDM with populated vocabulary tables is the minimum usable service. Missing optional embeddings or chat remain neutral and do not make the core service fail.
 
+**Note** We assume that you will be connecting to a CDM that *already has vocabulary tables populated*.
+
 ### Recommended: graph and search
 
-Select **Graph → Prepare graph** when readiness diagnostics identify missing relationship, full-text, or functional indexes. The operation is an ordered, persistent local maintenance run. Open **Runs** to follow progress, inspect a safe log tail, cancel active work, retry a safe failed step, or export commands. Postflight is shown only for plans that actually define postflight checks.
+Select **Graph → Prepare graph** when readiness diagnostics identify missing relationship, full-text, or functional indexes. The operation is an ordered, persistent local maintenance run. Use **Performance** to review index readiness in one place and, where supported, start Groundworkers trigram or embedding-index maintenance.
 
 ### Optional: embeddings
 
 Embedding operations are currently separate setup actions:
 
-1. select the unconfigured embedding row under **Database** and configure the
-   vector store;
+1. select the unconfigured embedding row under **Database** and configure the vector store;
 2. open **Embeddings** and configure the embedding provider and model;
 3. initialize the vector store explicitly;
 4. run **Check model**, then refresh coverage;
 5. start a persistent population run for the reviewed scope.
 
-A numeric limit caps a run; it does not define whether the intent is a backfill. The Runs section exposes controls only when the selected run supports them. Index maintenance remains operator-managed guidance in this release.
+A numeric limit caps a run; it does not define whether the intent is a backfill. The Runs section exposes controls only when the selected run supports them.
 
 ### Optional: chat model
 

@@ -254,7 +254,7 @@ def test_embeddings_presenter_explains_faiss_is_not_a_backend() -> None:
     assert "sqlitevec or pgvector" in str(view.message)
 
 
-def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
+def test_embeddings_presenter_leaves_index_readiness_to_performance() -> None:
     coverage = CoverageSnapshot(
         scope=CoverageScope(
             model_name="qwen3-embedding:0.6b",
@@ -303,21 +303,9 @@ def test_embeddings_presenter_foregrounds_index_warning_and_drop_sql() -> None:
     assert isinstance(view, TableView)
     assert view.status.name == "WARNING"
     assert view.title == "Embedding setup"
-    assert view.rows[3].cells == (
-        "Index",
-        "Registry FLAT; physical index present",
-        "Warning",
-    )
-    assert view.rows[-3].cells == (
-        "! Index warning",
-        "Adding over an existing physical vector index will be slow.",
-        "Drop before large runs",
-    )
-    assert view.rows[-1].cells == (
-        "  Drop SQL 1",
-        "DROP INDEX IF EXISTS idx_emb_qwen3_cosine;",
-        "Suggested",
-    )
+    assert all(row.cells[0] != "Index" for row in view.rows)
+    assert all("index" not in row.key for row in view.rows)
+    assert "physical embedding index" not in str(view.message)
     populate = next(a for a in view.actions if a.key == "embeddings.populate")
     assert populate.label == "Populate"
     assert populate.disabled is True

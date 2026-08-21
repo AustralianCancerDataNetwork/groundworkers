@@ -58,6 +58,25 @@ class OmopEmbAdapter:
 
         return self._model_backend_factory is not None
 
+    def probe_live_query(self) -> tuple[bool, str | None]:
+        """Smoke-test the configured model with one real query embedding.
+
+        ``index_status`` intentionally checks only the vector store and model
+        registry. This probe verifies the separate capability used by
+        ``embedding_search`` and graph embedding resolution.
+        """
+
+        try:
+            result = self.encode("groundworkers health check", model_name=None)
+            vector = result.get("vector")
+            if not isinstance(vector, list) or not vector:
+                return False, "Embedding provider returned an empty vector."
+            return True, None
+        except GroundworkersError as exc:
+            return False, exc.message
+        except Exception as exc:
+            return False, f"Embedding query probe failed with {type(exc).__name__}."
+
     def close(self) -> None:
         """Release cached storage and model backends."""
 
@@ -329,4 +348,3 @@ class OmopEmbAdapter:
             "is_standard": getattr(match, "is_standard", None),
             "is_active": getattr(match, "is_active", None),
         }
-

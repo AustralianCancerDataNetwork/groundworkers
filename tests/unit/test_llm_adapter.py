@@ -51,7 +51,7 @@ def test_status_available_when_backend_is_reachable():
     assert result["default_model"] == "test-model"
     assert result["structured_output_supported"] is True
     assert result["detail"] is None
-    assert backend.is_available.call_args.kwargs["timeout"] == 2.0
+    backend.is_available.assert_called_once_with()
 
 
 def test_status_reports_the_models_declared_structured_output_capability():

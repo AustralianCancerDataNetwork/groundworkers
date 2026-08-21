@@ -92,6 +92,7 @@ def create_server(
         app.adapters.omop_emb,
         app.adapters.llm,
         embedding_configuration_detail=app.adapters.embedding_configuration_detail,
+        vocab_service=app.services.vocab,
     )
     register_system_resources(server, config, app.adapters.omop_graph)
     return server

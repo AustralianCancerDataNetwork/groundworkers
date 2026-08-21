@@ -19,7 +19,7 @@ from groundworkers.application.setup.maintenance_runs import (
     safe_command_display,
 )
 from groundworkers.application.setup.models import MaintenanceCommand
-from groundworkers.tui.presenters.runs import RunsPresenter
+from groundworkers.tui.presenters.runs import RunsPresenter, format_progress_tail
 
 
 def _command(*code: str) -> MaintenanceCommand:
@@ -201,6 +201,29 @@ def test_command_display_redacts_credentials() -> None:
     assert "password" not in display
     assert "secret" not in display
     assert "OA_CONFIG_PATH=/tmp/config.toml" in display
+
+
+def test_format_progress_tail_collapses_tqdm_updates() -> None:
+    raw = (
+        "Preparing embedding population.\n"
+        "\x1b[2KProcessing: 10%|          | 712500/6898521 "
+        "[3:40:27<32:16:00, 53.25concept/s]\r"
+        "\x1b[2KProcessing: 10%|          | 712600/6898521 "
+        "[3:40:30<32:13:22, 53.33concept/s]\n"
+    )
+
+    rendered = format_progress_tail(raw)
+
+    assert "Preparing embedding population." in rendered
+    assert rendered.count("Processing:") == 1
+    assert "712,600/6,898,521" in rendered
+    assert "53.33concept/s" in rendered
+    assert "ETA 32:13:22" in rendered
+    assert "█" in rendered
+
+
+def test_format_progress_tail_keeps_non_progress_output() -> None:
+    assert format_progress_tail("\x1b[31mworker warning\x1b[0m\n") == "worker warning"
 
 
 def test_state_files_are_private_and_corrupt_records_do_not_hide_valid_runs(

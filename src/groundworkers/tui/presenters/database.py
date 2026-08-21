@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 
 from groundskeeping.contracts import (
     EmptyView,
@@ -38,7 +39,7 @@ class DatabasePresenter(SetupPresenterBase):
         return (
             config_status
             if config_status is not SemanticStatus.OK
-            else _connection_status(results)
+            else _connection_status(_database_results(results))
         )
 
     def landing(
@@ -98,7 +99,10 @@ class DatabasePresenter(SetupPresenterBase):
                 ),
             )
 
-        result_by_key = {item.target_key: item for item in results}
+        result_by_key = {
+            item.target_key: _database_result(item)
+            for item in results
+        }
         rows = [
             _target_row(target, result_by_key.get(target.key)) for target in targets
         ]
@@ -112,7 +116,7 @@ class DatabasePresenter(SetupPresenterBase):
             title="Databases",
             columns=("Entry", "Connection", "Schemas", "Status", "Latency"),
             rows=tuple(rows),
-            status=_connection_status(results),
+            status=_connection_status(tuple(result_by_key.values())),
             message=f"{snapshot.path}  |  {snapshot.ownership.mode.value}",
             actions=_database_actions(
                 selected_target_key,
@@ -139,6 +143,36 @@ class DatabasePresenter(SetupPresenterBase):
 
 
 EMBEDDING_TARGET_KEY = "database.embedding"
+
+_PERFORMANCE_DIAGNOSTIC_CODES = frozenset(
+    {
+        "fulltext_sidecar_missing",
+        "fulltext_indexes_missing",
+        "fulltext_indexes_present",
+        "functional_indexes_missing",
+        "functional_indexes_present",
+        "trigram_indexes_missing",
+        "trigram_indexes_present",
+        "trigram_indexes_unchecked",
+    }
+)
+
+
+def _database_result(result: ConnectionResult) -> ConnectionResult:
+    """Keep performance/index diagnostics on the Performance surface."""
+
+    return replace(
+        result,
+        diagnostics=tuple(
+            diagnostic
+            for diagnostic in result.diagnostics
+            if diagnostic.code not in _PERFORMANCE_DIAGNOSTIC_CODES
+        ),
+    )
+
+
+def _database_results(results: Sequence[ConnectionResult]) -> tuple[ConnectionResult, ...]:
+    return tuple(_database_result(result) for result in results)
 
 
 def _unconfigured_embedding_row() -> TableRow:

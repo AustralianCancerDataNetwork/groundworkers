@@ -67,6 +67,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             await pilot.pause()
 
             active_page = app.query_one(".operator-page.-active")
+            assert active_page._runs_refresh_timer is not None
             workbench = app.query_one("#workbench")
             catalogue_panel = app.query_one("#catalogue-panel")
             sections = app.query_one("#sections")
@@ -79,7 +80,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             assert tabs.styles.display == "none"
             assert sections.styles.display == "block"
             assert catalogue.styles.display == "none"
-            assert sections.option_count == 8
+            assert sections.option_count == 9
             assert app.query_one("#result-panel").border_title == "Setup"
             assert app.query_one("#context-panel").border_title == "Readiness"
             assert tuple(
@@ -89,6 +90,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
                 "setup.overview",
                 "setup.database",
                 "setup.graph",
+                "setup.performance",
                 "setup.llm_provider",
                 "setup.embeddings",
                 "setup.chat",
@@ -96,8 +98,15 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
                 "setup.runs",
             )
 
+            result_table = app.query_one("#result-table")
+            result_table.focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.query_one("#context-panel").border_title == "Overview detail"
+            assert app.query_one("#context-table").styles.display == "block"
+
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 4
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
@@ -333,7 +342,7 @@ structured_output = true
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 4
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-0")
@@ -423,7 +432,7 @@ structured_output = true
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 3
+            sections.highlighted = 4
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-1")
@@ -470,7 +479,7 @@ def test_embedding_coverage_refresh_shows_loading_state(
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 4
+            sections.highlighted = 5
             await pilot.press("enter")
             await pilot.pause()
 
@@ -560,15 +569,17 @@ def test_embedding_coverage_refresh_places_vocabularies_in_detail_pane(
             await pilot.pause()
             sections = app.query_one("#sections")
             sections.focus()
-            sections.highlighted = 4
+            sections.highlighted = 5
             await pilot.press("enter")
             await pilot.pause()
             await pilot.click("#view-action-1")
             await pilot.pause(0.2)
 
             setup = app.query_one("#result-table")
-            assert setup.get_row_at(3)[0] == "Index"
-            assert setup.get_row_at(3)[1] == "FLAT / exact scan"
+            assert all(
+                setup.get_row_at(index)[0] != "Index"
+                for index in range(setup.row_count)
+            )
 
             detail = app.query_one("#context-table")
             assert app.query_one("#context-panel").border_title == "Vocabulary coverage"
@@ -665,7 +676,6 @@ def test_a_compact_review_shows_embedding_model_changes(tmp_path: Path) -> None:
     """The review table must retain rows in a small terminal."""
     pytest.importorskip("groundskeeping")
 
-    from groundskeeping.app import OperatorApp
     from groundskeeping.configurator import ConfigWizardController, MutationOperation
     from groundskeeping.widgets.wizard import WizardScreen
     from textual.widgets import DataTable
@@ -674,7 +684,10 @@ def test_a_compact_review_shows_embedding_model_changes(tmp_path: Path) -> None:
         GroundworkersConfigMutationService,
         model_setup_workflow,
     )
-    from groundworkers.tui.app import build_groundworkers_app, build_groundworkers_tui_spec
+    from groundworkers.tui.app import (
+        build_groundworkers_app,
+        build_groundworkers_tui_spec,
+    )
 
     config_path = tmp_path / "config.toml"
     save_stack_config(build_cdm_stack(), config_path)

@@ -308,6 +308,7 @@ def _graph_diagnostics(
                 )
             )
 
+    fulltext_sidecar_unpopulated: list[str] = []
     for table, column in GRAPH_FTS_COLUMNS.items():
         if table not in existing_tables:
             continue
@@ -319,6 +320,17 @@ def _graph_diagnostics(
                     f"Full-text sidecar column {table}.{column} is missing.",
                 )
             )
+        elif _column_has_null_values(connection, schema, table, column):
+            fulltext_sidecar_unpopulated.append(f"{table}.{column}")
+    if fulltext_sidecar_unpopulated:
+        diagnostics.append(
+            _warning(
+                "fulltext_sidecar_unpopulated",
+                "Full-text sidecar values are NULL for: "
+                + ", ".join(fulltext_sidecar_unpopulated)
+                + ". Run full-text population before relying on lexical grounding.",
+            )
+        )
     missing_fts_indexes = tuple(
         name for name in GRAPH_FTS_INDEXES if not _index_exists(inspector, schema, name)
     )
@@ -877,6 +889,26 @@ def _table_is_empty(
     connection: Connection, schema: str | None, table_name: str
 ) -> bool:
     return _count_table_rows(connection, schema, table_name) == 0
+
+
+def _column_has_null_values(
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    """Return whether a full-text sidecar contains any unpopulated rows."""
+
+    qualified = _qualified_name(connection, schema, table_name)
+    column = quote_identifier(connection, column_name)
+    return bool(
+        connection.execute(
+            text(
+                f"SELECT EXISTS (SELECT 1 FROM {qualified} "
+                f"WHERE {column} IS NULL)"
+            )
+        ).scalar()
+    )
 
 
 def _count_table_rows(

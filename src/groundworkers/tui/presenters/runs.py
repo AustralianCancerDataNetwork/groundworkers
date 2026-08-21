@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from groundskeeping.contracts import (
     EmptyView,
     SemanticStatus,
@@ -15,6 +17,61 @@ from groundworkers.application.setup.maintenance_runs import (
     RunStatus,
 )
 from groundworkers.tui.presenters.base import SetupPresenterBase
+
+_ANSI_ESCAPE = re.compile(r"\x1b(?:[@-_][0-?]*[ -/]*[@-~])")
+_TQDM_PROGRESS = re.compile(
+    r"(?P<label>[^:\r\n]{1,80}):\s*"
+    r"(?P<percent>\d+(?:\.\d+)?)%\s*"
+    r"(?:\|.*?\|\s*)?"
+    r"(?P<current>\d[\d,]*)\s*/\s*(?P<total>\d[\d,]*)"
+    r"(?:\s*\[(?P<elapsed>[^<\]]+?)\s*<\s*"
+    r"(?P<remaining>[^,\]]+?)(?:,\s*(?P<rate>[^\]]+))?\])?"
+)
+
+
+def format_progress_tail(tail: str, *, bar_width: int = 16) -> str:
+    """Collapse repeated tqdm updates into one compact detail-pane display.
+
+    Maintenance commands write their stdout and stderr to a durable log. This
+    formatter is intentionally best-effort and Groundworkers-owned: it knows
+    about the tqdm-like output produced by those commands, while non-matching
+    lines remain available as ordinary log text.
+    """
+    cleaned = _ANSI_ESCAPE.sub("", tail).replace("\r", "\n")
+    ordinary_lines: list[str] = []
+    latest_progress: re.Match[str] | None = None
+    for raw_line in cleaned.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = _TQDM_PROGRESS.search(line)
+        if match is None:
+            ordinary_lines.append(line)
+        else:
+            latest_progress = match
+
+    if latest_progress is None:
+        return "\n".join(ordinary_lines)
+
+    percent = max(0.0, min(100.0, float(latest_progress["percent"])))
+    filled = round(bar_width * percent / 100)
+    bar = "█" * filled + "░" * (bar_width - filled)
+    percent_text = f"{percent:g}%"
+    label = latest_progress["label"].strip()
+    progress_lines = [f"{label}: [{bar}] {percent_text}"]
+    counts = (
+        f"{int(latest_progress['current'].replace(',', '')):,}/"
+        f"{int(latest_progress['total'].replace(',', '')):,}"
+    )
+    metadata = [counts]
+    if latest_progress["rate"]:
+        metadata.append(latest_progress["rate"].strip())
+    if latest_progress["remaining"]:
+        metadata.append(f"ETA {latest_progress['remaining'].strip()}")
+    if latest_progress["elapsed"]:
+        metadata.append(f"elapsed {latest_progress['elapsed'].strip()}")
+    progress_lines.append(" · ".join(metadata))
+    return "\n".join((*ordinary_lines, *progress_lines))
 
 
 class RunsPresenter(SetupPresenterBase):
@@ -102,4 +159,4 @@ def _run_row(run: MaintenanceRun, *, selected_run_id: str | None) -> TableRow:
     )
 
 
-__all__ = ["RunsPresenter"]
+__all__ = ["RunsPresenter", "format_progress_tail"]

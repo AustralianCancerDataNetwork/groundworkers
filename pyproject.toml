@@ -24,8 +24,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# No `llm` extra: chat runs through omop-llm's provider-neutral ModelBackend,
-# which is a core dependency. Nothing imports the OpenAI SDK any more.
 xlsx = [
   "openpyxl>=3.1,<4",
 ]
@@ -33,7 +31,7 @@ pdf = [
   "pdfplumber>=0.10",
 ]
 tui = [
-  "groundskeeping>=0.6.0,<1",
+  "groundskeeping>=0.6.1,<1",
   "textual>=0.60",
   "rich>=13,<15",
 ]

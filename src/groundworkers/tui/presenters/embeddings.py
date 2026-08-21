@@ -47,7 +47,7 @@ class EmbeddingsPresenter(SetupPresenterBase):
             coverage,
             reconciliation,
         )
-        if capability.ready:
+        if _embedding_setup_ready(capability):
             return SemanticStatus.OK
         if reconciliation is None and coverage is None:
             return SemanticStatus.IDLE
@@ -104,7 +104,7 @@ class EmbeddingsPresenter(SetupPresenterBase):
             message="Counting CDM vocabularies and vector-store rows.",
             detail=(
                 "This can take a moment for a full OMOP vocabulary. "
-                "The TUI is waiting for the database queries to return."
+                "Waiting for database queries..."
             ),
         )
 
@@ -260,7 +260,6 @@ def _setup_rows_with_coverage(
     reconciliation: ModelReconciliation | None = None,
 ) -> tuple[TableRow, ...]:
     coverage = report.coverage
-    index = report.index
     rows: list[TableRow] = [
         TableRow(
             key="embeddings.store",
@@ -281,10 +280,6 @@ def _setup_rows_with_coverage(
                 _model_label(report.configuration),
                 _model_status(report.configuration, reconciliation),
             ),
-        ),
-        TableRow(
-            key="embeddings.index",
-            cells=("Index", index.display, _index_status(index)),
         ),
     ]
     if coverage.available:
@@ -324,7 +319,6 @@ def _setup_rows_with_coverage(
                 ),
             )
         )
-    rows.extend(_index_warning_rows(index))
     rows.extend(_reconciliation_rows(reconciliation))
     return tuple(rows)
 
@@ -550,37 +544,6 @@ def _coverage_detail_view(report: EmbeddingCoverageReport) -> TableView | TextVi
     )
 
 
-def _index_warning_rows(index) -> tuple[TableRow, ...]:
-    if index.insert_warning is None:
-        return ()
-    rows = [
-        TableRow(
-            key="embeddings.index_warning",
-            cells=(
-                "! Index warning",
-                "Adding over an existing physical vector index will be slow.",
-                "Drop before large runs",
-            ),
-        ),
-        TableRow(
-            key="embeddings.index_rebuild",
-            cells=(
-                "  After population",
-                "Rebuild the vector index with omop-emb maintenance once inserts finish.",
-                "Required",
-            ),
-        ),
-    ]
-    for offset, sql in enumerate(index.drop_sql, start=1):
-        rows.append(
-            TableRow(
-                key=f"embeddings.index_drop.{offset}",
-                cells=(f"  Drop SQL {offset}", sql, "Suggested"),
-            )
-        )
-    return tuple(rows)
-
-
 def _coverage_status(
     report: EmbeddingCoverageReport,
     *,
@@ -597,7 +560,7 @@ def _coverage_status(
             return reconciled
     if not report.coverage.available:
         return SemanticStatus.ERROR
-    return SemanticStatus.OK if capability.ready else SemanticStatus.WARNING
+    return SemanticStatus.OK if _embedding_setup_ready(capability) else SemanticStatus.WARNING
 
 
 def _coverage_message(
@@ -616,17 +579,28 @@ def _coverage_message(
         return _reconciliation_message(reconciliation)
     if not report.coverage.available:
         return "Vocabulary coverage could not be loaded."
-    if capability.blockers:
-        return capability.blockers[0]
+    blockers = tuple(
+        blocker
+        for blocker in capability.blockers
+        if "physical embedding index" not in blocker
+    )
+    if blockers:
+        return blockers[0]
+    if capability.coverage_complete:
+        return "Embedding coverage is complete. Performance indexes are managed from Performance."
     return (
         f"{report.coverage.pending_total:,} missing concept embeddings across "
         f"{len(report.coverage.rows):,} vocabularies."
     )
 
 
-def _index_status(index) -> str:
-    if index.insert_warning is not None:
-        return "Warning"
-    if index.registered:
-        return "Ready"
-    return "Unregistered"
+def _embedding_setup_ready(capability) -> bool:
+    """Whether embedding setup is healthy, excluding index policy."""
+
+    return bool(
+        capability.configured
+        and capability.store_initialized
+        and capability.provider_model_verified
+        and capability.coverage_available
+        and capability.coverage_complete
+    )

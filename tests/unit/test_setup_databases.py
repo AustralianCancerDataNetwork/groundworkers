@@ -151,6 +151,48 @@ def test_graph_readiness_reports_missing_sidecars_and_indexes(tmp_path: Path) ->
     }
 
 
+def test_graph_readiness_reports_unpopulated_fulltext_sidecars(tmp_path: Path) -> None:
+    db_path = tmp_path / "omop.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE concept ("
+                "concept_id INTEGER PRIMARY KEY, "
+                "concept_name_tsvector TEXT"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE concept_synonym ("
+                "concept_synonym_id INTEGER PRIMARY KEY, "
+                "concept_synonym_name_tsvector TEXT"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO concept (concept_id, concept_name_tsvector) "
+                "VALUES (1, NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO concept_synonym "
+                "(concept_synonym_id, concept_synonym_name_tsvector) "
+                "VALUES (1, NULL)"
+            )
+        )
+    engine.dispose()
+
+    result = verify_database_target(_target(db_path, role="graph"))
+
+    assert "fulltext_sidecar_unpopulated" in {
+        diagnostic.code for diagnostic in result.diagnostics
+    }
+
+
 def test_functional_index_detection_accepts_hand_named_postgres_expressions() -> None:
     assert _index_defines_lower_expression(
         "CREATE INDEX idx_concept_lower_name "

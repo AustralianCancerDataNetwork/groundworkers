@@ -36,6 +36,7 @@ __all__ = [
     "PREDICATE_CSV_NAMES",
     "GraphRemediation",
     "GraphRemediationRequest",
+    "build_fulltext_commands",
     "build_graph_remediation_commands",
     "launch_graph_remediation",
     "outstanding_remediations",
@@ -81,7 +82,10 @@ _REMEDIATION_CODES: dict[GraphRemediation, tuple[str, ...]] = {
         "graph_tables_missing",
         "graph_tables_empty",
     ),
-    GraphRemediation.FULLTEXT_INDEXES: ("fulltext_indexes_missing",),
+    GraphRemediation.FULLTEXT_INDEXES: (
+        "fulltext_indexes_missing",
+        "fulltext_sidecar_unpopulated",
+    ),
     GraphRemediation.FUNCTIONAL_INDEXES: ("functional_indexes_missing",),
 }
 
@@ -91,6 +95,29 @@ class GraphRemediationRequest:
     actions: tuple[GraphRemediation, ...]
     predicate_csv_dir: Path | None = None
     cluster: bool = True
+
+
+def build_fulltext_commands(
+    *,
+    config_path: str | Path | None = None,
+) -> tuple[MaintenanceCommand, ...]:
+    """Build the complete full-text preparation sequence.
+
+    Installing the sidecars and GIN indexes is not enough: the sidecar values
+    must also be populated before full-text search can return candidates.
+    """
+
+    environment: tuple[tuple[str, str], ...] = ()
+    if config_path is not None:
+        environment = (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
+    executable = _executable("omop-alchemy")
+    return tuple(
+        MaintenanceCommand(
+            argv=(executable, "fulltext", action),
+            environment=environment,
+        )
+        for action in ("install", "populate")
+    )
 
 
 def outstanding_remediations(
@@ -154,21 +181,7 @@ def build_graph_remediation_commands(
         )
 
     if GraphRemediation.FULLTEXT_INDEXES in selected:
-        # install creates the tsvector columns and GIN indexes; populate fills
-        # them. Installing alone leaves the indexes empty, so full-text grounding
-        # would match nothing while the readiness check reported them present.
-        commands.append(
-            MaintenanceCommand(
-                argv=(_executable("omop-alchemy"), "fulltext", "install"),
-                environment=environment,
-            )
-        )
-        commands.append(
-            MaintenanceCommand(
-                argv=(_executable("omop-alchemy"), "fulltext", "populate"),
-                environment=environment,
-            )
-        )
+        commands.extend(build_fulltext_commands(config_path=config_path))
 
     if GraphRemediation.FUNCTIONAL_INDEXES in selected:
         argv = [_executable("omop-alchemy"), "indexes", "enable", "--vocab"]

@@ -63,7 +63,8 @@ from groundworkers.tui.presenters.embeddings import EmbeddingsPresenter
 from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.presenters.overview import OverviewPresenter
-from groundworkers.tui.presenters.runs import RunsPresenter
+from groundworkers.tui.presenters.performance import PerformancePresenter
+from groundworkers.tui.presenters.runs import RunsPresenter, format_progress_tail
 from groundworkers.tui.state import SetupSession
 from groundworkers.tui.wizards.config_location import ConfigLocationWizardController
 from groundworkers.tui.wizards.graph_maintenance import GraphMaintenanceWizardController
@@ -76,6 +77,8 @@ EMBEDDINGS_SECTION = "setup.embeddings"
 CHAT_SECTION = "setup.chat"
 CONFIGURATION_SECTION = "setup.configuration"
 RUNS_SECTION = "setup.runs"
+PERFORMANCE_SECTION = "setup.performance"
+RUNS_REFRESH_INTERVAL = 15.0
 
 # The database target whose diagnostics decide the Graph section's status.
 GRAPH_READINESS_TARGET = "database.graph"
@@ -88,6 +91,7 @@ SECTION_TITLES = {
     EMBEDDINGS_SECTION: "Embeddings Setup",
     CHAT_SECTION: "Chat Setup",
     RUNS_SECTION: "Runs",
+    PERFORMANCE_SECTION: "Performance",
 }
 
 
@@ -101,6 +105,7 @@ class SetupPage(GroundworkersPage):
         *,
         database: DatabasePresenter,
         overview: OverviewPresenter | None = None,
+        performance: PerformancePresenter | None = None,
         graph: GraphPresenter,
         llm_provider: LlmProviderPresenter,
         embeddings: EmbeddingsPresenter,
@@ -112,6 +117,7 @@ class SetupPage(GroundworkersPage):
         self._session = session
         self._database = database
         self._overview = overview or OverviewPresenter()
+        self._performance = performance or PerformancePresenter()
         self._graph = graph
         self._llm_provider = llm_provider
         self._embeddings = embeddings
@@ -122,8 +128,20 @@ class SetupPage(GroundworkersPage):
         self._selected_section = OVERVIEW_SECTION
         self._selected_database_target_key: str | None = None
         self._selected_run_id: str | None = None
+        self._runs_refresh_timer = None
+        self._runs_refresh_context: PageContext | None = None
+        self._runs_refresh_in_flight = False
 
     def activate(self, context: PageContext) -> None:
+        self._runs_refresh_context = context
+        # Direct presenter/page tests call activate() without mounting the
+        # widget. Textual timers require a running message pump; the real app
+        # activates pages after mount, when is_running is true.
+        if self.is_running and self._runs_refresh_timer is None:
+            self._runs_refresh_timer = self.set_interval(
+                RUNS_REFRESH_INTERVAL,
+                self._refresh_runs,
+            )
         if self._should_choose_config_location():
             # The default path is safe to use. Ask for a location only when the
             # caller supplied or rejected a different path.
@@ -140,6 +158,36 @@ class SetupPage(GroundworkersPage):
             else:
                 context.open_wizard(ConfigLocationWizardController(self._session))
             return
+        self._show_section_detail(context)
+
+    def deactivate(self, context: PageContext) -> None:
+        if self._runs_refresh_timer is not None:
+            self._runs_refresh_timer.stop()
+            self._runs_refresh_timer = None
+        self._runs_refresh_context = None
+
+    def _refresh_runs(self) -> None:
+        """Refresh the selected Runs view without overlapping refreshes."""
+        context = self._runs_refresh_context
+        if (
+            context is None
+            or self._selected_section != RUNS_SECTION
+            or self._runs_refresh_in_flight
+        ):
+            return
+        self._runs_refresh_in_flight = True
+        try:
+            self._refresh_runs_surface(context)
+        finally:
+            self._runs_refresh_in_flight = False
+
+    def _refresh_runs_surface(self, context: PageContext) -> None:
+        """Refresh run cells through Groundskeeping's stable table API."""
+        view = self._runs.landing(selected_run_id=self._selected_run_id)
+        if not isinstance(view, TableView):
+            self._show_current_view(context)
+            return
+        context.surface.refresh_view(self.route.key, view)
         self._show_section_detail(context)
 
     def _config_path_was_rejected(self) -> bool:
@@ -206,6 +254,15 @@ class SetupPage(GroundworkersPage):
                     ),
                 ),
                 SectionItem(
+                    PERFORMANCE_SECTION,
+                    "Performance",
+                    status=self._performance.status(
+                        connections=self._session.connection_results,
+                        embedding_configuration=embeddings,
+                        embedding_coverage=self._session.embedding_coverage,
+                    ),
+                ),
+                SectionItem(
                     LLM_PROVIDER_SECTION,
                     "Chat Model",
                     status=self._llm_provider.status(
@@ -236,7 +293,6 @@ class SetupPage(GroundworkersPage):
                 SectionItem(
                     RUNS_SECTION,
                     "Runs",
-                    status=self._runs.status(),
                 ),
             ),
         )
@@ -261,6 +317,15 @@ class SetupPage(GroundworkersPage):
                 database_ready=database_ready,
                 configuration=load_graph_configuration(self._session.configuration),
                 readiness=self._graph_readiness(),
+            )
+        if self._selected_section == PERFORMANCE_SECTION:
+            return self._performance.landing(
+                connections=self._session.connection_results,
+                embedding_configuration=load_embedding_configuration(
+                    self._session.configuration
+                ),
+                embedding_coverage=self._session.embedding_coverage,
+                can_prepare=self._performance_can_prepare(),
             )
         if self._selected_section == LLM_PROVIDER_SECTION:
             return self._llm_provider.landing(
@@ -309,7 +374,7 @@ class SetupPage(GroundworkersPage):
     def row_highlighted(self, row_key: str, context: PageContext) -> None:
         if self._selected_section == RUNS_SECTION:
             self._selected_run_id = row_key
-            self._show_current_view(context)
+            self._refresh_runs_surface(context)
             return
         if self._selected_section != DATABASE_SECTION:
             return
@@ -328,7 +393,18 @@ class SetupPage(GroundworkersPage):
             context.surface.show_detail(self.route.key, detail)
 
     def row_selected(self, row_key: str, context: PageContext) -> None:
-        self.row_highlighted(row_key, context)
+        if self._selected_section in {RUNS_SECTION, DATABASE_SECTION}:
+            self.row_highlighted(row_key, context)
+            return
+        view = self.landing_view(context)
+        if not isinstance(view, TableView):
+            return
+        row = next((item for item in view.rows if item.key == row_key), None)
+        if row is None or row.detail is None:
+            return
+        detail = key_value_detail(f"{self._selected_section_title()} detail", row.detail)
+        if detail is not None:
+            context.surface.show_detail(self.route.key, detail)
 
     def selection_changed(
         self,
@@ -355,6 +431,22 @@ class SetupPage(GroundworkersPage):
             context.open_wizard(
                 GraphMaintenanceWizardController(
                     self._session, self._graph_readiness()
+                )
+            )
+            return
+        if action_key == "performance.refresh":
+            self._start_performance_checks(context)
+            return
+        if action_key == "performance.prepare":
+            from groundworkers.tui.wizards.performance_maintenance import (
+                PerformanceMaintenanceWizardController,
+            )
+
+            context.open_wizard(
+                PerformanceMaintenanceWizardController(
+                    self._session,
+                    embedding_coverage=self._session.embedding_coverage,
+                    trigram_available=self._trigram_available(),
                 )
             )
             return
@@ -492,6 +584,36 @@ class SetupPage(GroundworkersPage):
 
         self.run_worker(verify, thread=True, exclusive=True)
 
+    def _start_performance_checks(self, context: PageContext) -> None:
+        targets = resolve_database_targets(self._session.configuration)
+        if not targets:
+            context.notify(
+                "Resolve the configuration issues before checking performance indexes.",
+                severity="warning",
+            )
+            return
+        context.notify("Checking performance indexes.")
+
+        def verify() -> None:
+            results = tuple(verify_database_target(target) for target in targets)
+            coverage = load_embedding_coverage_report(
+                self._session.configuration,
+                standard_only=self._session.embedding_standard_only,
+            )
+            self.app.call_from_thread(
+                self._finish_performance_checks,
+                results,
+                coverage,
+                context,
+            )
+
+        self.run_worker(verify, thread=True, exclusive=True)
+
+    def _finish_performance_checks(self, results, coverage, context: PageContext) -> None:
+        self._session.connection_results = tuple(results)
+        self._session.embedding_coverage = coverage
+        self._show_current_state(context)
+
     def _start_verify_all(self, context: PageContext) -> None:
         """Run the required and configured capability checks as one action."""
 
@@ -539,6 +661,43 @@ class SetupPage(GroundworkersPage):
     def _graph_is_ready(self) -> bool:
         result = self._graph_readiness()
         return result is not None and result.connected and not result.has_warnings
+
+    def _trigram_available(self) -> bool:
+        result = self._graph_target_result("database.groundworkers")
+        target = next(
+            (
+                item
+                for item in resolve_database_targets(self._session.configuration)
+                if item.key == "database.groundworkers"
+            ),
+            None,
+        )
+        return bool(
+            target is not None
+            and target.connection_url.startswith(("postgresql", "postgres"))
+            and result is not None
+            and result.connected
+            and not any(
+                diagnostic.code == "trigram_indexes_unchecked"
+                for diagnostic in result.diagnostics
+            )
+        )
+
+    def _graph_target_result(self, target_key: str):
+        return next(
+            (result for result in self._session.connection_results if result.target_key == target_key),
+            None,
+        )
+
+    def _performance_can_prepare(self) -> bool:
+        coverage = self._session.embedding_coverage
+        embedding_available = bool(
+            coverage is not None
+            and coverage.coverage.available
+            and coverage.index.registered
+            and coverage.configuration.backend == "pgvector"
+        )
+        return self._trigram_available() or embedding_available
 
     def _integration_output(self):
         return build_integration_output(self._session.configuration)
@@ -636,7 +795,7 @@ class SetupPage(GroundworkersPage):
                 self.route.key,
                 TextView(
                     title="Readiness",
-                    body="Verify all checks the CDM and any configured optional capabilities.",
+                    body="",
                 ),
             )
             return
@@ -681,6 +840,7 @@ class SetupPage(GroundworkersPage):
                     if step_index is not None
                     else ""
                 )
+                tail = format_progress_tail(tail)
                 step_label = (
                     f"{step_index + 1}/{run.total} · "
                     f"{run.steps[step_index].spec.key}"

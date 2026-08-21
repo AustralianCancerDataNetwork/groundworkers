@@ -109,6 +109,20 @@ def test_vocab_service_exact_normalized_sidecar_and_standard_navigation(tmp_path
     assert navigation[1].standard_concepts[0].concept_id == 1
 
 
+def test_fulltext_probe_uses_the_first_available_concept_label(tmp_path, monkeypatch) -> None:
+    service = _service(tmp_path)
+    queried: list[str] = []
+
+    def fake_search(query: str, **_kwargs):
+        queried.append(query)
+        return [object()], True
+
+    monkeypatch.setattr(service, "search_fulltext", fake_search)
+
+    assert service.probe_fulltext() == (True, None)
+    assert queried == ["Diabetes mellitus"]
+
+
 def test_search_tools_expose_the_characterized_vocab_service(tmp_path) -> None:
     server = GroundworkersMCPServer("search-test")
     register_search_tools(server, _service(tmp_path))

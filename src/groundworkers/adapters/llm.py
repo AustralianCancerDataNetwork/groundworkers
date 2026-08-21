@@ -9,7 +9,6 @@ from groundworkers.base.errors import GroundworkersError
 if TYPE_CHECKING:
     from omop_llm import ModelBackend
 
-_STATUS_TIMEOUT_SECONDS = 2.0
 _COMPLETION_TIMEOUT_SECONDS = 180.0
 
 
@@ -49,12 +48,17 @@ class LLMAdapter:
     def status(self) -> dict[str, Any]:
         """Return availability and configuration details. Never raises.
 
-        Probes the provider with a short timeout. On failure returns
+        Probes the provider's model inventory. On failure returns
         ``{"available": False, ..., "detail": "<reason>"}``.
         """
         try:
             backend = self._get_backend()
-            available = backend.is_available(timeout=_STATUS_TIMEOUT_SECONDS)
+            # ModelBackend's sync availability probe forwards kwargs to the
+            # provider inventory call. Ollama's native AsyncClient.list()
+            # accepts no timeout kwarg, so the timeout here turned a healthy
+            # provider into a false negative. The provider/client owns its
+            # transport timeout policy.
+            available = backend.is_available()
             return {
                 "available": available,
                 "provider": backend.provider,
