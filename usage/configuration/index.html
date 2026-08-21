@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://AustralianCancerDataNetwork.github.io/groundworkers/usage/configuration/">
       
       
-        <link rel="prev" href="../installation/">
+        <link rel="prev" href="../setup_journey/">
       
       
         <link rel="next" href="../integrations/">
@@ -288,15 +288,69 @@
   
   
   
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Understand Groundworkers
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Understand Groundworkers
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
-      <a href="../../architecture/" class="md-nav__link">
+      <a href="../../concepts/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Architecture
+    Concepts and capability choices
   
 
     
@@ -305,6 +359,14 @@
   
 
       </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
     </li>
   
 
@@ -378,6 +440,62 @@
     
   
     Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../from-scratch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Initial local setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup_journey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup journey
   
 
     
@@ -488,6 +606,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Typical TOML shape">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reference-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -514,10 +649,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
+  <a href="#mcp-transport-mcp_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mcp
+        MCP transport (mcp_*)
       
     </span>
   </a>
@@ -525,10 +660,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#rest" class="md-nav__link">
+  <a href="#rest-transport-rest_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        rest
+        REST transport (rest_*)
       
     </span>
   </a>
@@ -536,10 +671,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#llm" class="md-nav__link">
+  <a href="#llm_model_name-and-chat" class="md-nav__link">
     <span class="md-ellipsis">
       
-        llm
+        llm_model_name and chat
       
     </span>
   </a>
@@ -547,10 +682,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#grounding" class="md-nav__link">
+  <a href="#grounding-grounding_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        grounding
+        Grounding (grounding_*)
       
     </span>
   </a>
@@ -558,10 +693,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#source_planning" class="md-nav__link">
+  <a href="#concept-flag-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
-        source_planning
+        Concept flag contract
       
     </span>
   </a>
@@ -569,10 +704,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#knowledge" class="md-nav__link">
+  <a href="#source-planning-source_planning_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        knowledge
+        Source planning (source_planning_*)
       
     </span>
   </a>
@@ -580,10 +715,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#semantic_projection" class="md-nav__link">
+  <a href="#knowledge-packs-knowledge_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        semantic_projection
+        Knowledge packs (knowledge_*)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semantic-projection-semantic_projection_" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantic projection (semantic_projection_*)
       
     </span>
   </a>
@@ -608,10 +754,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#with-shared-cdm-and-omop_graph-configured" class="md-nav__link">
+  <a href="#with-cdm_db-alone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With shared CDM and omop_graph configured
+        With cdm_db alone
       
     </span>
   </a>
@@ -619,10 +765,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-omop_emb-configured" class="md-nav__link">
+  <a href="#with-embedding_model_name-and-vector_store_name" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With omop_emb configured
+        With embedding_model_name and vector_store_name
       
     </span>
   </a>
@@ -630,10 +776,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-groundworkersllmenabled-true" class="md-nav__link">
+  <a href="#with-groundworkersllm_model_name-configured" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With groundworkers.llm.enabled = true
+        With groundworkers.llm_model_name configured
       
     </span>
   </a>
@@ -641,10 +787,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-groundworkerssemantic_projectionenabled-true" class="md-nav__link">
+  <a href="#with-semantic_projection_enabled-true" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With groundworkers.semantic_projection.enabled = true
+        With semantic_projection_enabled = true
       
     </span>
   </a>
@@ -715,34 +861,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../testing/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Testing
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -782,7 +900,7 @@
   <span class="md-ellipsis">
     
   
-    Development
+    Tools
   
 
     
@@ -795,95 +913,6 @@
         
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Development
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../development/extending/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Extending groundworkers
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Tools
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1124,6 +1153,62 @@
   
   
     <li class="md-nav__item">
+      <a href="../../tools/knowledge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Knowledge Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/source_planning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Planning Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../tools/system/" class="md-nav__link">
         
   
@@ -1202,10 +1287,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -1223,8 +1308,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1487,17 +1572,17 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
   <span class="md-ellipsis">
     
   
-    Adapters
+    Development and architecture
   
 
     
@@ -1508,16 +1593,128 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
-    Adapters
+    Development and architecture
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python integration details
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/extending/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending groundworkers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1533,7 +1730,7 @@
   <span class="md-ellipsis">
     
   
-    CDM
+    CDM adapter
   
 
     
@@ -1561,7 +1758,7 @@
   <span class="md-ellipsis">
     
   
-    OmopGraph
+    OMOP graph adapter
   
 
     
@@ -1589,7 +1786,7 @@
   <span class="md-ellipsis">
     
   
-    OmopEmb
+    OMOP embedding adapter
   
 
     
@@ -1632,10 +1829,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   
@@ -1653,8 +1850,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1868,6 +2065,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Typical TOML shape">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reference-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1894,10 +2108,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
+  <a href="#mcp-transport-mcp_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        mcp
+        MCP transport (mcp_*)
       
     </span>
   </a>
@@ -1905,10 +2119,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#rest" class="md-nav__link">
+  <a href="#rest-transport-rest_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        rest
+        REST transport (rest_*)
       
     </span>
   </a>
@@ -1916,10 +2130,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#llm" class="md-nav__link">
+  <a href="#llm_model_name-and-chat" class="md-nav__link">
     <span class="md-ellipsis">
       
-        llm
+        llm_model_name and chat
       
     </span>
   </a>
@@ -1927,10 +2141,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#grounding" class="md-nav__link">
+  <a href="#grounding-grounding_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        grounding
+        Grounding (grounding_*)
       
     </span>
   </a>
@@ -1938,10 +2152,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#source_planning" class="md-nav__link">
+  <a href="#concept-flag-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
-        source_planning
+        Concept flag contract
       
     </span>
   </a>
@@ -1949,10 +2163,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#knowledge" class="md-nav__link">
+  <a href="#source-planning-source_planning_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        knowledge
+        Source planning (source_planning_*)
       
     </span>
   </a>
@@ -1960,10 +2174,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#semantic_projection" class="md-nav__link">
+  <a href="#knowledge-packs-knowledge_" class="md-nav__link">
     <span class="md-ellipsis">
       
-        semantic_projection
+        Knowledge packs (knowledge_*)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semantic-projection-semantic_projection_" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Semantic projection (semantic_projection_*)
       
     </span>
   </a>
@@ -1988,10 +2213,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#with-shared-cdm-and-omop_graph-configured" class="md-nav__link">
+  <a href="#with-cdm_db-alone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With shared CDM and omop_graph configured
+        With cdm_db alone
       
     </span>
   </a>
@@ -1999,10 +2224,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-omop_emb-configured" class="md-nav__link">
+  <a href="#with-embedding_model_name-and-vector_store_name" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With omop_emb configured
+        With embedding_model_name and vector_store_name
       
     </span>
   </a>
@@ -2010,10 +2235,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-groundworkersllmenabled-true" class="md-nav__link">
+  <a href="#with-groundworkersllm_model_name-configured" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With groundworkers.llm.enabled = true
+        With groundworkers.llm_model_name configured
       
     </span>
   </a>
@@ -2021,10 +2246,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#with-groundworkerssemantic_projectionenabled-true" class="md-nav__link">
+  <a href="#with-semantic_projection_enabled-true" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With groundworkers.semantic_projection.enabled = true
+        With semantic_projection_enabled = true
       
     </span>
   </a>
@@ -2127,17 +2352,14 @@
 
 
 <h1 id="configuration">Configuration</h1>
-<p><code>groundworkers</code> uses the shared OMOP stack configuration managed by
-<code>oa-configurator</code>. <code>build_app_config(...)</code> resolves that shared stack into a
-runtime <code>AppConfig</code>; callers do not provide a separate <code>groundworkers</code>-specific
-runtime file.</p>
+<p><code>groundworkers</code> uses the shared OMOP stack configuration managed by <code>oa-configurator</code>. <code>build_app_config(...)</code> resolves that shared stack into a runtime <code>AppConfig</code>; callers do not provide a separate <code>groundworkers</code>-specific runtime file.</p>
 <h2 id="runtime-entrypoints">Runtime entrypoints</h2>
 <p>Use these helpers depending on how much control you need:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.bootstrap</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_app_config</span><span class="p">,</span> <span class="n">build_app_config_from_stack</span>
 </code></pre></div>
 <ul>
 <li><code>build_app_config()</code> loads the active shared stack config from disk</li>
-<li><code>build_app_config(config_path=..., profile=...)</code> overrides the file or profile</li>
+<li><code>build_app_config(config_path=...)</code> loads an explicit shared-stack file</li>
 <li><code>build_app_config_from_stack(stack)</code> is useful in tests and programmatic tooling</li>
 </ul>
 <p>Then construct the application container:</p>
@@ -2147,91 +2369,151 @@ runtime file.</p>
 <span class="n">config</span> <span class="o">=</span> <span class="n">build_app_config</span><span class="p">()</span>
 <span class="n">app</span> <span class="o">=</span> <span class="n">build_application</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
 </code></pre></div>
-<p>The CLI entry point also accepts transport overrides and an interactive
-semantic-projection explorer flag:</p>
+<p>The CLI entry point also accepts transport overrides and a flag for the interactive setup console:</p>
 <div class="highlight"><pre><span></span><code>groundworkers<span class="w"> </span>--transport<span class="w"> </span>streamable-http<span class="w"> </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
 groundworkers<span class="w"> </span>--tui
 </code></pre></div>
-<p><code>--tui</code> launches the semantic projection explorer directly and exits instead of
-starting an MCP or REST server. Install the optional TUI dependencies with
-<code>uv sync --extra tui</code> or <code>pip install groundworkers[tui]</code>, and make sure a
-shared stack config is loadable with
-<code>tools.groundworkers.semantic_projection.enabled = true</code> in the active profile.</p>
+<p><code>--tui</code> launches the setup console and exits instead of starting an MCP or REST server. Install the optional TUI dependencies with <code>uv sync --extra tui</code> or <code>pip install groundworkers[tui]</code>.</p>
 <h2 id="configuration-ownership">Configuration ownership</h2>
-<p><code>groundworkers</code> does not own every setting it consumes. The shared stack keeps
-package ownership explicit:</p>
+<p><code>groundworkers</code> does not own every setting it consumes. The shared stack keeps package ownership explicit:</p>
 <table>
 <thead>
 <tr>
 <th>Concern</th>
-<th>Package that owns it</th>
+<th>Where it lives</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Shared CDM resource and schema naming</td>
-<td><code>omop-alchemy</code></td>
+<td>Physical connection credentials and endpoints</td>
+<td><code>[connections.*]</code></td>
 </tr>
 <tr>
-<td>Graph traversal tuning</td>
-<td><code>omop-graph</code></td>
+<td>Logical databases, schemas, and CDM/vocabulary roles</td>
+<td><code>[databases.*]</code></td>
 </tr>
 <tr>
-<td>Embedding backend, model, cache, and embedding store</td>
-<td><code>omop-emb</code></td>
+<td>Model provider endpoints and credentials</td>
+<td><code>[providers.*]</code></td>
 </tr>
 <tr>
-<td>MCP defaults, REST defaults, LLM worker settings, source-planning settings, knowledge-pack settings, semantic-projection settings</td>
-<td><code>groundworkers</code></td>
+<td>Model identity and capabilities</td>
+<td><code>[models.*]</code></td>
+</tr>
+<tr>
+<td>Vector-store backend and its database</td>
+<td><code>[vector_stores.*]</code></td>
+</tr>
+<tr>
+<td>Which of those entries Groundworkers uses, plus MCP/REST defaults, grounding policy, source-planning, knowledge-pack, and semantic-projection settings</td>
+<td><code>[tools.groundworkers]</code></td>
 </tr>
 </tbody>
 </table>
-<p>This keeps the <code>groundworkers</code> package config intentionally focused on worker-
-owned behavior and transport defaults.</p>
+<p>Groundworkers references stack entries <strong>by name</strong> and resolves them through <code>oa-configurator</code>. It does not read any other package's configuration section.</p>
 <h2 id="typical-toml-shape">Typical TOML shape</h2>
 <p>This is the steady-state structure to expect in <code>config.toml</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="k">[resources.cdm_db]</span>
-<span class="n">database</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_postgres&quot;</span>
-<span class="n">cdm_schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;omop&quot;</span>
-<span class="n">vocab_schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;omop_vocab&quot;</span>
+<div class="highlight"><pre><span></span><code><span class="k">[connections.cdm_main]</span>
+<span class="n">dialect</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;postgresql+psycopg&quot;</span>
+<span class="n">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;localhost&quot;</span>
+<span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5432</span>
+<span class="n">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;omop&quot;</span>
+<span class="n">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;…&quot;</span>
+<span class="n">database_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;omop&quot;</span>
+
+<span class="k">[databases.cdm_db]</span>
+<span class="n">kind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm&quot;</span>
+<span class="n">connection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_main&quot;</span>
+<span class="n">schema_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;public&quot;</span>
+<span class="n">vocab_schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;public&quot;</span>
+
+<span class="k">[providers.local_ollama]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ollama&quot;</span>
+<span class="n">base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://localhost:11434&quot;</span>
+
+<span class="k">[models.embedding_model]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;local_ollama&quot;</span>
+<span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qwen3-embedding:0.6b&quot;</span>
+<span class="n">embedding_dim</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1024</span>
+<span class="n">embeddings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[models.chat_model]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;local_ollama&quot;</span>
+<span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qwen3:8b&quot;</span>
+<span class="n">structured_output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[vector_stores.embeddings]</span>
+<span class="n">backend_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;pgvector&quot;</span>
+<span class="n">database</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;vector_db&quot;</span>
 
 <span class="k">[tools.groundworkers]</span>
-<span class="n">default_resource</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_db&quot;</span>
+<span class="n">cdm_db</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_db&quot;</span>
+<span class="n">embedding_model_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;embedding_model&quot;</span>
+<span class="n">llm_model_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;chat_model&quot;</span>
+<span class="n">vector_store_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;embeddings&quot;</span>
 <span class="n">app_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;groundworkers&quot;</span>
 
-<span class="k">[tools.groundworkers.mcp]</span>
-<span class="n">transport</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;streamable-http&quot;</span>
-<span class="n">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span>
-<span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8000</span>
+<span class="n">mcp_transport</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;streamable-http&quot;</span>
+<span class="n">mcp_host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span>
+<span class="n">mcp_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8000</span>
 
-<span class="k">[tools.groundworkers.rest]</span>
-<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
-<span class="n">host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span>
-<span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span>
-<span class="n">base_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/v1&quot;</span>
+<span class="n">rest_host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span>
+<span class="n">rest_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8080</span>
+<span class="n">rest_base_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/v1&quot;</span>
 
-<span class="k">[tools.groundworkers.llm]</span>
-<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
-<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;openai-compatible&quot;</span>
-<span class="n">api_base</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://localhost:11434/v1&quot;</span>
-<span class="n">api_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ollama&quot;</span>
-<span class="n">default_model_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qwen3:8b&quot;</span>
+<span class="n">grounding_min_fulltext_overlap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span>
+<span class="n">grounding_max_depth</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span>
 
-<span class="k">[tools.groundworkers.grounding]</span>
-<span class="n">embedding_model_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qwen3-embedding:0.6b&quot;</span>
-<span class="n">min_fulltext_overlap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span>
+<span class="n">source_planning_llm_assisted_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 
-<span class="k">[tools.groundworkers.source_planning]</span>
-<span class="n">llm_assisted_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="k">[tools.omop_emb]</span>
+<span class="n">cdm_db</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_db&quot;</span>
+<span class="n">embedding_model_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;embedding_model&quot;</span>
+<span class="n">vector_store_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;embeddings&quot;</span>
+
+<span class="k">[tools.omop_alchemy]</span>
+<span class="n">cdm_db</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_db&quot;</span>
+
+<span class="k">[tools.omop_graph]</span>
+<span class="n">cdm_db</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cdm_db&quot;</span>
 </code></pre></div>
-<p>If embeddings are enabled, <code>omop-emb</code> contributes its own package section:</p>
-<div class="highlight"><pre><span></span><code><span class="k">[tools.omop_emb]</span>
-<span class="n">backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;sqlitevec&quot;</span>
-<span class="n">sqlite_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;.local/omop-emb.db&quot;</span>
-<span class="n">embedding_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qwen3-embedding:0.6b&quot;</span>
-<span class="n">api_base</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://localhost:11434/v1&quot;</span>
-<span class="n">api_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ollama&quot;</span>
-</code></pre></div>
+<p>Settings are flat, grouped by name prefix. For example, <code>omop-config configure groundworkers --grounding-max-depth 6</code> updates that field without changing its neighbours.</p>
+<p>A CDM-only stack is valid: omit <code>embedding_model_name</code> and <code>vector_store_name</code> and every lexical feature still works. See <a href="#what-becomes-available-at-runtime">Runtime combinations</a>.</p>
+<p>When both embedding references are configured, the setup console also writes <code>[tools.omop_emb]</code> with the same <code>cdm_db</code>, model, and vector-store names. <code>oa-configurator</code> gives each package a typed tool section; the database, model, provider, and store definitions remain single shared entries. This binding is required because managed population runs execute the <code>omop-emb</code> CLI. The setup change is planned and saved atomically with <code>[tools.groundworkers]</code>.</p>
+<p>CDM setup similarly writes <code>[tools.omop_alchemy]</code> and <code>[tools.omop_graph]</code> with the same <code>cdm_db</code> reference. Groundworkers launches those packages' schema, full-text, index, and relationship-classification maintenance CLIs, which resolve their own typed package sections. Groundworkers' runtime graph adapter continues to receive its engine and optional embedding dependencies directly; it does not read omop-graph's traversal or embedding configuration.</p>
+<h3 id="reference-fields">Reference fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>References</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cdm_db</code></td>
+<td>a <code>[databases.*]</code> entry with <code>kind = "cdm"</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>embedding_model_name</code></td>
+<td>a <code>[models.*]</code> entry</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>llm_model_name</code></td>
+<td>a <code>[models.*]</code> entry</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>vector_store_name</code></td>
+<td>a <code>[vector_stores.*]</code> entry</td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p><code>embedding_model_name</code> is the model used for concept-document embeddings and compatible query encoding; <code>llm_model_name</code> is the chat model. Both name <code>[models.*]</code> entries. They may share a provider or model entry when that entry declares the required capabilities, may point at different providers, or one may be unset. There is no separate on/off flag: chat is available exactly when <code>llm_model_name</code> resolves.</p>
 <h2 id="groundworkers-owned-fields">groundworkers-owned fields</h2>
 <h3 id="app_name"><code>app_name</code></h3>
 <p>Application identity used by:</p>
@@ -2241,7 +2523,7 @@ owned behavior and transport defaults.</p>
 <li>runtime describe output</li>
 </ul>
 <p>Default: <code>groundworkers</code></p>
-<h3 id="mcp"><code>mcp</code></h3>
+<h3 id="mcp-transport-mcp_">MCP transport (<code>mcp_*</code>)</h3>
 <p>Default MCP startup settings used when you do not override them on the CLI.</p>
 <table>
 <thead>
@@ -2253,24 +2535,24 @@ owned behavior and transport defaults.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>transport</code></td>
+<td><code>mcp_transport</code></td>
 <td><code>stdio</code> | <code>sse</code> | <code>streamable-http</code></td>
 <td><code>stdio</code></td>
 </tr>
 <tr>
-<td><code>host</code></td>
+<td><code>mcp_host</code></td>
 <td><code>str</code></td>
 <td><code>127.0.0.1</code></td>
 </tr>
 <tr>
-<td><code>port</code></td>
+<td><code>mcp_port</code></td>
 <td><code>int</code></td>
 <td><code>8000</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="rest"><code>rest</code></h3>
-<p>Default REST startup settings.</p>
+<h3 id="rest-transport-rest_">REST transport (<code>rest_*</code>)</h3>
+<p>REST is selected explicitly with <code>--transport rest</code>; it is not started alongside MCP. These settings provide defaults when that transport is selected.</p>
 <table>
 <thead>
 <tr>
@@ -2281,31 +2563,41 @@ owned behavior and transport defaults.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>enabled</code></td>
-<td><code>bool</code></td>
-<td><code>false</code></td>
-</tr>
-<tr>
-<td><code>host</code></td>
+<td><code>rest_host</code></td>
 <td><code>str</code></td>
 <td><code>127.0.0.1</code></td>
 </tr>
 <tr>
-<td><code>port</code></td>
+<td><code>rest_port</code></td>
 <td><code>int</code></td>
 <td><code>8080</code></td>
 </tr>
 <tr>
-<td><code>base_path</code></td>
+<td><code>rest_base_path</code></td>
 <td><code>str</code></td>
 <td><code>/v1</code></td>
 </tr>
 </tbody>
 </table>
 <p><code>base_path</code> is validated to begin with <code>/</code>.</p>
-<h3 id="llm"><code>llm</code></h3>
-<p>Worker-owned LLM settings used by <code>TextService</code>, <code>DomainService</code>, and LLM-assisted
-source planning.</p>
+<h3 id="llm_model_name-and-chat"><code>llm_model_name</code> and chat</h3>
+<p>The chat model used by <code>TextService</code>, <code>DomainService</code>, and LLM-assisted source planning is a named <code>[models.*]</code> entry, exactly like the embedding model. Its endpoint and credentials live on the <code>[providers.*]</code> entry that model references, so they are stored, redacted, and reused the same way as every other provider in the stack:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[providers.local_ollama]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ollama&quot;</span>
+<span class="n">base_url</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://localhost:11434&quot;</span>
+<span class="n">api_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;…&quot;</span>
+
+<span class="k">[models.chat_model]</span>
+<span class="n">provider</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;local_ollama&quot;</span>
+<span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qwen3:8b&quot;</span>
+<span class="n">structured_output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+
+<span class="k">[tools.groundworkers]</span>
+<span class="n">llm_model_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;chat_model&quot;</span>
+</code></pre></div>
+<p><code>structured_output = true</code> declares that the model can honour the JSON-mode request <code>complete_structured</code> makes; omop-llm treats every capability as opt-in. Chat is configured through the setup console's Chat section, using the same configuration workflow as the other setup sections.</p>
+<h3 id="grounding-grounding_">Grounding (<code>grounding_*</code>)</h3>
+<p>Groundworkers-owned grounding policy. omop-graph's traversal limits are per-call arguments, not shared configuration, so they do not appear here.</p>
 <table>
 <thead>
 <tr>
@@ -2316,58 +2608,46 @@ source planning.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>enabled</code></td>
-<td><code>bool</code></td>
-<td><code>false</code></td>
-</tr>
-<tr>
-<td><code>provider</code></td>
-<td><code>str</code></td>
-<td><code>openai-compatible</code></td>
-</tr>
-<tr>
-<td><code>api_base</code></td>
-<td><code>str \| null</code></td>
-<td><code>null</code></td>
-</tr>
-<tr>
-<td><code>api_key</code></td>
-<td><code>str \| null</code></td>
-<td><code>null</code></td>
-</tr>
-<tr>
-<td><code>default_model_name</code></td>
-<td><code>str \| null</code></td>
-<td><code>null</code></td>
-</tr>
-</tbody>
-</table>
-<h3 id="grounding"><code>grounding</code></h3>
-<p>Groundworkers-owned grounding behavior that does not belong in <code>omop-graph</code> or
-<code>omop-emb</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Type</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>embedding_model_name</code></td>
-<td><code>str \| null</code></td>
-<td><code>null</code></td>
-</tr>
-<tr>
-<td><code>min_fulltext_overlap</code></td>
+<td><code>grounding_min_fulltext_overlap</code></td>
 <td><code>float</code></td>
 <td><code>0.0</code></td>
 </tr>
+<tr>
+<td><code>grounding_max_depth</code></td>
+<td><code>int</code> (1-10)</td>
+<td><code>5</code></td>
+</tr>
 </tbody>
 </table>
-<p><code>min_fulltext_overlap</code> must be between <code>0.0</code> and <code>1.0</code>.</p>
-<h3 id="source_planning"><code>source_planning</code></h3>
+<p><code>min_fulltext_overlap</code> must be between <code>0.0</code> and <code>1.0</code>. It is the minimum proportion of query tokens that must appear in a matched concept name for a full-text hit to be accepted; below the threshold grounding falls through to the next tier.</p>
+<p><code>max_depth</code> bounds the hierarchy distance between a grounding candidate and a required parent concept, or the identity-hop count when grounding runs without <code>parent_ids</code>.</p>
+<h3 id="concept-flag-contract">Concept flag contract</h3>
+<p>Grounding results carry strict OMOP flags:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>standard_concept</code></td>
+<td>true only for raw <code>standard_concept = 'S'</code></td>
+</tr>
+<tr>
+<td><code>classification_concept</code></td>
+<td>true only for raw <code>standard_concept = 'C'</code></td>
+</tr>
+<tr>
+<td><code>is_active</code></td>
+<td><code>invalid_reason</code> unset, treating blank and whitespace-only as active</td>
+</tr>
+</tbody>
+</table>
+<p>Grounding can legitimately land on a classification concept (an ATC or CPT4 hierarchy node). Those are valid hierarchy positions but <strong>not</strong> valid mapping targets for a CDM entity field, so check the flags rather than assuming every result is standard.</p>
+<p><code>concept_ground</code> also accepts <code>standard_only</code> and <code>active_only</code> (both default <code>false</code>). They narrow <em>candidate resolution</em>, not the returned results.</p>
+<h3 id="source-planning-source_planning_">Source planning (<code>source_planning_*</code>)</h3>
 <table>
 <thead>
 <tr>
@@ -2378,15 +2658,14 @@ source planning.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>llm_assisted_enabled</code></td>
+<td><code>source_planning_llm_assisted_enabled</code></td>
 <td><code>bool</code></td>
 <td><code>true</code></td>
 </tr>
 </tbody>
 </table>
-<p>This controls whether <code>build_application(...)</code> wires the assisted classifier
-into <code>SourcePlanningService</code> when an LLM adapter is present.</p>
-<h3 id="knowledge"><code>knowledge</code></h3>
+<p>This controls whether <code>build_application(...)</code> wires the assisted classifier into <code>SourcePlanningService</code> when an LLM adapter is present.</p>
+<h3 id="knowledge-packs-knowledge_">Knowledge packs (<code>knowledge_*</code>)</h3>
 <table>
 <thead>
 <tr>
@@ -2397,17 +2676,14 @@ into <code>SourcePlanningService</code> when an LLM adapter is present.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>packs_root</code></td>
+<td><code>knowledge_packs_root</code></td>
 <td><code>str \| null</code></td>
 <td><code>null</code></td>
 </tr>
 </tbody>
 </table>
-<p><code>groundworkers</code> includes bundled baseline knowledge packs as part of the
-package. Set <code>packs_root</code> when you want to add site-specific or localisation
-packs on top of that baseline.</p>
-<p>The configured directory should contain a <code>packs/</code> tree grouped by knowledge
-layer, for example:</p>
+<p><code>groundworkers</code> includes bundled baseline knowledge packs as part of the package. Set <code>knowledge_packs_root</code> when you want to add site-specific or localisation packs on top of that baseline.</p>
+<p>The configured directory should contain a <code>packs/</code> tree grouped by knowledge layer, for example:</p>
 <div class="highlight"><pre><span></span><code>my-knowledge/
   packs/
     localisation/
@@ -2415,9 +2691,9 @@ layer, for example:</p>
         manifest.yaml
         guidance.md
 </code></pre></div>
-<p>If a configured pack has the same <code>layer</code> and <code>name</code> as a bundled baseline
-pack, the configured copy wins.</p>
-<h3 id="semantic_projection"><code>semantic_projection</code></h3>
+<p>If a configured pack has the same <code>layer</code> and <code>name</code> as a bundled baseline pack, the configured copy wins.</p>
+<p><a id="semantic_projection"></a></p>
+<h3 id="semantic-projection-semantic_projection_">Semantic projection (<code>semantic_projection_*</code>)</h3>
 <table>
 <thead>
 <tr>
@@ -2428,83 +2704,79 @@ pack, the configured copy wins.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>enabled</code></td>
+<td><code>semantic_projection_enabled</code></td>
 <td><code>bool</code></td>
 <td><code>false</code></td>
 </tr>
 </tbody>
 </table>
-<p>Gates the <code>semantic_project</code> MCP tool and its backing <code>SemanticProjectionService</code>.
-Off by default: the service is fully deterministic (no LLM, no database), so
-there's no missing-dependency reason to disable it — the flag exists purely
-for staged rollout, per agent-stack's <code>SEMANTIC_INTEGRATION</code> design notes
-(enable in local/test environments first).</p>
-<div class="highlight"><pre><span></span><code><span class="k">[tools.groundworkers.semantic_projection]</span>
-<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<p>Gates the <code>semantic_project</code> MCP tool and its backing <code>SemanticProjectionService</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">[tools.groundworkers]</span>
+<span class="n">semantic_projection_enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 </code></pre></div>
 <h2 id="what-becomes-available-at-runtime">What becomes available at runtime</h2>
-<h3 id="with-shared-cdm-and-omop_graph-configured">With shared CDM and <code>omop_graph</code> configured</h3>
-<p>You get:</p>
+<h3 id="with-cdm_db-alone">With <code>cdm_db</code> alone</h3>
+<p>Graph availability follows the resolved CDM database, so a CDM-only stack gets:</p>
 <ul>
 <li><code>CDMAdapter</code></li>
-<li><code>OmopGraphAdapter</code></li>
-<li><code>VocabService</code></li>
-<li><code>MappingService</code></li>
+<li><code>OmopGraphAdapter</code> (lexical only)</li>
+<li><code>VocabService</code>, <code>GraphService</code>, <code>ConceptGroundingService</code>, <code>MappingService</code></li>
 <li>concept, resolver, search, mapping, source-planning, knowledge, and system MCP tools</li>
 </ul>
-<h3 id="with-omop_emb-configured">With <code>omop_emb</code> configured</h3>
+<p>Embedding status reports as unconfigured. No <code>[tools.omop_graph]</code> section is required or read.</p>
+<h3 id="with-embedding_model_name-and-vector_store_name">With <code>embedding_model_name</code> <strong>and</strong> <code>vector_store_name</code></h3>
 <p>You additionally get:</p>
 <ul>
 <li><code>OmopEmbAdapter</code></li>
 <li>embedding MCP tools</li>
 <li>embedding-backed channels in <code>MappingService</code></li>
-<li>optional embedding support in graph grounding</li>
+<li>the embedding grounding tier</li>
 </ul>
-<h3 id="with-groundworkersllmenabled-true">With <code>groundworkers.llm.enabled = true</code></h3>
+<p>Both references are required. With only one configured, status reports an actionable incomplete-configuration message and embedding features stay off rather than guessing a default.</p>
+<p>The store must be populated before the embedding tier can return anything. Population is explicit (see the Embeddings setup section) and never starts at query time. The server holds the graph read-only (<code>write=False</code>), so Groundworkers encodes query text for the embedding tier but never writes vectors.</p>
+<h3 id="with-groundworkersllm_model_name-configured">With <code>groundworkers.llm_model_name</code> configured</h3>
 <p>You additionally get:</p>
 <ul>
 <li><code>LLMAdapter</code></li>
 <li><code>TextService</code></li>
 <li><code>DomainService</code></li>
 <li>text and domain MCP tools</li>
-<li>LLM-assisted source planning when <code>source_planning.llm_assisted_enabled = true</code></li>
+<li>LLM-assisted source planning when <code>source_planning_llm_assisted_enabled = true</code></li>
 </ul>
-<h3 id="with-groundworkerssemantic_projectionenabled-true">With <code>groundworkers.semantic_projection.enabled = true</code></h3>
+<h3 id="with-semantic_projection_enabled-true">With <code>semantic_projection_enabled = true</code></h3>
 <p>You additionally get:</p>
 <ul>
-<li><code>SemanticProjectionService</code> (constructed directly, not part of <code>app.services</code>
-  — it needs no adapter)</li>
+<li><code>SemanticProjectionService</code> (constructed directly, not part of <code>app.services</code> — it needs no adapter)</li>
 <li>the <code>semantic_project</code> MCP tool</li>
 </ul>
 <h2 id="cli-selection-rules">CLI selection rules</h2>
 <p>By default:</p>
 <ul>
-<li><code>groundworkers</code> loads the active stack config file</li>
-<li>the active profile comes from the file unless overridden</li>
+<li><code>groundworkers</code> loads the stack config file</li>
 <li>MCP startup uses the <code>mcp</code> defaults unless overridden on the CLI</li>
 </ul>
 <p>Available runtime selectors:</p>
-<div class="highlight"><pre><span></span><code>groundworkers<span class="w"> </span>--config-path<span class="w"> </span>/path/to/config.toml<span class="w"> </span>--profile<span class="w"> </span><span class="nb">local</span><span class="w"> </span>--describe
+<div class="highlight"><pre><span></span><code>groundworkers<span class="w"> </span>--config-path<span class="w"> </span>/path/to/config.toml<span class="w"> </span>--describe
 groundworkers<span class="w"> </span>--transport<span class="w"> </span>streamable-http<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
 groundworkers<span class="w"> </span>--transport<span class="w"> </span>rest<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span>
 </code></pre></div>
-<p>Equivalent environment overrides:</p>
+<p>Equivalent environment override:</p>
 <ul>
 <li><code>OA_CONFIG_PATH</code></li>
-<li><code>OA_ACTIVE_PROFILE</code></li>
 </ul>
+<p>There is no Groundworkers profile selector. Keep separate stack files when you need separate environments and select one with <code>--config-path</code> or <code>OA_CONFIG_PATH</code>.</p>
 <h2 id="direct-python-example">Direct Python example</h2>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.app</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_application</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.bootstrap</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_app_config</span>
 
-<span class="n">config</span> <span class="o">=</span> <span class="n">build_app_config</span><span class="p">(</span><span class="n">profile</span><span class="o">=</span><span class="s2">&quot;local&quot;</span><span class="p">)</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">build_app_config</span><span class="p">(</span><span class="n">config_path</span><span class="o">=</span><span class="s2">&quot;/path/to/config.toml&quot;</span><span class="p">)</span>
 <span class="n">app</span> <span class="o">=</span> <span class="n">build_application</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
 
+<span class="n">grounding</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">services</span><span class="o">.</span><span class="n">grounding</span>
 <span class="n">mapping</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">services</span><span class="o">.</span><span class="n">mapping</span>
-<span class="n">text</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">services</span><span class="o">.</span><span class="n">text</span>
 </code></pre></div>
-<p>Service attributes are <code>None</code> only when their prerequisites are not available in
-the resolved runtime.</p>
+<p>Service attributes are <code>None</code> only when their prerequisites are not available in the resolved runtime.</p>
+<p><code>config.describe()</code> returns a redacted summary keyed by <code>database</code>, <code>model</code>, and <code>vector_store</code>. Passwords and API keys are masked; safe URLs never carry credentials.</p>
 
 
 
@@ -2564,6 +2836,10 @@ the resolved runtime.</p>
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+        <script src="../../js/mermaid-init.js"></script>
       
     
   </body>
