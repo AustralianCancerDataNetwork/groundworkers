@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from groundworkers.application.setup.models import ConfigurationOwnership
 from groundworkers.tui.state import SetupSession, load_tui_state
+
+logger = logging.getLogger(__name__)
 
 
 def build_groundworkers_tui_spec(
@@ -14,10 +17,18 @@ def build_groundworkers_tui_spec(
     """Build the Groundworkers console with setup as its first registered page."""
 
     from groundskeeping.app import OperatorAppSpec
-    from groundskeeping.contracts.pages import PageRegistration
+    from groundskeeping.configurator import MutationOperation
+    from groundskeeping.contracts.pages import PageRegistration, PageRoute
     from groundskeeping.contracts.views import WorkbenchLabels
 
-    from groundworkers.tui.pages import SetupPage
+    from groundworkers.application.setup.plugin_configuration import (
+        PackageConfigMutationService,
+    )
+    from groundworkers.plugins import (
+        GroundworkersPluginConfigUI,
+        discover_plugins,
+    )
+    from groundworkers.tui.pages import PluginConfigPage, SetupPage
     from groundworkers.tui.presenters.chat import ChatPresenter
     from groundworkers.tui.presenters.configuration import ConfigurationPresenter
     from groundworkers.tui.presenters.database import DatabasePresenter
@@ -46,12 +57,55 @@ def build_groundworkers_tui_spec(
             runs=RunsPresenter(),
         )
 
+    pages = [PageRegistration(route=SETUP_ROUTE, factory=setup_factory)]
+    for plugin in discover_plugins():
+        try:
+            workflow_and_service = None
+            if isinstance(plugin, GroundworkersPluginConfigUI):
+                workflow_and_service = plugin.tui_workflow(MutationOperation.UPDATE)
+            if workflow_and_service is None and plugin.config_cls is not None:
+                service = PackageConfigMutationService(
+                    session.configuration.path,
+                    plugin.config_cls,
+                    ownership=session.ownership,
+                    on_applied=session.refresh_configuration,
+                )
+                workflow_and_service = (
+                    service.workflow(MutationOperation.UPDATE),
+                    service,
+                )
+        except Exception:
+            logger.exception(
+                "Could not build configuration page for plugin %s; skipping it.",
+                plugin.name,
+            )
+            continue
+        if workflow_and_service is None:
+            continue
+        workflow, service = workflow_and_service
+        route = PageRoute(
+            key=workflow.target.key,
+            label=workflow.target.title,
+            purpose=workflow.purpose,
+        )
+
+        def plugin_factory(
+            _context: Any,
+            *,
+            route=route,
+            workflow=workflow,
+            service=service,
+        ):
+            return PluginConfigPage(route, workflow, service)
+
+        pages.append(PageRegistration(route=route, factory=plugin_factory))
+
     return OperatorAppSpec(
         app_id="groundworkers",
         title="Groundworkers",
         subtitle="setup and operations",
         default_page=SETUP_ROUTE.key,
-        pages=(PageRegistration(route=SETUP_ROUTE, factory=setup_factory),),
+        pages=tuple(pages),
         workbench_labels=WorkbenchLabels(result_panel="Setup"),
         metadata={
             "config_path": str(session.configuration.path),

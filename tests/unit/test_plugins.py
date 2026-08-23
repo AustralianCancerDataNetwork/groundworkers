@@ -16,15 +16,20 @@ check would.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, cast
 
+import pytest
 from oa_configurator import PackageConfigBase
 from pydantic import Field
 
 from groundworkers.app import build_application
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config_from_stack
-from groundworkers.plugins import PluginContext, discover_plugins
+from groundworkers.plugins import (
+    PluginContext,
+    discover_plugins,
+    validate_plugin_identities,
+)
 from groundworkers.server import create_server
 from tests.support.stack_config import build_cdm_stack, build_embedding_stack
 
@@ -42,8 +47,8 @@ class FakePlugin:
     name = "fake_plugin"
     config_cls = FakePluginConfig
 
-    def build(self, context: PluginContext, config: FakePluginConfig | None):
-        if config is None or context.vector_store is None:
+    def build(self, context: PluginContext, config: PackageConfigBase | None):
+        if not isinstance(config, FakePluginConfig) or context.vector_store is None:
             return None
         return {"greeting": config.greeting, "vector_store": context.vector_store}
 
@@ -81,7 +86,8 @@ def test_build_application_uses_config_defaults_when_no_section_present(
     monkeypatch.setattr("groundworkers.app.discover_plugins", lambda: [FakePlugin()])
     config = build_app_config_from_stack(_embedding_stack(tmp_path))  # no section
     app = build_application(config)
-    assert app.plugins["fake_plugin"]["greeting"] == "hello"
+    state = cast(dict, app.plugins["fake_plugin"])
+    assert state["greeting"] == "hello"
 
 
 def test_build_application_honors_an_explicit_config_value(
@@ -92,9 +98,10 @@ def test_build_application_honors_an_explicit_config_value(
         _embedding_stack(tmp_path, {"greeting": "hi there"})
     )
     app = build_application(config)
-    assert app.plugins["fake_plugin"]["greeting"] == "hi there"
+    state = cast(dict, app.plugins["fake_plugin"])
+    assert state["greeting"] == "hi there"
     # Default path: reuses the core vector store, no second one is resolved.
-    assert app.plugins["fake_plugin"]["vector_store"] is config.vector_store
+    assert state["vector_store"] is config.vector_store
 
 
 def test_build_application_skips_a_plugin_with_an_invalid_config_value(
@@ -108,6 +115,7 @@ def test_build_application_skips_a_plugin_with_an_invalid_config_value(
     config = build_app_config_from_stack(_embedding_stack(tmp_path, {"retries": -1}))
     app = build_application(config)
     assert "fake_plugin" not in app.plugins
+    assert app.plugin_issues["fake_plugin"].startswith("invalid configuration")
 
 
 def test_build_application_skips_plugin_when_prerequisite_backend_is_absent(
@@ -119,11 +127,13 @@ def test_build_application_skips_plugin_when_prerequisite_backend_is_absent(
     config = build_app_config_from_stack(build_cdm_stack())
     app = build_application(config)
     assert "fake_plugin" not in app.plugins
+    assert app.plugin_issues == {
+        "fake_plugin": "plugin prerequisites are unavailable"
+    }
 
 
 def test_create_server_registers_plugin_tools(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("groundworkers.app.discover_plugins", lambda: [FakePlugin()])
-    monkeypatch.setattr("groundworkers.server.discover_plugins", lambda: [FakePlugin()])
     config = build_app_config_from_stack(
         _embedding_stack(tmp_path, {"greeting": "hi"})
     )
@@ -136,7 +146,6 @@ def test_create_server_skips_registration_when_build_returns_none(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr("groundworkers.app.discover_plugins", lambda: [FakePlugin()])
-    monkeypatch.setattr("groundworkers.server.discover_plugins", lambda: [FakePlugin()])
     config = build_app_config_from_stack(build_cdm_stack())
     server = create_server(config)
     assert "fake_plugin_greet" not in server.list_tools()
@@ -148,7 +157,6 @@ def test_plugin_tool_errors_come_back_in_the_shared_shape(
     """A plugin's GroundworkersError survives the shared server.tool() guard
     unmodified, without the plugin writing its own try/except."""
     monkeypatch.setattr("groundworkers.app.discover_plugins", lambda: [FakePlugin()])
-    monkeypatch.setattr("groundworkers.server.discover_plugins", lambda: [FakePlugin()])
     config = build_app_config_from_stack(_embedding_stack(tmp_path))
     server = create_server(config)
     result = server.call("fake_plugin_fail")
@@ -160,3 +168,13 @@ def test_describe_reports_loaded_plugin_names(tmp_path: Path, monkeypatch) -> No
     config = build_app_config_from_stack(_embedding_stack(tmp_path))
     app = build_application(config)
     assert sorted(app.plugins) == ["fake_plugin"]
+
+
+def test_plugin_identities_must_be_unique_and_match_their_config() -> None:
+    with pytest.raises(ValueError, match="not unique"):
+        validate_plugin_identities([FakePlugin(), FakePlugin()])
+
+    mismatched = FakePlugin()
+    mismatched.name = "different_name"
+    with pytest.raises(ValueError, match="names must match"):
+        validate_plugin_identities([mismatched])

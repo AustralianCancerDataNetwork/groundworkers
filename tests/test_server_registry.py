@@ -486,7 +486,7 @@ def test_logging_reapplies_with_the_stack_once_loaded(
     monkeypatch.setattr("groundworkers.server.build_app_config", lambda *, config_path=None: config)
     monkeypatch.setattr(
         "groundworkers.server.build_application",
-        lambda cfg: SimpleNamespace(plugins={}),
+        lambda cfg: SimpleNamespace(plugins={}, plugin_issues={}),
     )
     monkeypatch.setattr("groundworkers.server.create_server", lambda cfg, app: _DescribeStub())
 

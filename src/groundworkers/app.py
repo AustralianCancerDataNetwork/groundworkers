@@ -13,6 +13,7 @@ from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
 from groundworkers.plugins import (
+    GroundworkersPlugin,
     PluginConfigResolver,
     PluginContext,
     discover_plugins,
@@ -70,6 +71,8 @@ class GroundworkersApp:
     adapters: Adapters
     services: Services
     plugins: dict[str, object] = field(default_factory=dict)
+    plugin_definitions: tuple[GroundworkersPlugin, ...] = ()
+    plugin_issues: dict[str, str] = field(default_factory=dict)
 
 
 def build_adapters(config: AppConfig) -> Adapters:
@@ -221,7 +224,11 @@ def _build_plugin_context(config: AppConfig, adapters: Adapters) -> PluginContex
     )
 
 
-def _build_plugins(config: AppConfig, context: PluginContext) -> dict[str, object]:
+def _build_plugins(
+    config: AppConfig,
+    context: PluginContext,
+    plugin_definitions: tuple[GroundworkersPlugin, ...],
+) -> tuple[dict[str, object], dict[str, str]]:
     """Resolve each installed plugin's own config and build its state.
 
     A plugin with no `config_cls` gets `config=None`. A plugin whose config
@@ -230,7 +237,8 @@ def _build_plugins(config: AppConfig, context: PluginContext) -> dict[str, objec
     """
 
     plugins: dict[str, object] = {}
-    for plugin in discover_plugins():
+    issues: dict[str, str] = {}
+    for plugin in plugin_definitions:
         plugin_config = None
         if plugin.config_cls is not None:
             try:
@@ -241,19 +249,31 @@ def _build_plugins(config: AppConfig, context: PluginContext) -> dict[str, objec
                     plugin.name,
                     exc,
                 )
+                issues[plugin.name] = f"invalid configuration ({type(exc).__name__})"
                 continue
-        state = plugin.build(context, plugin_config)
+        try:
+            state = plugin.build(context, plugin_config)
+        except Exception:
+            logger.exception("Groundworkers plugin %s failed to build.", plugin.name)
+            issues[plugin.name] = "plugin build failed"
+            continue
         if state is not None:
             plugins[plugin.name] = state
-    return plugins
+        else:
+            issues[plugin.name] = "plugin prerequisites are unavailable"
+    return plugins, issues
 
 
 def build_application(config: AppConfig) -> GroundworkersApp:
     adapters = build_adapters(config)
     context = _build_plugin_context(config, adapters)
+    plugin_definitions = tuple(discover_plugins())
+    plugins, plugin_issues = _build_plugins(config, context, plugin_definitions)
     return GroundworkersApp(
         config=config,
         adapters=adapters,
         services=build_services(config, adapters),
-        plugins=_build_plugins(config, context),
+        plugins=plugins,
+        plugin_definitions=plugin_definitions,
+        plugin_issues=plugin_issues,
     )

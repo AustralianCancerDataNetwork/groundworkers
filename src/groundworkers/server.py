@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from typing import Literal, cast, get_args
 
 from groundworkers._env import (
@@ -25,7 +26,6 @@ from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig, GroundworkersConfig
-from groundworkers.plugins import discover_plugins
 from groundworkers.services.semantic_projection.service import SemanticProjectionService
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.domain_tools import register_domain_tools
@@ -56,6 +56,7 @@ from groundworkers.transports.rest import create_rest_app
 # never passed through argparse still has to be validated here.
 MCPTransport = Literal["stdio", "sse", "streamable-http"]
 _MCP_TRANSPORTS: tuple[str, ...] = get_args(MCPTransport)
+logger = logging.getLogger(__name__)
 
 
 def create_server(
@@ -97,10 +98,18 @@ def create_server(
     )
     register_system_resources(server, config, app.adapters.omop_graph)
 
-    for plugin in discover_plugins():
+    for plugin in app.plugin_definitions:
         state = app.plugins.get(plugin.name)
         if state is not None:
-            plugin.register(server, state)
+            try:
+                plugin.register(server, state)
+            except Exception:
+                logger.exception(
+                    "Groundworkers plugin %s failed during MCP registration.",
+                    plugin.name,
+                )
+                app.plugin_issues[plugin.name] = "plugin registration failed"
+                app.plugins.pop(plugin.name, None)
 
     return server
 
@@ -193,6 +202,7 @@ def main(argv: list[str] | None = None) -> None:
                     "prompts": server.describe_prompts(),
                     "resources": server.describe_resources(),
                     "plugins": sorted(application.plugins),
+                    "plugin_issues": dict(sorted(application.plugin_issues.items())),
                 },
                 indent=2,
             )

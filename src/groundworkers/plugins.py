@@ -13,10 +13,11 @@ module is the runtime contract that document describes.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.metadata import entry_points
-from typing import Any, ClassVar, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 from oa_configurator import (  # type: ignore[import-untyped]
     PackageConfigBase,
@@ -26,6 +27,15 @@ from oa_configurator import (  # type: ignore[import-untyped]
     Resolver,
 )
 from sqlalchemy.engine import Engine
+
+if TYPE_CHECKING:
+    from groundskeeping.configurator import (
+        ConfigMutationService,
+        ConfigWorkflowSpec,
+        MutationOperation,
+    )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -111,6 +121,17 @@ class GroundworkersPlugin(Protocol):
         ...
 
 
+@runtime_checkable
+class GroundworkersPluginConfigUI(Protocol):
+    """Optional custom TUI workflow for plugins that exceed generic Tier A."""
+
+    def tui_workflow(
+        self, operation: MutationOperation
+    ) -> tuple[ConfigWorkflowSpec, ConfigMutationService] | None:
+        """Return a custom workflow/provider pair, or defer to generic Tier A."""
+        ...
+
+
 def discover_plugins() -> list[GroundworkersPlugin]:
     """Discover installed plugins via the `groundworkers.plugins` entry-point group.
 
@@ -121,4 +142,32 @@ def discover_plugins() -> list[GroundworkersPlugin]:
     worth the added state.
     """
 
-    return [ep.load() for ep in entry_points(group="groundworkers.plugins")]
+    discovered: list[GroundworkersPlugin] = []
+    for entry_point in entry_points(group="groundworkers.plugins"):
+        try:
+            discovered.append(entry_point.load())
+        except Exception:
+            logger.exception(
+                "Could not load Groundworkers plugin entry point %s; skipping it.",
+                entry_point.name,
+            )
+    validate_plugin_identities(discovered)
+    return discovered
+
+
+def validate_plugin_identities(plugins: list[GroundworkersPlugin]) -> None:
+    """Reject ambiguous runtime/config identities before any plugin is built."""
+
+    seen: set[str] = set()
+    for plugin in plugins:
+        if not plugin.name or plugin.name in seen:
+            raise ValueError(f"Groundworkers plugin name {plugin.name!r} is not unique.")
+        seen.add(plugin.name)
+        if (
+            plugin.config_cls is not None
+            and plugin.config_cls.tool_name != plugin.name
+        ):
+            raise ValueError(
+                f"Groundworkers plugin {plugin.name!r} uses configuration identity "
+                f"{plugin.config_cls.tool_name!r}; the names must match."
+            )

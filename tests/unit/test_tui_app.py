@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from oa_configurator import save_stack_config
@@ -41,6 +42,41 @@ def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
     assert spec.validate().keys() == ("setup",)
     assert spec.default_page == "setup"
     assert spec.title == "Groundworkers"
+
+
+def test_installed_plugin_config_schema_adds_a_tier_a_page(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from oa_configurator import PackageConfigBase
+    from pydantic import Field
+
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+
+    class Config(PackageConfigBase):
+        tool_name: ClassVar[str] = "configured_plugin"
+        retries: int = Field(default=2, ge=1)
+
+    class Plugin:
+        name = "configured_plugin"
+        config_cls = Config
+
+        def build(self, context, config):
+            return None
+
+        def register(self, server, state):
+            return None
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    monkeypatch.setattr(
+        "groundworkers.plugins.discover_plugins", lambda: [Plugin()]
+    )
+
+    spec = build_groundworkers_tui_spec(config_path=str(config_path))
+
+    assert spec.validate().keys() == ("setup", "plugin.configured_plugin")
 
 
 def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:

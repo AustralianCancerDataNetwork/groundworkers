@@ -63,6 +63,7 @@ nav:
       - Architecture: architecture.md
       - Python integration details: development/integration.md
       - Extending groundworkers: development/extending.md
+      - Plugin architecture: development/plugins.md
       - Testing: usage/testing.md
       - CDM adapter: adapters/cdm.md
       - OMOP graph adapter: adapters/omop_graph.md
