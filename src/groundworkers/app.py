@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from oa_configurator import ConfigurationError, Resolver  # type: ignore[import-untyped]
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
+from groundworkers.plugins import (
+    PluginConfigResolver,
+    PluginContext,
+    discover_plugins,
+)
 from groundworkers.services import (
     ConceptGroundingService,
     DomainService,
@@ -25,6 +34,8 @@ if TYPE_CHECKING:
     from omop_emb import EmbeddingBackend
     from omop_llm import ModelBackend
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class Adapters:
@@ -33,6 +44,13 @@ class Adapters:
     omop_emb: OmopEmbAdapter | None = None
     llm: LLMAdapter | None = None
     embedding_configuration_detail: str | None = None
+    # Shared, lazily-built closures also exposed via PluginContext (see
+    # _build_plugin_context) so a plugin reuses the one backend connection
+    # instead of opening a second one. None when the corresponding backend
+    # is unconfigured, same gating as the adapters above.
+    embedding_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    embedding_model_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    chat_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -51,6 +69,7 @@ class GroundworkersApp:
     config: AppConfig
     adapters: Adapters
     services: Services
+    plugins: dict[str, object] = field(default_factory=dict)
 
 
 def build_adapters(config: AppConfig) -> Adapters:
@@ -102,11 +121,15 @@ def build_adapters(config: AppConfig) -> Adapters:
             configuration_detail=configuration_detail,
         )
         adapters.embedding_configuration_detail = configuration_detail
+        adapters.embedding_backend_factory = get_embedding_backend
     elif resolved_model is not None:
         adapters.embedding_configuration_detail = (
             "The embedding model is configured without a vector store. "
             "Configure groundworkers.vector_store_name to enable embedding operations."
         )
+
+    if resolved_model is not None:
+        adapters.embedding_model_backend_factory = get_model_backend
 
     # Graph and lexical services use the resolved CDM database directly. A CDM
     # configuration is therefore sufficient; no separate graph section is needed.
@@ -144,6 +167,7 @@ def build_adapters(config: AppConfig) -> Adapters:
             return chat_backend
 
         adapters.llm = LLMAdapter(backend_factory=get_chat_backend)
+        adapters.chat_backend_factory = get_chat_backend
 
     return adapters
 
@@ -177,10 +201,59 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
     return services
 
 
+def _build_plugin_context(config: AppConfig, adapters: Adapters) -> PluginContext:
+    """Assemble the resolved handles every plugin is given.
+
+    `cdm_database`/`vector_store` come straight off `AppConfig`, already
+    resolved; the three backend factories are the same lazily-built closures
+    `build_adapters` shares between `OmopEmbAdapter`/`OmopGraphAdapter`/
+    `LLMAdapter` above, now also exposed on `Adapters` for this purpose.
+    """
+
+    return PluginContext(
+        resolver=PluginConfigResolver(Resolver(config.stack)),
+        cdm_database=config.cdm_database,
+        cdm_engine=config.cdm_engine,
+        vector_store=config.vector_store,
+        embedding_backend_factory=adapters.embedding_backend_factory,
+        embedding_model_backend_factory=adapters.embedding_model_backend_factory,
+        chat_backend_factory=adapters.chat_backend_factory,
+    )
+
+
+def _build_plugins(config: AppConfig, context: PluginContext) -> dict[str, object]:
+    """Resolve each installed plugin's own config and build its state.
+
+    A plugin with no `config_cls` gets `config=None`. A plugin whose config
+    section is absent or fails validation is treated the same as a missing
+    optional backend elsewhere in this module: skipped, not fatal to startup.
+    """
+
+    plugins: dict[str, object] = {}
+    for plugin in discover_plugins():
+        plugin_config = None
+        if plugin.config_cls is not None:
+            try:
+                plugin_config = plugin.config_cls.validate_candidate(config.stack)
+            except ConfigurationError as exc:
+                logger.info(
+                    "Plugin %s config not present or invalid, skipping: %s",
+                    plugin.name,
+                    exc,
+                )
+                continue
+        state = plugin.build(context, plugin_config)
+        if state is not None:
+            plugins[plugin.name] = state
+    return plugins
+
+
 def build_application(config: AppConfig) -> GroundworkersApp:
     adapters = build_adapters(config)
+    context = _build_plugin_context(config, adapters)
     return GroundworkersApp(
         config=config,
         adapters=adapters,
         services=build_services(config, adapters),
+        plugins=_build_plugins(config, context),
     )

@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -483,7 +484,10 @@ def test_logging_reapplies_with_the_stack_once_loaded(
         classmethod(lambda cls, cfg=None, *, verbosity=0, **kw: calls.append(cfg)),
     )
     monkeypatch.setattr("groundworkers.server.build_app_config", lambda *, config_path=None: config)
-    monkeypatch.setattr("groundworkers.server.build_application", lambda cfg: object())
+    monkeypatch.setattr(
+        "groundworkers.server.build_application",
+        lambda cfg: SimpleNamespace(plugins={}),
+    )
     monkeypatch.setattr("groundworkers.server.create_server", lambda cfg, app: _DescribeStub())
 
     main(["--describe"])

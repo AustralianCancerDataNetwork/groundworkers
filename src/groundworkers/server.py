@@ -25,6 +25,7 @@ from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.bootstrap import build_app_config
 from groundworkers.config import AppConfig, GroundworkersConfig
+from groundworkers.plugins import discover_plugins
 from groundworkers.services.semantic_projection.service import SemanticProjectionService
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.domain_tools import register_domain_tools
@@ -95,6 +96,12 @@ def create_server(
         vocab_service=app.services.vocab,
     )
     register_system_resources(server, config, app.adapters.omop_graph)
+
+    for plugin in discover_plugins():
+        state = app.plugins.get(plugin.name)
+        if state is not None:
+            plugin.register(server, state)
+
     return server
 
 
@@ -185,6 +192,7 @@ def main(argv: list[str] | None = None) -> None:
                     "tools": server.describe_tools(),
                     "prompts": server.describe_prompts(),
                     "resources": server.describe_resources(),
+                    "plugins": sorted(application.plugins),
                 },
                 indent=2,
             )
