@@ -45,7 +45,22 @@ flowchart TD
     A --> LLM[LLM API]
 ```
 
-The transport is thin, reusable workflow logic lives in `services/`, and concrete dependencies are isolated behind `adapters/`. See [Architecture](architecture.md) for configuration and startup wiring.
+- **Services** hold reusable workflow logic. 
+- **Adapters** isolate concrete dependencies. 
+- The transport layer validates input, invokes the runtime, and translates the result for its caller.
+- See [Architecture](architecture.md) for configuration and startup wiring.
+
+## Before assuming a capability is available
+
+Availability follows configuration. A CDM database enables the core vocabulary and mapping services. An embedding model plus vector store enables embedding operations. A chat model enables text preprocessing, domain classification, and assisted source planning. Semantic projection is separately opt-in.
+
+Run this before integrating against an environment:
+
+```bash
+groundworkers --describe
+```
+
+The output includes the active tools, prompts, resources, plugins, redacted configuration, and safe plugin issues.
 
 ## Where to start
 
@@ -56,11 +71,6 @@ The transport is thin, reusable workflow logic lives in `services/`, and concret
 - [Configuration](usage/configuration.md) for the shared-stack config model and runtime combinations
 - [Tools overview](tools/overview.md) for the discoverable MCP surface
 
-## Relation to groundcrew
+## Relationship to groundcrew
 
-`groundworkers` and `groundcrew` are intentionally separate:
-
-- `groundworkers` owns reusable stateless capabilities
-- `groundcrew` owns orchestration, session state, and job lifecycle
-
-In the usual deployment, `groundcrew` talks to `groundworkers` over MCP. A Python application can use the same service layer directly through `build_application(...)`.
+`groundworkers` owns reusable stateless capabilities. `groundcrew` owns session state, job lifecycle, and orchestration policy. In the usual deployment, `groundcrew` calls Groundworkers over MCP; a Python application can use the same services directly.

@@ -83,7 +83,24 @@ The concept-embedding row and the free-text-embedding row look similar but are n
 
 `build()` receives `PluginContext`. The context provides the resolved CDM database and engine, vector store, shared lazy model backend factories, and a deliberately narrow resolver for independent named OA resources. Return `None` when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.
 
-`register()` adds MCP tools or resources against the state returned by `build()`. The shared MCP registration wrapper supplies the same safe error translation used by core tools.
+`register()` adds MCP tools, prompts, or resources against the state returned by `build()`. The shared MCP registration wrapper supplies the same safe error translation used by core tools. Code-defined prompts can continue to derive their arguments from the callable signature. A plugin publishing data-defined prompts can pass explicit string metadata with `PromptArgument`; this keeps dynamic pack fields out of Python closure signatures:
+
+```python
+from groundworkers.base import PromptArgument
+
+server.prompt(
+    "my_pack_workflow",
+    title="Run my pack workflow",
+    description="Start the workflow published by my pack.",
+    arguments=[
+        PromptArgument(
+            "request",
+            "The user's starting request.",
+            required=False,
+        )
+    ],
+)(handler)
+```
 
 ```mermaid
 sequenceDiagram
