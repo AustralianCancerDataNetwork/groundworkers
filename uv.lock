@@ -1098,16 +1098,16 @@ wheels = [
 
 [[package]]
 name = "groundskeeping"
-version = "0.6.1"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
     { name = "pydantic" },
     { name = "textual" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6d/91/2528bee93f469f52d23a98661430e4bca9e6a71c06de3ec38dd3a88343ad/groundskeeping-0.6.1.tar.gz", hash = "sha256:0498e93345d4a84d89e96e32561ff7adfd9db27a83dcf9c8bfa7c1e0edb2e60b", size = 199221, upload-time = "2026-08-21T04:41:36.781Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/86/d250cb796aff005ce897eb3a66441be3202abd12b81fe7794fe1d453d2f1/groundskeeping-0.7.0.tar.gz", hash = "sha256:1fdff1cc5a9e38f43d92056063b518c65ec69f008d5e6e063728e438b08c05e0", size = 203784, upload-time = "2026-08-26T03:02:28.566Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/47/7a455b1c31d829cdb965f8a502d39db4f96f240f2fc008003d5afd855ae1/groundskeeping-0.6.1-py3-none-any.whl", hash = "sha256:8d874f2abfdd04f5c27904c6d627d6fd9cbc5ff0cc997e509fb218a4531aade7", size = 69446, upload-time = "2026-08-21T04:41:35.459Z" },
+    { url = "https://files.pythonhosted.org/packages/81/1d/46b4727a863cac84c27c1bfd26af83ea20ef4675bde42ab7fe6af4fd3624/groundskeeping-0.7.0-py3-none-any.whl", hash = "sha256:4dafea7dce586a64ea820974848f6e25898e41592d98645f40a71afc65a13fb0", size = 74688, upload-time = "2026-08-26T03:02:27.113Z" },
 ]
 
 [[package]]
@@ -1181,7 +1181,7 @@ xlsx = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110,<1.0" },
-    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.6.1,<1" },
+    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.7,<1" },
     { name = "h5py", marker = "extra == 'embedding-artifacts'", specifier = ">=3.10,<4" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.0" },

@@ -1,0 +1,5 @@
+# Seed file for the PostgreSQL integration job.
+#
+# The workflow copies this empty-by-design stack file to RUNNER_TEMP before
+# adding its test resources. In particular, it contains no model/provider
+# entries: graph CI must not accidentally contact an embedding service.

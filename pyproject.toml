@@ -31,7 +31,7 @@ pdf = [
   "pdfplumber>=0.10",
 ]
 tui = [
-  "groundskeeping>=0.6.1,<1",
+  "groundskeeping>=0.7,<1",
   "textual>=0.60",
   "rich>=13,<15",
 ]
@@ -92,7 +92,6 @@ cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true 
 constraint-dependencies = ["setuptools>=83.0.0"]
 
 [tool.uv.sources]
-# RELEASE BLOCKER: temporary source pin for development only
 oa-configurator = { git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git", branch = "path_config" }
 
 [tool.ruff]
