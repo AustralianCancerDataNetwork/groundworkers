@@ -143,27 +143,20 @@ def build_groundworkers_tui_spec(
     )
 
 
-# Groundskeeping's theme sizes every TextArea at `height: 1fr`, which is right
-# for the workbench context pane it was written for and wrong inside a wizard:
-# the labels, help lines, and sibling fields take their auto height first, and
-# the fraction left over rounds to zero rows. The field is still focusable and
-# still editable -- it is simply not drawn, so it reads as an entry box that
-# refuses to accept typing. A type selector cannot be overridden by adding
-# another type selector, so this qualifies on the wizard body's id.
+# Groundskeeping's theme sizes every Tree, OptionList, TextArea, and DataTable
+# at `height: 1fr`, which is right for the workbench panes it was written for
+# and wrong inside a wizard: the labels, help lines, and sibling fields take
+# their auto height first, and the fraction left over rounds to zero rows. The
+# widget is still mounted and still holds its rows -- it is simply not drawn.
+# A type selector cannot be overridden by adding another type selector, so this
+# qualifies on the wizard body's id.
 #
-# Remove once groundskeeping sizes wizard fields itself; the upstream fix wants
-# the rule scoped to `#context` rather than to every TextArea in the app.
+# groundskeeping 0.6.1 fixed the TextArea half upstream (`#wizard-body TextArea`
+# in themes/groundskeeping.tcss), so only the review table is still ours to
+# repair. Remove once groundskeeping sizes `#wizard-review-table` itself; the
+# upstream fix wants the 1fr rule scoped to the workbench panes rather than
+# applied to every DataTable in the app.
 _WIZARD_FIELD_CSS = """
-#wizard-body TextArea {
-    height: 8;
-    max-height: 8;
-    border: tall $panel;
-}
-
-#wizard-body TextArea:focus {
-    border: tall $accent;
-}
-
 #wizard-body DataTable {
     height: auto;
     min-height: 4;

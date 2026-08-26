@@ -133,6 +133,7 @@ class ExampleConfig(PackageConfigBase):
 The generic workflow maps supported Pydantic scalars to Groundskeeping fields, offers existing references of the correct concrete type, and can create a new reference chain recursively through oa-configurator's public `plan_configure()` API. Candidates remain private to the Groundworkers provider; review output is redacted and persistence is revision-aware.
 
 Schemas requiring live discovery or a conditional flow (and therefore not fitting the default configuration UX specification) may additionally implement the runtime-checkable `GroundworkersPluginConfigUI` protocol. Its `tui_workflow(operation)` method returns a custom `(ConfigWorkflowSpec, ConfigMutationService)` pair. Keep Groundskeeping in the plugin's optional TUI dependencies so headless plugin imports remain lightweight.
+
 ### Sensitive fields
 
 `PackageConfigBase` inherits oa-configurator's `SecretSafeModel`. A plugin developer must mark every plugin-owned secret with `Sensitive()` so model representations, interactive fields, configuration views, and review diffs can redact it by schema declaration. Groundworkers does not infer sensitivity from field names.
@@ -153,8 +154,6 @@ The `oa_configurator.Secret` alias is equivalent to `Annotated[str | None, Sensi
 
 This protects display and logging surfaces; it does not encrypt persisted configuration. Plugin documentation must describe the storage expectations for any secret it introduces.
 
-Schemas requiring live discovery or a conditional flow that Tier A cannot express may additionally implement the runtime-checkable `GroundworkersPluginConfigUI` protocol. Its `tui_workflow(operation)` method returns a custom `(ConfigWorkflowSpec, ConfigMutationService)` pair. Keep Groundskeeping in the plugin's optional TUI dependencies so headless plugin imports remain lightweight.
-
 ## Setup steps
 
 Plugin data preparation belongs in registered setup steps. A plugin may expose a `setup_steps` tuple of `PluginSetupStep` instances. Each step declares a stable key, operator copy, typed arguments, and a `build_plan(values, config_path)` callable that returns a `MaintenancePlan`.
@@ -167,7 +166,7 @@ Long-running plugin work should be represented by commands in the plan and run o
 
 ## Readiness verification
 
-A plugin may implement `GroundworkersPluginReadiness.verify_readiness(state)` when operators need to distinguish valid package configuration from an initialised, usable capability. 
+A plugin may implement `GroundworkersPluginReadiness.verify_readiness(state)` when operators need to distinguish valid package configuration from an initialised, usable capability.
 
 Verification is read-only and returns a `PluginReadinessResult` containing a stable state, a summary, and `PluginReadinessField` values. Display values must never contain credentials, connection URLs, or raw exception text.
 

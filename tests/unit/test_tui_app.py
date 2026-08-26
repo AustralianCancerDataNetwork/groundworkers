@@ -79,7 +79,7 @@ def test_installed_plugin_config_schema_adds_a_tier_a_page(
 
     spec = build_groundworkers_tui_spec(config_path=str(config_path))
 
-    assert spec.validate().keys() == ("setup", "plugin_configured_plugin")
+    assert spec.validate().keys() == ("setup", "gw_plugin-configured_plugin")
     page = spec.pages[1].factory(None)
     view = page.landing_view(None)
     assert view.status.value == "warning"
@@ -729,6 +729,9 @@ def test_a_wizard_text_box_is_actually_drawn(tmp_path: Path) -> None:
     typing it can never show, and reads as a box that ignores the keyboard.
     Asserting on the rendered height is the only thing that catches this; every
     contract-level check passes on a widget nobody can see.
+
+    groundskeeping 0.6.1 carries the ``#wizard-body TextArea`` rule that repairs
+    this, so the check now guards the dependency rather than a local override.
     """
     pytest.importorskip("groundskeeping")
 
