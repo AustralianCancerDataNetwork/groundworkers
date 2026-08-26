@@ -613,7 +613,13 @@ def test_embedding_coverage_refresh_shows_loading_state(
 
             assert str(app.query_one("#view-action-0").label) == "Check model"
             await pilot.click("#view-action-1")
-            await pilot.pause(0.05)
+            # Button events and worker startup are scheduled independently of
+            # the test driver. Wait for the synchronous loading view to become
+            # visible, but keep the deadline below slow_refresh's 0.4 seconds.
+            for _ in range(20):
+                if app.query_one("#result-loading").styles.display == "block":
+                    break
+                await pilot.pause(0.01)
 
             assert app.query_one("#result-loading").styles.display == "block"
             assert app.query_one("#result-table").styles.display == "none"

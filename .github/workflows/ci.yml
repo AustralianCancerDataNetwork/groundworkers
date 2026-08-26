@@ -11,7 +11,7 @@ jobs:
   build-test-postgres:
     uses: AustralianCancerDataNetwork/cava-devops/.github/workflows/build-test-postgres.yml@main
     with:
-      ty-src: groundworkers
+      ty-src: src
       postgres-image: pgvector/pgvector:pg18
       postgres-db: test_db
       postgres-user: postgres
