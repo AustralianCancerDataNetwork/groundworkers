@@ -86,13 +86,13 @@ def seed() -> None:
         ("Maps to", "Maps to", "0", "0", "Maps to", 0),
     ]
     relationship_classes = [
-        ("Hierarchy", "Taxonomic – up", "Hierarchy up", "Inheritance", "Ancestor traversal"),
-        ("Hierarchy", "Taxonomic – down", "Hierarchy down", "Refinement", "Descendant traversal"),
+        ("Hierarchy", "Taxonomic - up", "Hierarchy up", "Inheritance", "Ancestor traversal"),
+        ("Hierarchy", "Taxonomic - down", "Hierarchy down", "Refinement", "Descendant traversal"),
         ("Identity", "Exact equivalence", "Exact mapping", "Interchangeable", "Cross-vocabulary linking"),
     ]
     relationship_mappings = [
-        ("Is a", "Hierarchy", "Taxonomic – up"),
-        ("Subsumes", "Hierarchy", "Taxonomic – down"),
+        ("Is a", "Hierarchy", "Taxonomic - up"),
+        ("Subsumes", "Hierarchy", "Taxonomic - down"),
         ("Maps to", "Identity", "Exact equivalence"),
     ]
     concept_relationships = [
