@@ -133,6 +133,27 @@ class ExampleConfig(PackageConfigBase):
 The generic workflow maps supported Pydantic scalars to Groundskeeping fields, offers existing references of the correct concrete type, and can create a new reference chain recursively through oa-configurator's public `plan_configure()` API. Candidates remain private to the Groundworkers provider; review output is redacted and persistence is revision-aware.
 
 Schemas requiring live discovery or a conditional flow (and therefore not fitting the default configuration UX specification) may additionally implement the runtime-checkable `GroundworkersPluginConfigUI` protocol. Its `tui_workflow(operation)` method returns a custom `(ConfigWorkflowSpec, ConfigMutationService)` pair. Keep Groundskeeping in the plugin's optional TUI dependencies so headless plugin imports remain lightweight.
+### Sensitive fields
+
+`PackageConfigBase` inherits oa-configurator's `SecretSafeModel`. A plugin developer must mark every plugin-owned secret with `Sensitive()` so model representations, interactive fields, configuration views, and review diffs can redact it by schema declaration. Groundworkers does not infer sensitivity from field names.
+
+```python
+from typing import Annotated, ClassVar
+
+from oa_configurator import PackageConfigBase, Sensitive
+from pydantic import Field
+
+
+class ExampleConfig(PackageConfigBase):
+    tool_name: ClassVar[str] = "my_plugin"
+    api_token: Annotated[str | None, Sensitive()] = Field(default=None)
+```
+
+The `oa_configurator.Secret` alias is equivalent to `Annotated[str | None, Sensitive()]`. Prefer a `RefTo` field when a plugin can reuse an existing database, model, provider, or vector-store entry. The plugin then stores only the logical reference name; sensitivity remains declared on the referenced schema, such as `ConnectionConfig.password` or `ProviderConfig.api_key`, and the generic recursive configuration workflow preserves those declarations.
+
+This protects display and logging surfaces; it does not encrypt persisted configuration. Plugin documentation must describe the storage expectations for any secret it introduces.
+
+Schemas requiring live discovery or a conditional flow that Tier A cannot express may additionally implement the runtime-checkable `GroundworkersPluginConfigUI` protocol. Its `tui_workflow(operation)` method returns a custom `(ConfigWorkflowSpec, ConfigMutationService)` pair. Keep Groundskeeping in the plugin's optional TUI dependencies so headless plugin imports remain lightweight.
 
 ## Setup steps
 
