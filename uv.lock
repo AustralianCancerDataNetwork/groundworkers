@@ -1193,11 +1193,11 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "numpy", specifier = ">=1.26,<3" },
     { name = "oa-configurator", git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git?branch=path_config" },
-    { name = "omop-alchemy", specifier = ">=1,<2" },
+    { name = "omop-alchemy", specifier = ">=1.1,<2" },
     { name = "omop-emb", specifier = ">=2.1,<3" },
     { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=2.1,<3" },
     { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=2.1,<3" },
-    { name = "omop-graph", specifier = ">=2,<3" },
+    { name = "omop-graph", specifier = ">=2.1,<3" },
     { name = "omop-llm", specifier = ">=1,<2" },
     { name = "omop-semantics", specifier = ">=0.6,<1" },
     { name = "openpyxl", marker = "extra == 'all-source'", specifier = ">=3.1,<4" },
@@ -2583,7 +2583,7 @@ wheels = [
 
 [[package]]
 name = "omop-alchemy"
-version = "1.0.0"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
@@ -2594,9 +2594,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/bd/22405797161da62d9eefc26614729696ac06a7de67491bb3bf3f6dca352d/omop_alchemy-1.0.0.tar.gz", hash = "sha256:bb74526a09e4a7f26eb16ce6607ebb42c580a3471d2b5f01735e8a8de3deab95", size = 388728, upload-time = "2026-08-12T12:01:31.502Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/b6/315c72cba081c4cb5fed6737155047667e9057b92307579200551953e248/omop_alchemy-1.1.0.tar.gz", hash = "sha256:d78905132ad0f8933d8d6fceccbac903f497d40a54634ec9193023b237bb5afb", size = 395165, upload-time = "2026-08-24T06:19:41.929Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/17/6ee28f49997b82c3c9a07262ec4a191b6bed7f736b31582cea1d8c52784a/omop_alchemy-1.0.0-py3-none-any.whl", hash = "sha256:121ab13d9e26c49b752a5a4556c99a7c187d9fe7257896dbcdb7ae0fdbb6434c", size = 231095, upload-time = "2026-08-12T12:01:29.686Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/2c/c51519b2c1ff3b71b1117ca5e829451cbbe0d77d404d3ff8b485bd3e989c/omop_alchemy-1.1.0-py3-none-any.whl", hash = "sha256:31b64099145a6183fb71d6d89ecd662a506b5e9f9ab74b0b117860e1085991eb", size = 233776, upload-time = "2026-08-24T06:19:40.288Z" },
 ]
 
 [[package]]
@@ -2632,7 +2632,7 @@ pgvector = [
 
 [[package]]
 name = "omop-graph"
-version = "2.0.0"
+version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
@@ -2643,9 +2643,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d4/fb/9a0f09ea76f78bd6bb8446dbec72596c2f3771540e22ede62d238526d89e/omop_graph-2.0.0.tar.gz", hash = "sha256:8c83ac746b0d25e427e5f99c41a31bdc8d6fcf792fcf925b664169be83a0615e", size = 457763, upload-time = "2026-08-13T01:50:51.313Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/b3/9bd23eaa0c1075279fa37472ddb3b4b1fafb2dd985b85ea258a8521d2436/omop_graph-2.1.0.tar.gz", hash = "sha256:870feca44a91f93c840ea4a84ac44292e962288e91bcd7d0995f99847cad35fd", size = 460091, upload-time = "2026-08-24T08:35:42.495Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/14/2d/b193ccf42b43f87bb6abbf209f04130adb32d7bddf295074d474cb3397b6/omop_graph-2.0.0-py3-none-any.whl", hash = "sha256:9c9e390cfb40049bb7f3586ec428a07f1b04036be2742a0e2abb8b3c32551fa7", size = 84277, upload-time = "2026-08-13T01:50:50.116Z" },
+    { url = "https://files.pythonhosted.org/packages/90/ef/e896ba1b2711aba66db0b297f72ae694e2cb60e057ccf29f3943808012a7/omop_graph-2.1.0-py3-none-any.whl", hash = "sha256:9de67d14c91fea99be629ed66306ef2e9436d3fb7b2d45fa2d2394d4768fd40b", size = 124996, upload-time = "2026-08-24T08:35:40.965Z" },
 ]
 
 [[package]]

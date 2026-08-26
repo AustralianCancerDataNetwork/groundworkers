@@ -21,14 +21,16 @@ def build_groundworkers_tui_spec(
     from groundskeeping.contracts.pages import PageRegistration, PageRoute
     from groundskeeping.contracts.views import WorkbenchLabels
 
+    from groundworkers.app import load_plugin_readiness
     from groundworkers.application.setup.plugin_configuration import (
         PackageConfigMutationService,
     )
     from groundworkers.plugins import (
         GroundworkersPluginConfigUI,
+        GroundworkersPluginReadiness,
         discover_plugins,
     )
-    from groundworkers.tui.pages import PluginConfigPage, SetupPage
+    from groundworkers.tui.pages import PluginConfigPage, PluginSetupPage, SetupPage
     from groundworkers.tui.presenters.chat import ChatPresenter
     from groundworkers.tui.presenters.configuration import ConfigurationPresenter
     from groundworkers.tui.presenters.database import DatabasePresenter
@@ -80,25 +82,52 @@ def build_groundworkers_tui_spec(
                 plugin.name,
             )
             continue
-        if workflow_and_service is None:
-            continue
-        workflow, service = workflow_and_service
-        route = PageRoute(
-            key=workflow.target.key,
-            label=workflow.target.title,
-            purpose=workflow.purpose,
-        )
+        if workflow_and_service is not None:
+            workflow, service = workflow_and_service
+            readiness = None
+            if isinstance(plugin, GroundworkersPluginReadiness):
 
-        def plugin_factory(
-            _context: Any,
-            *,
-            route=route,
-            workflow=workflow,
-            service=service,
-        ):
-            return PluginConfigPage(route, workflow, service)
+                def readiness(
+                    *,
+                    plugin=plugin,
+                    config_path=str(session.configuration.path),
+                ):
+                    return load_plugin_readiness(config_path, plugin)
 
-        pages.append(PageRegistration(route=route, factory=plugin_factory))
+            route = PageRoute(
+                key=workflow.target.key,
+                label=workflow.target.title,
+                purpose=workflow.purpose,
+            )
+
+            def plugin_factory(
+                _context: Any,
+                *,
+                route=route,
+                workflow=workflow,
+                service=service,
+                readiness=readiness,
+            ):
+                return PluginConfigPage(route, workflow, service, readiness)
+
+            pages.append(PageRegistration(route=route, factory=plugin_factory))
+
+        for setup_step in getattr(plugin, "setup_steps", ()):
+            setup_route = PageRoute(
+                key=setup_step.key,
+                label=setup_step.title,
+                purpose=setup_step.purpose,
+            )
+
+            def setup_factory(
+                _context: Any,
+                *,
+                route=setup_route,
+                step=setup_step,
+            ):
+                return PluginSetupPage(route, session, step)
+
+            pages.append(PageRegistration(route=setup_route, factory=setup_factory))
 
     return OperatorAppSpec(
         app_id="groundworkers",

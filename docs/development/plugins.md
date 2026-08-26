@@ -134,8 +134,25 @@ The generic workflow maps supported Pydantic scalars to Groundskeeping fields, o
 
 Schemas requiring live discovery or a conditional flow (and therefore not fitting the default configuration UX specification) may additionally implement the runtime-checkable `GroundworkersPluginConfigUI` protocol. Its `tui_workflow(operation)` method returns a custom `(ConfigWorkflowSpec, ConfigMutationService)` pair. Keep Groundskeeping in the plugin's optional TUI dependencies so headless plugin imports remain lightweight.
 
+## Setup steps
+
+Plugin data preparation belongs in registered setup steps. A plugin may expose a `setup_steps` tuple of `PluginSetupStep` instances. Each step declares a stable key, operator copy, typed arguments, and a `build_plan(values, config_path)` callable that returns a `MaintenancePlan`.
+
+The host provides the common setup-console form and review flow, passes argument values only to that run, and starts the resulting plan through the durable maintenance-run store. Logs, progress, cancellation, retry, and the Runs view are therefore shared by core operations and plugins.
+
+Setup arguments are separate from package configuration: database/model references and policy defaults belong in configuration, while paths to an input export belong to the one-off setup run.
+
+Long-running plugin work should be represented by commands in the plan and run out of process. The command may invoke the plugin's own setup module or console entry point; Groundworkers does not import plugin internals or reproduce their loading logic.
+
+## Readiness verification
+
+A plugin may implement `GroundworkersPluginReadiness.verify_readiness(state)` when operators need to distinguish valid package configuration from an initialised, usable capability. 
+
+Verification is read-only and returns a `PluginReadinessResult` containing a stable state, a summary, and `PluginReadinessField` values. Display values must never contain credentials, connection URLs, or raw exception text.
+
+The contract is headless: it contains no Groundskeeping types. Groundworkers uses the same result for generic setup-console rendering, while a plugin may return `result.as_dict()` from its own MCP status tool. Plugins own dependency- specific checks; the host only builds current plugin state, handles unavailable configuration safely, and maps readiness states to existing Groundskeeping status, table, empty, action, and detail contracts.
+
+
 ## Lifecycle and diagnostics
 
 Groundworkers discovers the plugin set once per application build, validates its identities, resolves each package configuration, and builds state. MCP registration uses those same discovered objects. `groundworkers --describe` lists active plugins and safe `plugin_issues` for plugins skipped because their configuration, prerequisites, build, or registration failed.
-
-Plugin packages should test their own entry-point metadata and runtime capability. Groundworkers tests the host contract with in-process fixtures and separately tests the generic configuration journey with a test-local package schema; plugin business functionality is not required to prove the host workflow.

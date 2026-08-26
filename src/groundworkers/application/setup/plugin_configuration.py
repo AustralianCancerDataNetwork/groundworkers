@@ -122,7 +122,7 @@ def plugin_config_target(
     title = config_cls.tool_name.replace("_", " ").replace("-", " ").title()
     return ConfigTarget(
         ConfigTargetKind.TOOL,
-        f"plugin.{config_cls.tool_name}",
+        f"gw_plugin-{config_cls.tool_name}",
         title,
     )
 

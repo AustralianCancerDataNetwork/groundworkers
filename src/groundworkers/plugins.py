@@ -14,8 +14,9 @@ module is the runtime contract that document describes.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
@@ -28,6 +29,8 @@ from oa_configurator import (  # type: ignore[import-untyped]
 )
 from sqlalchemy.engine import Engine
 
+from groundworkers.application.setup.maintenance_runs import MaintenancePlan
+
 if TYPE_CHECKING:
     from groundskeeping.configurator import (
         ConfigMutationService,
@@ -37,12 +40,119 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_PLUGIN_SETUP_FIELD_KINDS = frozenset(
+    {
+        "text",
+        "integer",
+        "decimal",
+        "boolean",
+        "choice",
+        "existing_path",
+        "output_path",
+        "secret",
+        "multiline",
+    }
+)
+
+
+class PluginReadinessState(StrEnum):
+    """Stable, presentation-independent readiness states for plugins."""
+
+    UNCONFIGURED = "unconfigured"
+    WARNING = "warning"
+    READY = "ready"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class PluginReadinessField:
+    """One explicitly safe field in a plugin readiness report.
+
+    Plugins must only put operator-safe display text here. In particular, values
+    must not contain connection URLs, credentials, or raw exception messages.
+    """
+
+    key: str
+    label: str
+    value: str
+    state: PluginReadinessState
+    detail: str | None = None
+
+    def as_dict(self) -> dict[str, str | None]:
+        """Return the stable transport shape used by status tools."""
+
+        return {
+            "key": self.key,
+            "label": self.label,
+            "value": self.value,
+            "state": self.state.value,
+            "detail": self.detail,
+        }
+
+
+@dataclass(frozen=True)
+class PluginReadinessResult:
+    """Read-only plugin verification result shared by headless and UI hosts."""
+
+    state: PluginReadinessState
+    summary: str
+    fields: tuple[PluginReadinessField, ...] = ()
+    configured: bool = True
+
+    @property
+    def ready(self) -> bool:
+        return self.state is PluginReadinessState.READY
+
+    def as_dict(self) -> dict[str, object]:
+        """Return a stable, JSON-compatible readiness response."""
+
+        return {
+            "state": self.state.value,
+            "configured": self.configured,
+            "ready": self.ready,
+            "summary": self.summary,
+            "fields": [field.as_dict() for field in self.fields],
+        }
+
+
+@dataclass(frozen=True)
+class PluginSetupArgument:
+    """One argument rendered by Groundworkers' generic setup wizard.
+
+    ``kind`` uses the string values of Groundskeeping's ``FieldKind`` without
+    making the MCP/runtime plugin contract depend on the optional TUI package.
+    """
+
+    key: str
+    label: str
+    kind: str = "text"
+    required: bool = True
+    default: object | None = None
+    help: str | None = None
+
+
+@dataclass(frozen=True)
+class PluginSetupStep:
+    """Declarative, background-capable setup operation owned by a plugin.
+
+    The host owns argument presentation, review, persistence, logs, retry, and
+    cancellation. The plugin only translates validated values into a durable
+    ``MaintenancePlan``; it does not get a second CLI or TUI framework.
+    """
+
+    key: str
+    title: str
+    purpose: str
+    arguments: tuple[PluginSetupArgument, ...]
+    build_plan: Callable[[Mapping[str, object], str], MaintenancePlan]
+    apply_label: str = "Run"
+
 
 @dataclass(frozen=True)
 class PluginConfigResolver:
     """
-    Wraps `oa_configurator.Resolver` so a plugin's dependency 
-    on oa-configurator can't grow past what core itself relies 
+    Wraps `oa_configurator.Resolver` so a plugin's dependency
+    on oa-configurator can't grow past what core itself relies
     on today.
     """
 
@@ -132,6 +242,28 @@ class GroundworkersPluginConfigUI(Protocol):
         ...
 
 
+@runtime_checkable
+class GroundworkersPluginSetup(Protocol):
+    """Optional setup operations exposed in the host setup console."""
+
+    setup_steps: ClassVar[tuple[PluginSetupStep, ...]]
+
+
+@runtime_checkable
+class GroundworkersPluginReadiness(Protocol):
+    """Optional read-only verification implemented by a plugin.
+
+    The plugin receives the same state it built for MCP registration and
+    returns presentation-independent, explicitly safe display data. This keeps
+    the runtime contract free of Groundskeeping and TUI types.
+    """
+
+    def verify_readiness(self, state: object) -> PluginReadinessResult:
+        """Inspect current dependencies without mutating them."""
+
+        ...
+
+
 def discover_plugins() -> list[GroundworkersPlugin]:
     """Discover installed plugins via the `groundworkers.plugins` entry-point group.
 
@@ -159,15 +291,47 @@ def validate_plugin_identities(plugins: list[GroundworkersPlugin]) -> None:
     """Reject ambiguous runtime/config identities before any plugin is built."""
 
     seen: set[str] = set()
+    setup_seen: set[str] = set()
     for plugin in plugins:
         if not plugin.name or plugin.name in seen:
-            raise ValueError(f"Groundworkers plugin name {plugin.name!r} is not unique.")
+            raise ValueError(
+                f"Groundworkers plugin name {plugin.name!r} is not unique."
+            )
         seen.add(plugin.name)
-        if (
-            plugin.config_cls is not None
-            and plugin.config_cls.tool_name != plugin.name
-        ):
+        if plugin.config_cls is not None and plugin.config_cls.tool_name != plugin.name:
             raise ValueError(
                 f"Groundworkers plugin {plugin.name!r} uses configuration identity "
                 f"{plugin.config_cls.tool_name!r}; the names must match."
             )
+        for step in getattr(plugin, "setup_steps", ()):
+            if not step.key or step.key in setup_seen:
+                raise ValueError(
+                    f"Groundworkers setup step {step.key!r} is not unique."
+                )
+            if not step.key.startswith(f"{plugin.name}_"):
+                raise ValueError(
+                    f"Groundworkers setup step {step.key!r} must start with "
+                    f"the plugin name {plugin.name!r} followed by an underscore."
+                )
+            argument_keys = [argument.key for argument in step.arguments]
+            if len(argument_keys) != len(set(argument_keys)):
+                raise ValueError(
+                    f"Groundworkers setup step {step.key!r} has duplicate arguments."
+                )
+            if any(not argument.key for argument in step.arguments):
+                raise ValueError(
+                    f"Groundworkers setup step {step.key!r} has an argument without a key."
+                )
+            unsupported_kinds = sorted(
+                {
+                    argument.kind
+                    for argument in step.arguments
+                    if argument.kind not in _PLUGIN_SETUP_FIELD_KINDS
+                }
+            )
+            if unsupported_kinds:
+                raise ValueError(
+                    f"Groundworkers setup step {step.key!r} uses unsupported "
+                    f"argument kinds: {unsupported_kinds}."
+                )
+            setup_seen.add(step.key)

@@ -1,8 +1,6 @@
 """Request/response models for deterministic semantic projection.
 
-Mirrors the contract in agent-stack's agentive-design/_design/SEMANTIC_INTEGRATION/
-03_groundworkers_mcp_contract.md. `context` carries whatever a definition needs
-beyond the grounded concept itself:
+`context` carries whatever a definition needs beyond the grounded concept itself:
 
 - `raw_value` — the grounded field's own raw source code. Consulted by a
   `SpecialValuePolicy` (e.g. a "meets criteria for X" field, where the negative

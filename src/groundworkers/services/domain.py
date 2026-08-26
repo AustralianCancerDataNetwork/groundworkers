@@ -11,6 +11,11 @@ Device, Metadata, Identifier.
 "Metadata" and "Identifier" are groundcrew-internal sentinel values, not OMOP
 CDM domains.  The ingester treats them as skip signals and does not create
 SourceItems for those rows.
+
+TODO: this isn't actually asking about domain_id, it is asking about target CDM table,
+and is a pre-cursor to semantic projection. This is likely fine with the shorter list
+of domains, but it could end up being very confusing if that is not clear - some thought
+required here...
 """
 from __future__ import annotations
 

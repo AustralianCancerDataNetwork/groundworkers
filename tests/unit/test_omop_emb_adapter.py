@@ -92,11 +92,16 @@ class StubReader:
 
 
 def nearest_match(*, concept_id: int = 111) -> SimpleNamespace:
+    """Mirrors omop_emb.NearestConceptMatch, including the domain/vocabulary
+    fields added in omop-emb 2.1 that the adapter previously discarded."""
     return SimpleNamespace(
         concept_id=concept_id,
         concept_name="Hypertension" if concept_id == 111 else "Essential hypertension",
+        domain_id="Condition",
+        vocabulary_id="SNOMED",
         similarity=0.9876543,
         is_standard=True,
+        is_classification=False,
         is_active=True,
     )
 
@@ -157,8 +162,15 @@ def test_search_uses_configured_model_backend_and_serialises_matches(monkeypatch
             {
                 "concept_id": 111,
                 "concept_name": "Hypertension",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
                 "similarity": 0.987654,
-                "is_standard": True,
+                # One wire vocabulary across every tool: standard_concept, not
+                # is_standard. classification_concept is None because the
+                # embedding sidecar stores no 'C' column, so this channel cannot
+                # distinguish a classification concept from an unflagged one.
+                "standard_concept": True,
+                "classification_concept": False,
                 "is_active": True,
             }
         ],

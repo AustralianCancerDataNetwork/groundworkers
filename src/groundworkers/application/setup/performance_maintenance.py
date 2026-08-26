@@ -110,7 +110,7 @@ def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
     try:
         if engine.dialect.name != "postgresql":
             raise ValueError("Trigram indexes require a PostgreSQL CDM database.")
-        schema = getattr(database, "vocab_schema", None) or getattr(database, "schema_name", None)
+        schema = getattr(database, "schema_name", None)
         prefix = f"{quote_identifier(engine, schema)}." if schema else ""
         with engine.begin() as connection:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))

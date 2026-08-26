@@ -105,8 +105,15 @@ def test_vocab_service_exact_normalized_sidecar_and_standard_navigation(tmp_path
     assert available is False
     assert service.fts_available is False
     assert [item.source_concept_id for item in navigation] == [1, 2]
-    assert navigation[0].standard_concepts[0].relationship_id == "self"
-    assert navigation[1].standard_concepts[0].concept_id == 1
+    # A standard source maps to itself, marked with the "self" sentinel.
+    assert navigation[0].targets[0].relationship_id == "self"
+    assert navigation[1].targets[0].concept["concept_id"] == 1
+    # Targets now carry the full flag set, so a caller can tell a standard
+    # target from a classification one without a second lookup.
+    target = navigation[1].targets[0].concept
+    assert target["standard_concept"] is True
+    assert target["classification_concept"] is False
+    assert "concept_code" in target and "is_active" in target
 
 
 def test_fulltext_probe_uses_the_first_available_concept_label(tmp_path, monkeypatch) -> None:

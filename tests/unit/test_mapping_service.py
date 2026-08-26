@@ -4,10 +4,9 @@ import pytest
 
 from groundworkers.services import MappingService
 from groundworkers.services.vocab import (
+    ConceptMappingResult,
     ConceptMatch,
     MappedConcept,
-    RelatedConceptMapping,
-    StandardMapping,
 )
 
 
@@ -15,14 +14,17 @@ class StubVocabAdapter:
     def search_exact(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, limit=20):
         return [
             ConceptMatch(
-                concept_id=101,
-                concept_name="Diabetes mellitus",
-                concept_code="44054006",
-                vocabulary_id="SNOMED",
-                domain_id="Condition",
-                concept_class_id="Clinical Finding",
-                standard_concept=True,
-                invalid_reason=None,
+                concept={
+                    "concept_id": 101,
+                    "concept_name": "Diabetes mellitus",
+                    "concept_code": "44054006",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "concept_class_id": "Clinical Finding",
+                    "standard_concept": True,
+                    "classification_concept": False,
+                    "is_active": True,
+                },
                 match_source="name",
             )
         ]
@@ -30,14 +32,17 @@ class StubVocabAdapter:
     def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20):
         return [
             ConceptMatch(
-                concept_id=102,
-                concept_name="Type 2 diabetes mellitus",
-                concept_code="44054007",
-                vocabulary_id="SNOMED",
-                domain_id="Condition",
-                concept_class_id="Clinical Finding",
-                standard_concept=False,
-                invalid_reason=None,
+                concept={
+                    "concept_id": 102,
+                    "concept_name": "Type 2 diabetes mellitus",
+                    "concept_code": "44054007",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "concept_class_id": "Clinical Finding",
+                    "standard_concept": False,
+                    "classification_concept": False,
+                    "is_active": True,
+                },
                 match_source="name",
             )
         ]
@@ -45,32 +50,42 @@ class StubVocabAdapter:
     def search_fulltext(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, min_rank=0.0, limit=20):
         return ([
             ConceptMatch(
-                concept_id=103,
-                concept_name="Diabetic disorder",
-                concept_code="44054008",
-                vocabulary_id="SNOMED",
-                domain_id="Condition",
-                concept_class_id="Clinical Finding",
-                standard_concept=False,
-                invalid_reason=None,
-                match_source="name",
-                ts_rank=0.42,
+                concept={
+                    "concept_id": 103,
+                    "concept_name": "Diabetic disorder",
+                    "concept_code": "44054008",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "concept_class_id": "Clinical Finding",
+                    "standard_concept": False,
+                    "classification_concept": False,
+                    "is_active": True,
+                },
+                match_source="name", ts_rank=0.42,
             )
         ], True)
 
     def navigate_to_standard(self, concept_ids: list[int]):
         return [
-            StandardMapping(
+            ConceptMappingResult(
                 source_concept_id=102,
                 source_concept_name="Type 2 diabetes mellitus",
                 source_standard_concept=False,
-                standard_concepts=[
+                source_classification_concept=False,
+                targets=[
                     MappedConcept(
-                        concept_id=201,
-                        concept_name="Type 2 diabetes mellitus (standard)",
-                        vocabulary_id="SNOMED",
-                        domain_id="Condition",
-                        concept_class_id="Clinical Finding",
+                        # A shared concept payload, not a parallel field list.
+                        concept={
+                            "concept_id": 201,
+                            "concept_name": "Type 2 diabetes mellitus (standard)",
+                            "vocabulary_id": "SNOMED",
+                            "domain_id": "Condition",
+                            "concept_code": "44054006",
+                            "concept_class_id": "Clinical Finding",
+                            "standard_concept": True,
+                            "classification_concept": False,
+                            "is_active": True,
+                        },
                         relationship_id="Maps to",
                     )
                 ],
@@ -79,17 +94,24 @@ class StubVocabAdapter:
 
     def navigate_to_value(self, concept_ids: list[int]):
         return [
-            RelatedConceptMapping(
+            ConceptMappingResult(
                 source_concept_id=555,
                 source_concept_name="Source concept",
                 source_standard_concept=False,
-                related_concepts=[
+                source_classification_concept=False,
+                targets=[
                     MappedConcept(
-                        concept_id=777,
-                        concept_name="Positive",
-                        vocabulary_id="SNOMED",
-                        domain_id="Observation",
-                        concept_class_id="Qualifier Value",
+                        concept={
+                            "concept_id": 777,
+                            "concept_name": "Positive",
+                            "vocabulary_id": "SNOMED",
+                            "domain_id": "Observation",
+                            "concept_code": "10828004",
+                            "concept_class_id": "Qualifier Value",
+                            "standard_concept": True,
+                            "classification_concept": False,
+                            "is_active": True,
+                        },
                         relationship_id="Maps to value",
                     )
                 ],
@@ -303,10 +325,10 @@ class StubGroundingService:
         }
 
 
-def build_service() -> MappingService:
+def build_service(graph: StubGraphAdapter | None = None) -> MappingService:
     return MappingService(
         StubVocabAdapter(),
-        graph_service=StubGraphAdapter(),
+        graph_service=graph or StubGraphAdapter(),
         emb_adapter=StubEmbAdapter(),
         grounding_service=StubGroundingService(),
     )
@@ -611,3 +633,94 @@ def test_candidate_bundle_constraints_reflect_active_only_and_parent_ids():
     constraints = result["constraints"]
     assert constraints["active_only"] is True
     assert constraints["parent_ids"] == [301, 302]
+
+
+# ---------------------------------------------------------------------------
+# concept_nearest_standard_ancestor: failure is reported as failure
+# ---------------------------------------------------------------------------
+#
+# The fallback used to return the seed concept itself with found=True, so a
+# caller could not tell "here is the standard ancestor you asked for" from
+# "there is none and this is your own input handed back".
+
+
+class _NoAncestryGraph(StubGraphAdapter):
+    """A seed with no ancestry and no ``Maps to`` target.
+
+    Mirrors a non-standard concept whose vocabulary has no ``concept_ancestor``
+    rows — ICD10CM is the real-world case.
+    """
+
+    def get_concept(self, concept_id: int):
+        if concept_id == 555:
+            return {
+                "concept_id": 555,
+                "concept_name": "Orphan non-standard concept",
+                "concept_code": "ORPHAN",
+                "vocabulary_id": "ICD10CM",
+                "domain_id": "Condition",
+                "concept_class_id": "4-char billing code",
+                "standard_concept": False,
+                "valid_start_date": "2000-01-01",
+                "valid_end_date": "2099-12-31",
+                "invalid_reason": None,
+            }
+        return super().get_concept(concept_id)
+
+    def get_ancestors(self, concept_id: int, max_depth: int):
+        return [] if concept_id == 555 else super().get_ancestors(concept_id, max_depth)
+
+
+def test_nearest_standard_ancestor_reports_failure_when_none_exists():
+    service = build_service(graph=_NoAncestryGraph())
+
+    result = service.concept_nearest_standard_ancestor(concept_id=555)
+
+    assert result["found"] is False
+    assert result["selected_parent"] is None
+    assert result["selection_reason"] == "no_standard_ancestor"
+    assert result["warnings"], "a degraded result must say why"
+
+
+def test_nearest_standard_ancestor_never_returns_a_non_standard_parent():
+    """The core contract: found=True implies a genuinely standard target."""
+    service = build_service(graph=_NoAncestryGraph())
+
+    result = service.concept_nearest_standard_ancestor(concept_id=555)
+
+    if result["found"]:
+        assert result["selected_parent"]["standard_concept"] is True
+    else:
+        assert result["selected_parent"] is None
+
+
+def test_nearest_standard_ancestor_falls_back_to_maps_to():
+    """A seed with no ancestry but a 'Maps to' target is still resolvable.
+
+    Concept 102 has ancestors in the default stub, so this exercises the branch
+    via a graph where ancestry is empty but the mapping exists.
+    """
+
+    class _MapsToOnlyGraph(StubGraphAdapter):
+        def get_ancestors(self, concept_id: int, max_depth: int):
+            return []
+
+    service = build_service(graph=_MapsToOnlyGraph())
+
+    result = service.concept_nearest_standard_ancestor(concept_id=102)
+
+    assert result["found"] is True
+    assert result["selection_reason"] == "maps_to_standard"
+    assert result["selected_parent"]["concept_id"] == 201
+    assert result["warnings"] == []
+
+
+def test_nearest_standard_ancestor_still_succeeds_through_ancestry():
+    """Regression guard: the passing path must be unaffected."""
+    service = build_service()
+
+    result = service.concept_nearest_standard_ancestor(concept_id=102)
+
+    assert result["found"] is True
+    assert result["selected_parent"]["concept_id"] == 301
+    assert result["warnings"] == []

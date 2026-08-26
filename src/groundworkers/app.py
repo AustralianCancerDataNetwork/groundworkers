@@ -14,8 +14,11 @@ from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
 from groundworkers.plugins import (
     GroundworkersPlugin,
+    GroundworkersPluginReadiness,
     PluginConfigResolver,
     PluginContext,
+    PluginReadinessResult,
+    PluginReadinessState,
     discover_plugins,
 )
 from groundworkers.services import (
@@ -139,7 +142,6 @@ def build_adapters(config: AppConfig) -> Adapters:
     complete_embedding = resolved_store is not None and resolved_model is not None
     adapters.omop_graph = OmopGraphAdapter(
         engine=config.cdm_engine,
-        vocab_schema=config.cdm_database.vocab_schema,
         embedding_backend_factory=(
             get_embedding_backend if complete_embedding else None
         ),
@@ -239,29 +241,103 @@ def _build_plugins(
     plugins: dict[str, object] = {}
     issues: dict[str, str] = {}
     for plugin in plugin_definitions:
-        plugin_config = None
-        if plugin.config_cls is not None:
-            try:
-                plugin_config = plugin.config_cls.validate_candidate(config.stack)
-            except ConfigurationError as exc:
-                logger.info(
-                    "Plugin %s config not present or invalid, skipping: %s",
-                    plugin.name,
-                    exc,
-                )
-                issues[plugin.name] = f"invalid configuration ({type(exc).__name__})"
-                continue
-        try:
-            state = plugin.build(context, plugin_config)
-        except Exception:
-            logger.exception("Groundworkers plugin %s failed to build.", plugin.name)
-            issues[plugin.name] = "plugin build failed"
-            continue
+        state, issue = _build_plugin(config, context, plugin)
         if state is not None:
             plugins[plugin.name] = state
         else:
-            issues[plugin.name] = "plugin prerequisites are unavailable"
+            issues[plugin.name] = issue or "plugin prerequisites are unavailable"
     return plugins, issues
+
+
+def _build_plugin(
+    config: AppConfig,
+    context: PluginContext,
+    plugin: GroundworkersPlugin,
+) -> tuple[object | None, str | None]:
+    plugin_config = None
+    if plugin.config_cls is not None:
+        try:
+            plugin_config = plugin.config_cls.validate_candidate(config.stack)
+        except ConfigurationError as exc:
+            logger.info(
+                "Plugin %s config not present or invalid, skipping: %s",
+                plugin.name,
+                exc,
+            )
+            return None, f"invalid configuration ({type(exc).__name__})"
+    try:
+        state = plugin.build(context, plugin_config)
+    except Exception:
+        logger.exception("Groundworkers plugin %s failed to build.", plugin.name)
+        return None, "plugin build failed"
+    if state is None:
+        return None, "plugin prerequisites are unavailable"
+    return state, None
+
+
+def verify_plugin_readiness(
+    config: AppConfig,
+    plugin: GroundworkersPlugin,
+) -> PluginReadinessResult:
+    """Build and run one plugin's optional read-only readiness check.
+
+    This is deliberately a headless host operation. TUI code may render its
+    result, while MCP tools can return the same contract directly.
+    """
+
+    if not isinstance(plugin, GroundworkersPluginReadiness):
+        return PluginReadinessResult(
+            state=PluginReadinessState.UNCONFIGURED,
+            configured=False,
+            summary="This plugin does not expose readiness verification.",
+        )
+    adapters = build_adapters(config)
+    context = _build_plugin_context(config, adapters)
+    state, issue = _build_plugin(config, context, plugin)
+    if state is None:
+        return PluginReadinessResult(
+            state=PluginReadinessState.UNCONFIGURED,
+            configured=False,
+            summary=(
+                "Plugin configuration or prerequisites are unavailable. "
+                f"Host detail: {issue or 'unknown issue'}."
+            ),
+        )
+    try:
+        return plugin.verify_readiness(state)
+    except Exception:
+        logger.exception("Groundworkers plugin %s readiness check failed.", plugin.name)
+        return PluginReadinessResult(
+            state=PluginReadinessState.ERROR,
+            summary="Plugin verification failed unexpectedly; review the host logs.",
+        )
+
+
+def load_plugin_readiness(
+    config_path: str,
+    plugin: GroundworkersPlugin,
+) -> PluginReadinessResult:
+    """Load current configuration and verify one plugin without TUI coupling."""
+
+    from groundworkers.bootstrap import build_app_config
+
+    try:
+        config = build_app_config(config_path=config_path)
+    except Exception:
+        logger.info(
+            "Could not load configuration while verifying plugin %s.",
+            plugin.name,
+            exc_info=True,
+        )
+        return PluginReadinessResult(
+            state=PluginReadinessState.UNCONFIGURED,
+            configured=False,
+            summary=(
+                "Create or repair the base Groundworkers configuration, then "
+                "configure this plugin."
+            ),
+        )
+    return verify_plugin_readiness(config, plugin)
 
 
 def build_application(config: AppConfig) -> GroundworkersApp:

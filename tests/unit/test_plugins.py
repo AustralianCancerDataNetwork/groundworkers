@@ -22,11 +22,14 @@ import pytest
 from oa_configurator import PackageConfigBase
 from pydantic import Field
 
-from groundworkers.app import build_application
+from groundworkers.app import build_application, verify_plugin_readiness
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.plugins import (
     PluginContext,
+    PluginReadinessField,
+    PluginReadinessResult,
+    PluginReadinessState,
     discover_plugins,
     validate_plugin_identities,
 )
@@ -60,6 +63,24 @@ class FakePlugin:
         @server.tool("fake_plugin_fail")
         def fake_plugin_fail() -> dict:
             raise GroundworkersError("NOT_FOUND", "nothing here")
+
+
+class FakeReadinessPlugin(FakePlugin):
+    def verify_readiness(self, state: object) -> PluginReadinessResult:
+        assert isinstance(state, dict)
+        return PluginReadinessResult(
+            state=PluginReadinessState.READY,
+            summary="Fake plugin is ready.",
+            fields=(
+                PluginReadinessField(
+                    "vector_store",
+                    "Vector store",
+                    "Available",
+                    PluginReadinessState.READY,
+                    "The shared vector store is available.",
+                ),
+            ),
+        )
 
 
 def _embedding_stack(tmp_path: Path, extra: dict | None = None):
@@ -178,3 +199,40 @@ def test_plugin_identities_must_be_unique_and_match_their_config() -> None:
     mismatched.name = "different_name"
     with pytest.raises(ValueError, match="names must match"):
         validate_plugin_identities([mismatched])
+
+
+def test_optional_readiness_contract_is_headless_and_transport_stable(
+    tmp_path: Path,
+) -> None:
+    config = build_app_config_from_stack(_embedding_stack(tmp_path))
+
+    report = verify_plugin_readiness(config, FakeReadinessPlugin())
+
+    assert report.as_dict() == {
+        "state": "ready",
+        "configured": True,
+        "ready": True,
+        "summary": "Fake plugin is ready.",
+        "fields": [
+            {
+                "key": "vector_store",
+                "label": "Vector store",
+                "value": "Available",
+                "state": "ready",
+                "detail": "The shared vector store is available.",
+            }
+        ],
+    }
+    assert PluginReadinessResult.__module__ == "groundworkers.plugins"
+
+
+def test_readiness_reports_unconfigured_when_plugin_cannot_build() -> None:
+    report = verify_plugin_readiness(
+        build_app_config_from_stack(build_cdm_stack()),
+        FakeReadinessPlugin(),
+    )
+
+    assert report.state is PluginReadinessState.UNCONFIGURED
+    assert not report.configured
+    assert not report.ready
+    assert "prerequisites" in report.summary

@@ -2,17 +2,15 @@
 
 Covers the boundary that replaced omop-graph 1.x's deleted concept search
 constraint with ``omop_alchemy.cdm.query.ConceptFilter``, the tier plan, and the strict
-standard/classification contract that Groundworkers derives from the raw OMOP
-flag because omop-graph 2.x only exposes the combined standard-or-classification
-boolean.
+standard/classification contract. From omop-graph 2.1 the concept view reports
+``standard_concept`` and ``classification_concept`` as separate strict flags, so
+Groundworkers no longer reads the raw OMOP flag from the CDM engine itself.
 """
 
 from __future__ import annotations
 
-from datetime import date
-
 import pytest
-from omop_alchemy.cdm.model.vocabulary import Concept
+from omop_alchemy.cdm.model import normalised_flag
 from omop_alchemy.cdm.query import ConceptFilter
 from sqlalchemy import create_engine
 
@@ -306,16 +304,14 @@ class StubGroundAdapter:
                 "vocabulary_id": "SNOMED",
                 "domain_id": "Condition",
                 "concept_class_id": "Clinical Finding",
-                # omop-graph's combined standard-or-classification boolean: true for
-                # both 'S' and 'C'. Deliberately true here so the strict flags below
-                # cannot be passing by accidentally reading this field.
-                "standard_concept": self._raw_flag in {"S", "C"},
+                # omop-graph >= 2.1 projects omop-alchemy's two atomic
+                # predicates, so the view carries strict, disjoint flags:
+                # 'S' -> standard, 'C' -> classification, anything else neither.
+                "standard_concept": self._raw_flag == "S",
+                "classification_concept": self._raw_flag == "C",
                 "is_active": self._is_active,
             }
         }
-
-    def raw_standard_flags(self, concept_ids) -> dict[int, str | None]:
-        return {42: self._raw_flag}
 
 
 @pytest.mark.parametrize(
@@ -359,15 +355,17 @@ def test_grounding_result_carries_the_graph_activity_field() -> None:
     assert result["results"][0]["is_active"] is False
 
 
-def test_raw_flags_are_requested_only_for_returned_concepts() -> None:
+def test_concept_views_are_requested_only_for_returned_concepts() -> None:
+    """Metadata is fetched for the returned hits, not for every candidate."""
+
     class Recording(StubGroundAdapter):
         def __init__(self) -> None:
             super().__init__("S")
             self.requested: list[tuple[int, ...]] = []
 
-        def raw_standard_flags(self, concept_ids):
+        def concept_views(self, concept_ids):
             self.requested.append(tuple(concept_ids))
-            return super().raw_standard_flags(concept_ids)
+            return super().concept_views(concept_ids)
 
     adapter = Recording()
     ConceptGroundingService(GraphService(adapter)).ground(
@@ -489,112 +487,26 @@ def test_healthy_grounding_reports_no_embedding_tier_detail() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Raw-flag query regression fixtures (real SQLite CDM)
+# Flag normalisation contract
 # ---------------------------------------------------------------------------
-
-# Fixed concept rows covering every standard_concept / invalid_reason shape the
-# public contract has to distinguish. Blank and whitespace-only values are legal
-# in real vocabularies and must normalize to "unset", not to a truthy flag.
-RAW_FLAG_FIXTURES: tuple[tuple[int, str, str | None, str | None], ...] = (
-    (1, "standard concept", "S", None),
-    (2, "classification concept", "C", None),
-    (3, "non standard concept", None, None),
-    (4, "blank flag concept", "", None),
-    (5, "whitespace flag concept", " ", None),
-    (6, "deprecated standard concept", "S", "D"),
-    (7, "upgraded standard concept", "S", "U"),
-    (8, "blank invalid reason concept", "S", ""),
-    (9, "whitespace invalid reason concept", "S", " "),
-)
-
-
-@pytest.fixture()
-def sqlite_cdm_adapter():
-    """An OmopGraphAdapter over a minimal real SQLite concept table."""
-    engine = create_engine("sqlite:///:memory:")
-    Concept.__table__.create(engine)
-    with engine.begin() as conn:
-        conn.execute(
-            Concept.__table__.insert(),
-            [
-                {
-                    "concept_id": concept_id,
-                    "concept_name": name,
-                    "domain_id": "Condition",
-                    "vocabulary_id": "SNOMED",
-                    "concept_class_id": "Clinical Finding",
-                    "standard_concept": standard_concept,
-                    "concept_code": str(concept_id),
-                    "valid_start_date": date(1970, 1, 1),
-                    "valid_end_date": date(2099, 12, 31),
-                    "invalid_reason": invalid_reason,
-                }
-                for concept_id, name, standard_concept, invalid_reason in RAW_FLAG_FIXTURES
-            ],
-        )
-    return OmopGraphAdapter(engine)
-
-
-@pytest.mark.parametrize(
-    ("concept_id", "expected_flag"),
-    [
-        (1, "S"),
-        (2, "C"),
-        (3, None),
-        (4, None),  # blank normalizes to unset
-        (5, None),  # whitespace-only normalizes to unset
-    ],
-)
-def test_raw_standard_flags_reads_the_unnormalized_omop_flag(
-    sqlite_cdm_adapter, concept_id: int, expected_flag: str | None
-) -> None:
-    flags = sqlite_cdm_adapter.raw_standard_flags([concept_id])
-
-    assert flags == {concept_id: expected_flag}
-
-
-def test_raw_standard_flags_distinguishes_standard_from_classification(
-    sqlite_cdm_adapter,
-) -> None:
-    # The whole point of the local query: omop-graph's ConceptView.standard_concept
-    # is true for both of these, so it cannot carry the public contract.
-    flags = sqlite_cdm_adapter.raw_standard_flags([1, 2])
-
-    assert flags[1] == "S"
-    assert flags[2] == "C"
-
-
-def test_raw_standard_flags_batches_and_deduplicates(sqlite_cdm_adapter) -> None:
-    flags = sqlite_cdm_adapter.raw_standard_flags([1, 2, 3, 1, 2])
-
-    assert flags == {1: "S", 2: "C", 3: None}
-
-
-def test_raw_standard_flags_omits_unknown_concepts(sqlite_cdm_adapter) -> None:
-    flags = sqlite_cdm_adapter.raw_standard_flags([1, 999_999])
-
-    assert flags == {1: "S"}
-
-
-def test_raw_standard_flags_short_circuits_on_empty_input() -> None:
-    # No engine access at all, so callers can pass an empty result set safely.
-    adapter = OmopGraphAdapter(create_engine("sqlite:///:memory:"))
-
-    assert adapter.raw_standard_flags([]) == {}
-
-
 @pytest.mark.parametrize(
     ("value", "expected"),
     [("S", "S"), ("C", "C"), (None, None), ("", None), ("   ", None), (" S ", "S")],
 )
 def test_raw_flag_normalization(value: str | None, expected: str | None) -> None:
-    assert OmopGraphAdapter._normalise_raw_flag(value) == expected
+    """Groundworkers delegates flag normalisation rather than reimplementing it.
+
+    The private ``_normalise_raw_flag`` duplicate is gone; ``normalised_flag`` is
+    omop-alchemy's published Python counterpart to ``normalised_flag_expr``, so
+    the Python and SQL halves cannot drift.
+    """
+    assert normalised_flag(value) == expected
 
 
 def test_invalid_reason_normalization_matches_the_activity_contract() -> None:
     # Validity uses the same normalization: 'D'/'U' are inactive; NULL, blank and
     # whitespace-only are active.
-    normalise = OmopGraphAdapter._normalise_raw_flag
+    normalise = normalised_flag
 
     assert normalise("D") == "D"
     assert normalise("U") == "U"

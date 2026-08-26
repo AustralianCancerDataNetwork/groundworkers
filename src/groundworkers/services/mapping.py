@@ -379,14 +379,34 @@ class MappingService:
             seed = {"concept_id": concept_id, "concept_name": seed_concept["concept_name"], "match_kind": "DIRECT"}
             selection_reason = "direct_concept_input"
 
+        warnings: list[str] = []
         if selection_reason == "exact_standard_match":
             selected_parent = seed_concept
             alternatives: list[dict[str, Any]] = []
         else:
             ancestors = self._graph.get_ancestors(seed_concept["concept_id"], max_depth)
             standard_ancestors = [a for a in ancestors if a.get("standard_concept")]
-            selected_parent = standard_ancestors[0] if standard_ancestors else seed_concept
+            selected_parent = standard_ancestors[0] if standard_ancestors else None
             alternatives = standard_ancestors[1: min(5, len(standard_ancestors))]
+
+            if selected_parent is None:
+                # No standard ancestor. Before giving up, follow "Maps to": a
+                # non-standard concept with no ancestry usually still has one, and
+                # returning nothing would discard a resolvable seed.
+                mapped = self._graph.map_to_standard(
+                    seed_concept["vocabulary_id"], seed_concept["concept_code"]
+                )
+                mapped_standards = mapped.get("standard_concepts", [])
+                if mapped_standards:
+                    selected_parent = mapped_standards[0]
+                    alternatives = mapped_standards[1:5]
+                    selection_reason = "maps_to_standard"
+                else:
+                    selection_reason = "no_standard_ancestor"
+                    warnings.append(
+                        "No standard ancestor within max_depth and no 'Maps to' "
+                        "target; the seed concept is not standardizable by this route."
+                    )
 
         path_payload = []
         if selected_parent and selected_parent["concept_id"] != seed_concept["concept_id"]:
@@ -407,7 +427,7 @@ class MappingService:
             "selection_reason": selection_reason,
             "path_to_parent": path_payload,
             "alternative_parents": alternatives,
-            "warnings": [],
+            "warnings": warnings,
         }
 
     async def async_concept_nearest_standard_ancestor(

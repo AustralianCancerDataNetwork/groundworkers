@@ -109,7 +109,7 @@ def test_existing_references_and_pydantic_constraint_run_through_controller(
     assert config.embedding_model_name == "embedding_model"
     assert config.vector_store_name == "embedding_store"
     assert config.min_databases_default == 3
-    assert workflow.target.key == "plugin.comparator_recommender"
+    assert workflow.target.key == "plugin_comparator_recommender"
 
 
 def test_recursive_reference_creation_writes_a_complete_oa_stack(tmp_path: Path) -> None:

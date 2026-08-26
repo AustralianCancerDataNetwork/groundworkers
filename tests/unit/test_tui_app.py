@@ -68,6 +68,9 @@ def test_installed_plugin_config_schema_adds_a_tier_a_page(
         def register(self, server, state):
             return None
 
+        def verify_readiness(self, state):
+            raise AssertionError("A plugin that cannot build is not verified")
+
     config_path = tmp_path / "config.toml"
     save_stack_config(build_cdm_stack(), config_path)
     monkeypatch.setattr(
@@ -76,7 +79,98 @@ def test_installed_plugin_config_schema_adds_a_tier_a_page(
 
     spec = build_groundworkers_tui_spec(config_path=str(config_path))
 
-    assert spec.validate().keys() == ("setup", "plugin.configured_plugin")
+    assert spec.validate().keys() == ("setup", "plugin_configured_plugin")
+    page = spec.pages[1].factory(None)
+    view = page.landing_view(None)
+    assert view.status.value == "warning"
+    assert "prerequisites" in view.message
+    assert tuple(action.label for action in view.actions) == ("Configure", "Verify")
+
+
+def test_plugin_readiness_renders_generic_table_and_details(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from oa_configurator import PackageConfigBase
+    from pydantic import Field
+
+    from groundworkers.plugins import (
+        PluginReadinessField,
+        PluginReadinessResult,
+        PluginReadinessState,
+    )
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+
+    class Config(PackageConfigBase):
+        tool_name: ClassVar[str] = "ready_plugin"
+        retries: int = Field(default=2, ge=1)
+
+    report = PluginReadinessResult(
+        state=PluginReadinessState.READY,
+        summary="The plugin is ready.",
+        fields=(
+            PluginReadinessField(
+                "catalogue",
+                "Catalogue",
+                "3 rows",
+                PluginReadinessState.READY,
+                "Source rows are loaded.",
+            ),
+        ),
+    )
+
+    class Plugin:
+        name = "ready_plugin"
+        config_cls = Config
+
+        def build(self, context, config):
+            return object()
+
+        def register(self, server, state):
+            return None
+
+        def verify_readiness(self, state):
+            return report
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    monkeypatch.setattr("groundworkers.plugins.discover_plugins", lambda: [Plugin()])
+
+    spec = build_groundworkers_tui_spec(config_path=str(config_path))
+    page = spec.pages[1].factory(None)
+    view = page.landing_view(None)
+
+    assert view.status.value == "ok"
+    assert view.columns == ("Check", "Value", "Status")
+    assert view.rows[0].cells == ("Catalogue", "3 rows", "Ready")
+    assert tuple(action.label for action in view.actions) == ("Configure", "Verify")
+
+
+def test_plugin_setup_wizard_exposes_protocol_spec_without_assignment_error(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from groundworkers.application.setup.maintenance_runs import MaintenancePlan
+    from groundworkers.plugins import PluginSetupStep
+    from groundworkers.tui.state import SetupSession
+    from groundworkers.tui.wizards.plugin_setup import PluginSetupWizardController
+
+    step = PluginSetupStep(
+        key="example_setup_step",
+        title="Example setup",
+        purpose="Exercise the generic setup wizard.",
+        arguments=(),
+        build_plan=lambda _values, _config_path: MaintenancePlan(
+            kind="example", steps=()
+        ),
+    )
+    controller = PluginSetupWizardController(
+        SetupSession(config_path=tmp_path / "config.toml"), step
+    )
+
+    assert controller.start().spec.title == "Example setup"
 
 
 def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
@@ -95,9 +189,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
     save_stack_config(build_cdm_stack(), config_path)
 
     async def run_check() -> None:
-        app = OperatorApp(
-            build_groundworkers_tui_spec(config_path=str(config_path))
-        )
+        app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
 
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()

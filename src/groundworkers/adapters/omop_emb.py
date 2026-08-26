@@ -16,6 +16,7 @@ from omop_emb import (
 from omop_llm import ModelBackend
 from sqlalchemy.engine import Engine
 
+from groundworkers.base.concept_payload import serialise_nearest_match
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.results import enum_value
 
@@ -455,13 +456,8 @@ class OmopEmbAdapter:
 
     @staticmethod
     def _serialise_nearest_match(match: Any) -> dict[str, Any]:
-        return {
-            "concept_id": int(match.concept_id),
-            "concept_name": getattr(match, "concept_name", None),
-            "similarity": round(float(match.similarity), 6),
-            "is_standard": getattr(match, "is_standard", None),
-            "is_active": getattr(match, "is_active", None),
-        }
+        """Embedding hit payload. Shape owned by ``base.concept_payload``."""
+        return serialise_nearest_match(match)
 
 
 def _embedding_array(vectors: object, *, expected_rows: int) -> np.ndarray:
