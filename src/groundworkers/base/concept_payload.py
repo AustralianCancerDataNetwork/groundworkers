@@ -126,7 +126,7 @@ def serialise_nearest_match(match: Any) -> dict[str, Any]:
         "domain_id": getattr(match, "domain_id", None),
         "similarity": round(float(match.similarity), 6),
         "standard_concept": _optional_bool(match.is_standard),
-        "classification_concept": _optional_bool(match.is_classification),
+        "classification_concept": _optional_bool(getattr(match, "is_classification", None)),
         "is_active": _optional_bool(match.is_active),
     }
 
