@@ -237,6 +237,129 @@ def test_llm_provider_check_merges_ollama_metadata_into_inventory(
     assert result.model_available is True
 
 
+def test_vllm_inventory_adds_missing_v1_suffix(monkeypatch, tmp_path: Path) -> None:
+    path = _write_llm_config(
+        tmp_path,
+        model="qwen3-coder",
+        provider="vllm",
+        api_base="http://localhost:8000",
+    )
+    snapshot = load_configuration(config_path=path)
+    requested: list[str] = []
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        requested.append(request.full_url)
+        return _JsonResponse({"data": [{"id": "qwen3-coder"}]})
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.runtime_setup.urlopen", fake_urlopen
+    )
+    result = verify_llm_provider(snapshot)
+
+    assert result is not None
+    assert result.reachable is True
+    assert result.model_available is True
+    assert requested == ["http://localhost:8000/v1/models"]
+
+
+def test_vllm_inventory_leaves_existing_v1_suffix_alone(
+    monkeypatch, tmp_path: Path
+) -> None:
+    path = _write_llm_config(
+        tmp_path,
+        model="qwen3-coder",
+        provider="vllm",
+        api_base="http://localhost:8000/v1",
+    )
+    snapshot = load_configuration(config_path=path)
+    requested: list[str] = []
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        requested.append(request.full_url)
+        return _JsonResponse({"data": [{"id": "qwen3-coder"}]})
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.runtime_setup.urlopen", fake_urlopen
+    )
+    result = verify_llm_provider(snapshot)
+
+    assert result is not None
+    assert result.reachable is True
+    # Not doubled to ".../v1/v1/models".
+    assert requested == ["http://localhost:8000/v1/models"]
+
+
+def test_anthropic_inventory_uses_native_auth_and_version_header(
+    monkeypatch, tmp_path: Path
+) -> None:
+    path = _write_llm_config(
+        tmp_path,
+        model="claude-model",
+        provider="anthropic",
+        api_base="https://api.anthropic.com",
+    )
+    snapshot = load_configuration(config_path=path)
+    seen: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        seen["url"] = request.full_url
+        seen["headers"] = {k.lower(): v for k, v in request.header_items()}
+        return _JsonResponse({"data": [{"id": "claude-model"}]})
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.runtime_setup.urlopen", fake_urlopen
+    )
+    result = verify_llm_provider(snapshot)
+
+    assert result is not None
+    assert result.reachable is True
+    assert result.model_available is True
+    assert seen["url"] == "https://api.anthropic.com/v1/models"
+    # Anthropic authenticates with x-api-key + a pinned version header, not
+    # OpenAI's Authorization: Bearer -- sending the wrong one looks like an
+    # unreachable endpoint rather than an auth failure.
+    assert seen["headers"]["x-api-key"] == "also-secret"
+    assert "anthropic-version" in seen["headers"]
+    assert "authorization" not in seen["headers"]
+
+
+def test_gemini_inventory_uses_key_query_param_and_strips_name_prefix(
+    monkeypatch, tmp_path: Path
+) -> None:
+    path = _write_llm_config(
+        tmp_path,
+        model="gemini-model",
+        provider="gemini",
+        api_base="https://generativelanguage.googleapis.com/v1beta",
+    )
+    snapshot = load_configuration(config_path=path)
+    seen: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        seen["url"] = request.full_url
+        seen["headers"] = {k.lower(): v for k, v in request.header_items()}
+        return _JsonResponse({"models": [{"name": "models/gemini-model"}]})
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.runtime_setup.urlopen", fake_urlopen
+    )
+    result = verify_llm_provider(snapshot)
+
+    assert result is not None
+    assert result.reachable is True
+    assert result.model_available is True
+    assert seen["url"] == (
+        "https://generativelanguage.googleapis.com/v1beta/models?key=also-secret"
+    )
+    # Gemini takes the key as a query parameter, not a header.
+    assert "authorization" not in seen["headers"]
+    assert "x-api-key" not in seen["headers"]
+
+
 def _write_llm_config(
     tmp_path: Path,
     *,

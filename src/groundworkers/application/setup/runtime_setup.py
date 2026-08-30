@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
@@ -156,7 +156,7 @@ def verify_llm_config(
             ollama_metadata_checked = True
             inventory = tuple(item.name for item in model_metadata)
         else:
-            inventory = tuple(_openai_compatible_inventory(llm))
+            inventory = tuple(_inventory_for_provider(llm))
     except Exception as exc:
         # Broad except: converted to redacted setup state.
         failure = classify_connection_error(exc)
@@ -315,16 +315,50 @@ def _configuration_from_draft(
     )
 
 
-def _openai_compatible_inventory(llm: LlmProviderDraft) -> tuple[str, ...]:
-    """List models from the provider's OpenAI-compatible ``/models`` endpoint.
+# Base URL a provider serves at when the operator leaves the endpoint blank
+# TODO: move these defaults into omop-llm's provider definitions so the setup 
+# console can read them from the same source.
+_PROVIDER_DEFAULT_BASE_URL: Final = {
+    "ollama": "http://localhost:11434",
+    "llamacpp": "http://127.0.0.1:8080/v1",
+    "vllm": "http://localhost:8000/v1",
+    "openai": "https://api.openai.com/v1",
+    "anthropic": "https://api.anthropic.com",
+}
 
-    A plain HTTP GET rather than the OpenAI SDK, matching
-    :func:`_ollama_model_metadata` right below. omop-llm's ``ModelBackend`` can
-    answer *whether* a provider is reachable but discards the model list, so
-    inventory still has to come from the provider's own public surface (see
-    ``model_inventory`` for the upstream request).
+# Providers that speak the OpenAI wire protocol for model listing:
+# `GET {base}/models` with `Authorization: Bearer <key>`, against a root
+# that ends in `/v1` 
+# TODO: this also probably should go to omop-llm
+_OPENAI_COMPATIBLE_PROVIDERS: Final = frozenset({"openai", "vllm", "llamacpp"})
+
+_ANTHROPIC_API_VERSION: Final = "2023-06-01"
+_GEMINI_DEFAULT_BASE_URL: Final = "https://generativelanguage.googleapis.com/v1beta"
+
+
+def _normalized_openai_base(llm: LlmProviderDraft) -> str:
+    """Resolve the OpenAI-wire-protocol root for one provider draft.
+
+    Falls back to the per provider documented default when no endpoint given.
+    Appends the trailing ``/v1`` segment as required.
     """
-    base = (llm.api_base or "https://api.openai.com/v1").rstrip("/")
+    provider = llm.provider.lower()
+    base = llm.api_base or _PROVIDER_DEFAULT_BASE_URL.get(provider, "https://api.openai.com/v1")
+    base = base.rstrip("/")
+    if not base.endswith("/v1"):
+        base = f"{base}/v1"
+    return base
+
+
+def _openai_compatible_inventory(llm: LlmProviderDraft) -> tuple[str, ...]:
+    """List models from an OpenAI-wire-protocol provider's ``/v1/models`` endpoint.
+
+    Covers ``openai``, ``vllm``, and ``llamacpp``.
+      
+    A plain HTTP GET rather than the OpenAI SDK, matching
+    :func:`_ollama_model_metadata` below. 
+    """
+    base = _normalized_openai_base(llm)
     request = Request(f"{base}/models", method="GET")
     if llm.api_key:
         request.add_header("Authorization", f"Bearer {llm.api_key}")
@@ -336,6 +370,54 @@ def _openai_compatible_inventory(llm: LlmProviderDraft) -> tuple[str, ...]:
     return tuple(
         str(item["id"]) for item in data if isinstance(item, dict) and "id" in item
     )
+
+
+def _anthropic_inventory(llm: LlmProviderDraft) -> tuple[str, ...]:
+    """List models from Anthropic's native ``/v1/models`` endpoint.
+    """
+    base = (llm.api_base or _PROVIDER_DEFAULT_BASE_URL["anthropic"]).rstrip("/")
+    request = Request(f"{base}/v1/models", method="GET")
+    request.add_header("anthropic-version", _ANTHROPIC_API_VERSION)
+    if llm.api_key:
+        request.add_header("x-api-key", llm.api_key)
+    with urlopen(request, timeout=_LLM_STATUS_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    data = payload.get("data")
+    if not isinstance(data, list):
+        raise ValueError("Provider did not return a model list.")
+    return tuple(
+        str(item["id"]) for item in data if isinstance(item, dict) and "id" in item
+    )
+
+
+def _gemini_inventory(llm: LlmProviderDraft) -> tuple[str, ...]:
+    """List models from Gemini's native ``ListModels`` endpoint.
+    """
+    base = (llm.api_base or _GEMINI_DEFAULT_BASE_URL).rstrip("/")
+    url = f"{base}/models"
+    if llm.api_key:
+        url = f"{url}?key={llm.api_key}"
+    with urlopen(Request(url, method="GET"), timeout=_LLM_STATUS_TIMEOUT_SECONDS) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    data = payload.get("models")
+    if not isinstance(data, list):
+        raise ValueError("Provider did not return a model list.")
+    return tuple(
+        str(item["name"]).removeprefix("models/")
+        for item in data
+        if isinstance(item, dict) and "name" in item
+    )
+
+
+def _inventory_for_provider(llm: LlmProviderDraft) -> tuple[str, ...]:
+    """Dispatch model-listing to the wire protocol the provider actually speaks.
+    """
+    provider = llm.provider.lower()
+    if provider == "anthropic":
+        return _anthropic_inventory(llm)
+    if provider == "gemini":
+        return _gemini_inventory(llm)
+    return _openai_compatible_inventory(llm)
 
 
 def _uses_ollama_inventory(llm: LlmProviderDraft) -> bool:
