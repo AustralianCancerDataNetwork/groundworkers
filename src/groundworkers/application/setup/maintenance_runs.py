@@ -16,7 +16,7 @@ import re
 import signal
 import subprocess
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -24,8 +24,18 @@ from pathlib import Path
 from uuid import uuid4
 
 import psutil
+from groundskeeping.contracts import (
+    Command,
+    CommandPlan,
+    CommandStep,
+    retry_plan,
+    spawn_logged_process,
+    tail_log,
+)
+from oa_configurator import safe_endpoint
 
-from groundworkers.application.setup.models import MaintenanceCommand
+_URL_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://\S+", re.IGNORECASE)
+_SECRET_ENV_KEY_RE = re.compile(r"(?i)(key|token|secret|password|credential)")
 
 
 class RunStatus(StrEnum):
@@ -48,37 +58,8 @@ class StepStatus(StrEnum):
 
 
 @dataclass(frozen=True)
-class MaintenanceStep:
-    """One ordered, idempotent maintenance command."""
-
-    key: str
-    command: MaintenanceCommand
-    affected_resources: tuple[str, ...] = ()
-    idempotent: bool = True
-
-
-@dataclass(frozen=True)
-class MaintenancePlan:
-    """A serialisable ordered plan owned by the local run store."""
-
-    kind: str
-    steps: tuple[MaintenanceStep, ...]
-    affected_resources: tuple[str, ...] = ()
-    postflight: tuple[MaintenanceCommand, ...] = ()
-    unit: str = "step"
-
-    @property
-    def resources(self) -> tuple[str, ...]:
-        return tuple(
-            dict.fromkeys(
-                (*self.affected_resources, *(resource for step in self.steps for resource in step.affected_resources))
-            )
-        )
-
-
-@dataclass(frozen=True)
 class MaintenanceStepRecord:
-    spec: MaintenanceStep
+    spec: CommandStep
     status: StepStatus = StepStatus.PENDING
     started_at: str | None = None
     finished_at: str | None = None
@@ -99,7 +80,9 @@ class MaintenanceRun:
     finished_at: str | None
     root: Path
     steps: tuple[MaintenanceStepRecord, ...]
-    postflight: tuple[MaintenanceCommand, ...] = ()
+    affected_resources: tuple[str, ...] = ()
+    postflight: tuple[Command, ...] = ()
+    postflight_log_paths: tuple[Path, ...] = ()
     postflight_status: StepStatus | None = None
     current_step: int | None = None
     completed: int = 0
@@ -118,6 +101,17 @@ class MaintenanceRun:
     def log_paths(self) -> tuple[Path, ...]:
         return tuple(step.log_path for step in self.steps if step.log_path is not None)
 
+    @property
+    def resources(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                (
+                    *self.affected_resources,
+                    *(resource for step in self.steps for resource in step.spec.affected_resources),
+                )
+            )
+        )
+
 
 class ResourceBusyError(RuntimeError):
     """A conflicting active maintenance run owns one of the requested resources."""
@@ -132,11 +126,12 @@ class MaintenanceRunStore:
 
     def create(
         self,
-        plan: MaintenancePlan,
+        plan: CommandPlan,
         *,
+        postflight: Sequence[Command] = (),
         retry_of: str | None = None,
     ) -> MaintenanceRun:
-        _validate_plan(plan)
+        _validate_plan(plan, postflight)
         self.root.mkdir(parents=True, exist_ok=True)
         _ensure_private_directory(self.root)
         run_id = uuid4().hex
@@ -151,7 +146,8 @@ class MaintenanceRunStore:
             finished_at=None,
             root=run_root,
             steps=tuple(MaintenanceStepRecord(step) for step in plan.steps),
-            postflight=plan.postflight,
+            affected_resources=plan.affected_resources,
+            postflight=tuple(postflight),
             retry_of=retry_of,
         )
         self.save(run)
@@ -286,19 +282,18 @@ class MaintenanceRunStore:
         previous = self.get(run_id)
         if previous.status not in {RunStatus.FAILED, RunStatus.INTERRUPTED, RunStatus.CANCELLED}:
             raise ValueError("Only failed, interrupted, or cancelled runs can be retried.")
-        first_incomplete = next(
-            (index for index, step in enumerate(previous.steps) if step.status is not StepStatus.SUCCEEDED),
-            len(previous.steps),
-        )
-        remaining = previous.steps[first_incomplete:]
-        if any(not step.spec.idempotent for step in remaining):
-            raise ValueError("The first incomplete step is not safe to retry.")
-        plan = MaintenancePlan(
+        plan = CommandPlan(
             kind=previous.kind,
-            steps=tuple(step.spec for step in remaining),
-            postflight=previous.postflight,
+            steps=tuple(step.spec for step in previous.steps),
+            affected_resources=run_plan_resources(previous),
         )
-        return self.create(plan, retry_of=run_id)
+        retry = retry_plan(
+            plan,
+            succeeded=tuple(
+                step.status is StepStatus.SUCCEEDED for step in previous.steps
+            ),
+        )
+        return self.create(retry, postflight=previous.postflight, retry_of=run_id)
 
     def tail_log(
         self,
@@ -317,10 +312,7 @@ class MaintenanceRunStore:
             return ""
         if not path.is_file():
             return ""
-        with path.open("rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            handle.seek(max(0, handle.tell() - max_bytes))
-            return handle.read().decode("utf-8", errors="replace")
+        return tail_log(path, max_bytes=max_bytes)
 
     def export_commands(self, run_id: str) -> tuple[str, ...]:
         """Return safe command displays for manual troubleshooting/export."""
@@ -337,11 +329,12 @@ class MaintenanceRunner:
 
     def start(
         self,
-        plan: MaintenancePlan,
+        plan: CommandPlan,
         *,
+        postflight: Sequence[Command] = (),
         retry_of: str | None = None,
     ) -> MaintenanceRun:
-        run = self.store.create(plan, retry_of=retry_of)
+        run = self.store.create(plan, postflight=postflight, retry_of=retry_of)
         return self._start_created(run)
 
     def _start_created(self, run: MaintenanceRun) -> MaintenanceRun:
@@ -377,16 +370,17 @@ class MaintenanceRunner:
         if not previous.postflight:
             raise ValueError("This maintenance run has no postflight verification plan.")
         return self.start(
-            MaintenancePlan(
+            CommandPlan(
                 kind=f"{previous.kind}-postflight",
                 steps=tuple(
-                    MaintenanceStep(
+                    CommandStep(
                         key=f"postflight-{index}",
                         command=command,
                         affected_resources=run_plan_resources(previous),
                     )
                     for index, command in enumerate(previous.postflight, start=1)
                 ),
+                affected_resources=previous.resources,
             )
         )
 
@@ -400,7 +394,7 @@ class MaintenanceRunner:
         return self._start_created(pending)
 
 
-_ACTIVE_CHILD: subprocess.Popen[bytes] | None = None
+_ACTIVE_CHILD: int | None = None
 _CANCEL_REQUESTED = False
 
 
@@ -425,7 +419,7 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
         global _CANCEL_REQUESTED
         _CANCEL_REQUESTED = True
         if _ACTIVE_CHILD is not None:
-            _terminate_process_group(_ACTIVE_CHILD.pid)
+            _terminate_process_group(_ACTIVE_CHILD)
 
     previous_handler = signal.signal(signal.SIGTERM, request_cancel)
     try:
@@ -449,7 +443,7 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
                 step,
                 status=StepStatus.RUNNING,
                 started_at=started,
-                log_path=log_path,
+                log_path=None,
                 message=f"Running {step.spec.key}.",
             )
             run = store.save(
@@ -461,8 +455,29 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
                     steps=(*run.steps[:index], record, *run.steps[index + 1 :]),
                 )
             )
-            returncode, pid, start_time = _run_command(step.spec.command, log_path)
-            _ACTIVE_CHILD = None
+
+            def register_started(
+                pid: int, start_time: float | None, actual_log_path: Path
+            ) -> None:
+                nonlocal run, record
+                record = replace(
+                    record,
+                    log_path=actual_log_path,
+                    process_pid=pid,
+                    process_start_time=start_time,
+                )
+                run = store.save(
+                    replace(
+                        run,
+                        steps=(*run.steps[:index], record, *run.steps[index + 1 :]),
+                    )
+                )
+
+            returncode, pid, start_time, actual_log_path = _run_command(
+                step.spec.command,
+                log_path,
+                on_started=register_started,
+            )
             finished = _now()
             status = StepStatus.CANCELLED if _CANCEL_REQUESTED else (
                 StepStatus.SUCCEEDED if returncode == 0 else StepStatus.FAILED
@@ -472,6 +487,7 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
                 status=status,
                 finished_at=finished,
                 exit_code=returncode,
+                log_path=actual_log_path,
                 process_pid=pid,
                 process_start_time=start_time,
                 message=(
@@ -501,9 +517,30 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
                 )
         run = store.save(replace(run, current_step=None, last_message="Steps complete."))
         if run.postflight:
-            run = store.save(replace(run, postflight_status=StepStatus.RUNNING, last_message="Running postflight verification."))
+            run = store.save(
+                replace(
+                    run,
+                    postflight_log_paths=(),
+                    postflight_status=StepStatus.RUNNING,
+                    last_message="Running postflight verification.",
+                )
+            )
+            postflight_log_paths: list[Path] = []
             for index, command in enumerate(run.postflight, start=1):
-                code, pid, _ = _run_command(command, run.root / f"postflight-{index:02d}.log")
+                def register_postflight_started(
+                    _pid: int, _start_time: float | None, actual_log_path: Path
+                ) -> None:
+                    nonlocal run
+                    postflight_log_paths.append(actual_log_path)
+                    run = store.save(
+                        replace(run, postflight_log_paths=tuple(postflight_log_paths))
+                    )
+
+                code, pid, _, _ = _run_command(
+                    command,
+                    run.root / f"postflight-{index:02d}.log",
+                    on_started=register_postflight_started,
+                )
                 if code != 0:
                     return store.save(
                         replace(
@@ -525,24 +562,39 @@ def _execute_run(store: MaintenanceRunStore, run_id: str) -> MaintenanceRun:
         signal.signal(signal.SIGTERM, previous_handler)
 
 
-def _run_command(command: MaintenanceCommand, log_path: Path) -> tuple[int, int | None, float | None]:
+def _run_command(
+    command: Command,
+    log_path: Path,
+    *,
+    on_started: Callable[[int, float | None, Path], None] | None = None,
+) -> tuple[int, int, float | None, Path]:
     global _ACTIVE_CHILD
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env.update(dict(command.environment))
-    with log_path.open("ab") as log_file:
-        log_path.chmod(0o600)
-        process = subprocess.Popen(
-            command.argv,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            env=env,
-            start_new_session=True,
+    launch = spawn_logged_process(
+        command.argv,
+        log_dir=log_path.parent,
+        log_prefix=_safe_key(log_path.stem),
+        env_overrides=dict(command.environment),
+    )
+    _ACTIVE_CHILD = launch.pid
+    start_time = _process_start_time(launch.pid)
+    if on_started is not None:
+        on_started(launch.pid, start_time, launch.log_path)
+    try:
+        while True:
+            try:
+                _, status = os.waitpid(launch.pid, 0)
+                break
+            except InterruptedError:
+                continue
+        return (
+            os.waitstatus_to_exitcode(status),
+            launch.pid,
+            start_time,
+            launch.log_path,
         )
-        _ACTIVE_CHILD = process
-        start_time = _process_start_time(process.pid)
-        returncode = process.wait()
-    return returncode, process.pid, start_time
+    finally:
+        _ACTIVE_CHILD = None
 
 
 def _finish_cancelled(store: MaintenanceRunStore, run: MaintenanceRun, index: int) -> MaintenanceRun:
@@ -555,7 +607,7 @@ def _finish_cancelled(store: MaintenanceRunStore, run: MaintenanceRun, index: in
 
 
 def run_plan_resources(run: MaintenanceRun) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(resource for step in run.steps for resource in step.spec.affected_resources))
+    return run.resources
 
 
 def resolve_state_root(root: str | Path | None = None) -> Path:
@@ -634,28 +686,30 @@ def _safe_key(value: str) -> str:
 
 
 def _redact(value: str) -> str:
-    value = re.sub(r"(?i)(://[^/:@]+):[^/@]+@", r"\1:***@", value)
-    return value
+    return _URL_RE.sub(
+        lambda match: safe_endpoint(match.group(0)) or "***",
+        value,
+    )
 
 
-def safe_command_display(command: MaintenanceCommand) -> str:
-    """Return a persisted command display with environment secrets removed."""
+def safe_command_display(command: Command) -> str:
+    """Return a persisted command display with credentials removed."""
 
     parts: list[str] = []
     for key, value in command.environment:
-        shown = "***" if re.search(r"(?i)(key|token|secret|password|credential)", key) else _redact(value)
+        shown = "***" if _SECRET_ENV_KEY_RE.search(key) else _redact(value)
         parts.append(f"{key}={shown}")
     parts.extend(_redact(part) for part in command.argv)
     return " ".join(parts)
 
 
-def _validate_plan(plan: MaintenancePlan) -> None:
+def _validate_plan(plan: CommandPlan, postflight: Sequence[Command] = ()) -> None:
     """Reject command inputs that would persist obvious credentials."""
 
-    commands = (*tuple(step.command for step in plan.steps), *plan.postflight)
+    commands = (*tuple(step.command for step in plan.steps), *postflight)
     for command in commands:
         for key, _value in command.environment:
-            if re.search(r"(?i)(key|token|secret|password|credential)", key):
+            if _SECRET_ENV_KEY_RE.search(key):
                 raise ValueError(
                     f"Maintenance command environment '{key}' is secret-bearing; "
                     "pass a secret reference instead."
@@ -665,8 +719,15 @@ def _validate_plan(plan: MaintenancePlan) -> None:
                 raise ValueError("Maintenance command contains a credential-bearing URL.")
 
 
-def _command_to_json(command: MaintenanceCommand) -> dict[str, object]:
-    return {"argv": list(command.argv), "environment": [[key, _redact(value)] for key, value in command.environment], "display": safe_command_display(command)}
+def _command_to_json(command: Command) -> dict[str, object]:
+    return {
+        "argv": list(command.argv),
+        "environment": [
+            [key, "***" if _SECRET_ENV_KEY_RE.search(key) else _redact(value)]
+            for key, value in command.environment
+        ],
+        "display": safe_command_display(command),
+    }
 
 
 def _step_to_json(record: MaintenanceStepRecord, root: Path) -> dict[str, object]:
@@ -702,16 +763,20 @@ def _run_to_json(run: MaintenanceRun) -> dict[str, object]:
         "supervisor_start_time": run.supervisor_start_time,
         "retry_of": run.retry_of,
         "failure": run.failure,
+        "affected_resources": list(run.affected_resources),
         "postflight_status": run.postflight_status.value if run.postflight_status else None,
         "postflight": [_command_to_json(command) for command in run.postflight],
+        "postflight_log_paths": [
+            str(path.relative_to(run.root)) for path in run.postflight_log_paths
+        ],
         "steps": [_step_to_json(step, run.root) for step in run.steps],
     }
 
 
-def _command_from_json(data: dict[str, object]) -> MaintenanceCommand:
+def _command_from_json(data: dict[str, object]) -> Command:
     argv = data.get("argv")
     environment = data.get("environment")
-    return MaintenanceCommand(
+    return Command(
         argv=tuple(str(value) for value in argv) if isinstance(argv, list) else (),
         environment=tuple(
             (str(pair[0]), str(pair[1]))
@@ -741,12 +806,12 @@ def _run_from_json(data: dict[str, object], root: Path) -> MaintenanceRun:
         message = _optional_str(item.get("message"))
         steps.append(
             MaintenanceStepRecord(
-                spec=MaintenanceStep(
+                spec=CommandStep(
                     key=str(item["key"]),
                     command=(
                         _command_from_json(dict(command_data))
                         if isinstance(command_data, dict)
-                        else MaintenanceCommand(argv=())
+                        else Command(argv=())
                     ),
                     affected_resources=(
                         tuple(str(value) for value in affected_resources)
@@ -775,6 +840,8 @@ def _run_from_json(data: dict[str, object], root: Path) -> MaintenanceRun:
         if isinstance(postflight_data, list)
         else ()
     )
+    affected_resources = data.get("affected_resources")
+    postflight_log_data = data.get("postflight_log_paths")
     return MaintenanceRun(
         run_id=str(data["run_id"]),
         kind=str(data["kind"]),
@@ -784,7 +851,17 @@ def _run_from_json(data: dict[str, object], root: Path) -> MaintenanceRun:
         finished_at=_optional_str(data.get("finished_at")),
         root=root,
         steps=tuple(steps),
+        affected_resources=(
+            tuple(str(value) for value in affected_resources)
+            if isinstance(affected_resources, list)
+            else ()
+        ),
         postflight=postflight,
+        postflight_log_paths=(
+            tuple(root / str(path) for path in postflight_log_data)
+            if isinstance(postflight_log_data, list)
+            else ()
+        ),
         postflight_status=(
             StepStatus(str(postflight_status))
             if (postflight_status := _optional_str(data.get("postflight_status")))
@@ -837,11 +914,9 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "MaintenancePlan",
     "MaintenanceRun",
     "MaintenanceRunStore",
     "MaintenanceRunner",
-    "MaintenanceStep",
     "MaintenanceStepRecord",
     "ResourceBusyError",
     "RunStatus",

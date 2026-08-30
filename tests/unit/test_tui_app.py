@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
 
@@ -152,7 +153,8 @@ def test_plugin_setup_wizard_exposes_protocol_spec_without_assignment_error(
 ) -> None:
     pytest.importorskip("groundskeeping")
 
-    from groundworkers.application.setup.maintenance_runs import MaintenancePlan
+    from groundskeeping.contracts import CommandPlan
+
     from groundworkers.plugins import PluginSetupStep
     from groundworkers.tui.state import SetupSession
     from groundworkers.tui.wizards.plugin_setup import PluginSetupWizardController
@@ -162,7 +164,7 @@ def test_plugin_setup_wizard_exposes_protocol_spec_without_assignment_error(
         title="Example setup",
         purpose="Exercise the generic setup wizard.",
         arguments=(),
-        build_plan=lambda _values, _config_path: MaintenancePlan(
+        build_plan=lambda _values, _config_path: CommandPlan(
             kind="example", steps=()
         ),
     )
@@ -253,6 +255,73 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             assert app.query_one("#context-table").styles.display == "none"
 
     asyncio.run(run_check())
+
+
+def test_runs_page_copies_the_selected_log_tail(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from groundskeeping.app import OperatorApp
+    from groundskeeping.contracts import Command, CommandPlan, CommandStep
+
+    from groundworkers.application.setup.maintenance_runs import (
+        MaintenanceRunStore,
+        RunStatus,
+        StepStatus,
+    )
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+    from groundworkers.tui.presenters.runs import RunsPresenter
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    store = MaintenanceRunStore(tmp_path / "state")
+    run = store.create(
+        CommandPlan(
+            kind="copy-test",
+            steps=(CommandStep("step", Command(("worker",))),),
+        )
+    )
+    log_path = run.root / "step.log"
+    log_content = "older output\n" + ("x" * 2500)
+    log_path.write_text(log_content, encoding="utf-8")
+    store.save(
+        replace(
+            run,
+            status=RunStatus.SUCCEEDED,
+            completed=1,
+            steps=(
+                replace(
+                    run.steps[0],
+                    status=StepStatus.SUCCEEDED,
+                    log_path=log_path,
+                ),
+            ),
+        )
+    )
+    monkeypatch.setattr(
+        "groundworkers.tui.presenters.runs.RunsPresenter",
+        lambda: RunsPresenter(store),
+    )
+    app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
+    copied: list[str] = []
+
+    async def run_check() -> None:
+        monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 8
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert str(app.query_one("#view-action-4").label) == "Copy log"
+            assert app.query_one("#view-action-4").disabled is False
+            await pilot.click("#view-action-4")
+            await pilot.pause()
+
+    asyncio.run(run_check())
+
+    assert copied == [log_content[-2000:]]
 
 
 def test_database_actions_render_in_workspace_and_verify_connections(
@@ -790,7 +859,7 @@ def test_a_wizard_text_box_is_actually_drawn(tmp_path: Path) -> None:
             await pilot.pause()
             app.open_wizard(
                 EmbeddingPopulationWizardController(
-                    SetupSession(), coverage=report, launcher=lambda command: None
+                    SetupSession(), coverage=report
                 )
             )
             await pilot.pause()

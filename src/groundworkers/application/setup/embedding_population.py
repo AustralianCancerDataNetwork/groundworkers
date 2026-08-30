@@ -7,18 +7,16 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
+from groundskeeping.contracts import Command, CommandPlan, CommandStep
 from oa_configurator import Resolver, safe_endpoint
 from omop_llm import canonical_model_name
 from sqlalchemy.engine import Engine
 
 from groundworkers.application.setup.embedding_coverage import calculate_coverage
 from groundworkers.application.setup.embedding_setup import load_embedding_configuration
-from groundworkers.application.setup.maintenance import launch_maintenance_command
 from groundworkers.application.setup.maintenance_runs import (
-    MaintenancePlan,
     MaintenanceRun,
     MaintenanceRunner,
-    MaintenanceStep,
 )
 from groundworkers.application.setup.models import (
     ConfigurationSnapshot,
@@ -27,8 +25,6 @@ from groundworkers.application.setup.models import (
     EmbeddingConfiguration,
     EmbeddingCoverageReport,
     EmbeddingIndexSnapshot,
-    EmbeddingPopulationCommand,
-    EmbeddingPopulationLaunch,
     EmbeddingPopulationRequest,
 )
 from groundworkers.base.results import enum_value
@@ -169,7 +165,7 @@ def build_embedding_population_command(
     request: EmbeddingPopulationRequest,
     *,
     config_path: str | Path | None = None,
-) -> EmbeddingPopulationCommand:
+) -> Command:
     """Build the omop-emb command used to populate missing concept embeddings."""
 
     executable = shutil.which("omop-emb") or "omop-emb"
@@ -191,36 +187,24 @@ def build_embedding_population_command(
     environment: list[tuple[str, str]] = []
     if config_path is not None:
         environment.append(("OA_CONFIG_PATH", str(Path(config_path).expanduser())))
-    return EmbeddingPopulationCommand(
+    return Command(
         argv=tuple(argv),
         environment=tuple(environment),
     )
 
 
-def launch_embedding_population(
-    command: EmbeddingPopulationCommand,
-    *,
-    log_dir: str | Path = "/tmp",
-) -> EmbeddingPopulationLaunch:
-    """Start an omop-emb population command and return immediately."""
-
-    return launch_maintenance_command(
-        command, log_prefix="omop-emb", log_dir=log_dir
-    )
-
-
 def start_embedding_population_run(
-    command: EmbeddingPopulationCommand,
+    command: Command,
     *,
     resource_key: str,
     runner: MaintenanceRunner | None = None,
 ) -> MaintenanceRun:
     """Persist and start an embedding population run for one model/store."""
 
-    plan = MaintenancePlan(
+    plan = CommandPlan(
         kind="embedding-population",
         steps=(
-            MaintenanceStep(
+            CommandStep(
                 key="populate-embeddings",
                 command=command,
                 affected_resources=(resource_key,),

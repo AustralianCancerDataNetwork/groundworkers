@@ -31,7 +31,7 @@ pdf = [
   "pdfplumber>=0.10",
 ]
 tui = [
-  "groundskeeping>=0.7,<1",
+  "groundskeeping>=0.8,<1",
   "textual>=0.60",
   "rich>=13,<15",
 ]

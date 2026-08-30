@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from oa_configurator import ConfigurationError, Resolver  
+from oa_configurator import ConfigurationError, Resolver
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.llm import LLMAdapter

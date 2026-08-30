@@ -9,27 +9,20 @@ collects, and builds the command line.
 from __future__ import annotations
 
 import shutil
-from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
 
-from groundworkers.application.setup.maintenance import (
-    MaintenanceCommandError,
-    run_maintenance_command,
-)
+from groundskeeping.contracts import Command, CommandPlan, CommandStep
+
 from groundworkers.application.setup.maintenance_runs import (
-    MaintenancePlan,
     MaintenanceRun,
     MaintenanceRunner,
-    MaintenanceStep,
 )
 from groundworkers.application.setup.models import (
     ConnectionResult,
     DiagnosticSeverity,
-    MaintenanceCommand,
-    MaintenanceLaunch,
 )
 
 __all__ = [
@@ -38,7 +31,6 @@ __all__ = [
     "GraphRemediationRequest",
     "build_fulltext_commands",
     "build_graph_remediation_commands",
-    "launch_graph_remediation",
     "outstanding_remediations",
     "packaged_predicate_csv_dir",
     "start_graph_remediation_run",
@@ -100,7 +92,7 @@ class GraphRemediationRequest:
 def build_fulltext_commands(
     *,
     config_path: str | Path | None = None,
-) -> tuple[MaintenanceCommand, ...]:
+) -> tuple[Command, ...]:
     """Build the complete full-text preparation sequence.
 
     Installing the sidecars and GIN indexes is not enough: the sidecar values
@@ -112,7 +104,7 @@ def build_fulltext_commands(
         environment = (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
     executable = _executable("omop-alchemy")
     return tuple(
-        MaintenanceCommand(
+        Command(
             argv=(executable, "fulltext", action),
             environment=environment,
         )
@@ -146,7 +138,7 @@ def build_graph_remediation_commands(
     request: GraphRemediationRequest,
     *,
     config_path: str | Path | None = None,
-) -> tuple[MaintenanceCommand, ...]:
+) -> tuple[Command, ...]:
     """Build the CLI commands for the selected remediations, in dependency order.
 
     Raises
@@ -159,7 +151,7 @@ def build_graph_remediation_commands(
     if config_path is not None:
         environment = (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
 
-    commands: list[MaintenanceCommand] = []
+    commands: list[Command] = []
     selected = set(request.actions)
 
     if GraphRemediation.RELATIONSHIP_CLASSIFICATION in selected:
@@ -169,7 +161,7 @@ def build_graph_remediation_commands(
                 "predicate_classification.csv and predicate_mapping.csv."
             )
         commands.append(
-            MaintenanceCommand(
+            Command(
                 argv=(
                     _executable("omop-graph"),
                     "relationship-classification",
@@ -190,50 +182,24 @@ def build_graph_remediation_commands(
             # needs disk headroom the operator may not have.
             argv.append("--no-cluster")
         commands.append(
-            MaintenanceCommand(argv=tuple(argv), environment=environment)
+            Command(argv=tuple(argv), environment=environment)
         )
 
     return tuple(commands)
 
 
-def launch_graph_remediation(
-    commands: Sequence[MaintenanceCommand],
-    *,
-    log_dir: str | Path = "/tmp",
-) -> tuple[MaintenanceLaunch, ...]:
-    """Run graph prerequisites sequentially and stop at the first failure."""
-
-    launches: list[MaintenanceLaunch] = []
-    for index, command in enumerate(commands, start=1):
-        try:
-            launches.append(
-                run_maintenance_command(
-                    command,
-                    log_prefix=f"graph-{index}",
-                    log_dir=log_dir,
-                )
-            )
-        except MaintenanceCommandError as exc:
-            completed = ", ".join(str(item.pid) for item in launches) or "none"
-            raise RuntimeError(
-                f"Graph preparation stopped after step {index} failed; "
-                f"completed PIDs: {completed}. Failed log: {exc.launch.log_path}"
-            ) from exc
-    return tuple(launches)
-
-
 def start_graph_remediation_run(
-    commands: Sequence[MaintenanceCommand],
+    commands: tuple[Command, ...],
     *,
     resource_key: str = "graph:default-cdm",
     runner: MaintenanceRunner | None = None,
 ) -> MaintenanceRun:
     """Persist and start an ordered graph-preparation maintenance run."""
 
-    plan = MaintenancePlan(
+    plan = CommandPlan(
         kind="graph-preparation",
         steps=tuple(
-            MaintenanceStep(
+            CommandStep(
                 key=f"graph-{index}",
                 command=command,
                 affected_resources=(resource_key,),

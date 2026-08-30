@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 
 from groundskeeping.contracts.actions import (
@@ -31,8 +31,7 @@ from groundworkers.application.setup.graph_maintenance import (
     packaged_predicate_csv_dir,
     start_graph_remediation_run,
 )
-from groundworkers.application.setup.maintenance_runs import MaintenanceRun
-from groundworkers.application.setup.models import ConnectionResult, MaintenanceLaunch
+from groundworkers.application.setup.models import ConnectionResult
 from groundworkers.tui.routes import SETUP_ROUTE
 from groundworkers.tui.state import SetupSession
 
@@ -46,8 +45,6 @@ _LABELS: dict[GraphRemediation, str] = {
     GraphRemediation.FULLTEXT_INDEXES: "Create full-text indexes",
     GraphRemediation.FUNCTIONAL_INDEXES: "Create functional text indexes",
 }
-
-Launcher = Callable[[Sequence[object]], tuple[MaintenanceLaunch, ...] | MaintenanceRun]
 
 _SOURCE_BUNDLED = "bundled"
 _SOURCE_CUSTOM = "custom"
@@ -76,17 +73,9 @@ class GraphMaintenanceWizardController:
         self,
         session: SetupSession,
         readiness: ConnectionResult | None,
-        *,
-        launcher: Launcher | None = None,
     ) -> None:
         self._session = session
         self._readiness = readiness
-        self._launcher = launcher or (
-            lambda commands: start_graph_remediation_run(
-                commands,
-                resource_key=f"graph:{self._session.configuration.path}",
-            )
-        )
         self._outstanding = outstanding_remediations(readiness)
         self._selected: set[GraphRemediation] = set(self._outstanding)
         # Pre-filled from the copy bundled with Groundworkers while omop-graph's
@@ -137,7 +126,10 @@ class GraphMaintenanceWizardController:
                 refresh_pages=frozenset({SETUP_ROUTE.key}),
             )
         try:
-            launches = self._launcher(commands)
+            launches = start_graph_remediation_run(
+                commands,
+                resource_key=f"graph:{self._session.configuration.path}",
+            )
         except Exception as exc:
             # Broad except: rendered as setup failure.
             return WizardResult(
@@ -146,24 +138,13 @@ class GraphMaintenanceWizardController:
                 detail=str(exc),
                 refresh_pages=frozenset({SETUP_ROUTE.key}),
             )
-        if isinstance(launches, MaintenanceRun):
-            return WizardResult(
-                status=WizardResultStatus.APPLIED,
-                summary=f"Graph preparation run {launches.run_id} started.",
-                detail=(
-                    f"{launches.total} ordered step(s) are persisted under "
-                    f"{launches.root}. Reopen the setup console to inspect progress."
-                ),
-                refresh_pages=frozenset({SETUP_ROUTE.key}),
-            )
-        detail = "\n".join(
-            f"{launch.command.display}\n  PID {launch.pid} — log: {launch.log_path}"
-            for launch in launches
-        )
         return WizardResult(
             status=WizardResultStatus.APPLIED,
-            summary=f"Started {len(launches)} graph preparation step(s).",
-            detail=f"{detail}\n\nRe-run Test connections when they finish.",
+            summary=f"Graph preparation run {launches.run_id} started.",
+            detail=(
+                f"{launches.total} ordered step(s) are persisted under "
+                f"{launches.root}. Reopen the setup console to inspect progress."
+            ),
             refresh_pages=frozenset({SETUP_ROUTE.key}),
         )
 

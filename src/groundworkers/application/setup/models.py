@@ -458,33 +458,3 @@ class EmbeddingPopulationRequest:
     vocabularies: tuple[str, ...]
     limit: int | None
     batch_size: int
-
-
-@dataclass(frozen=True)
-class MaintenanceCommand:
-    argv: tuple[str, ...]
-    environment: tuple[tuple[str, str], ...] = ()
-
-    @property
-    def display(self) -> str:
-        parts = [f"{key}={_shell_quote(value)}" for key, value in self.environment]
-        parts.extend(_shell_quote(part) for part in self.argv)
-        return " ".join(parts)
-
-
-@dataclass(frozen=True)
-class MaintenanceLaunch:
-    command: MaintenanceCommand
-    pid: int
-    log_path: Path
-
-
-# Both maintenance workflows use the same command and launch records.
-EmbeddingPopulationCommand = MaintenanceCommand
-EmbeddingPopulationLaunch = MaintenanceLaunch
-
-
-def _shell_quote(value: str) -> str:
-    if value and all(ch.isalnum() or ch in "-_./:=+" for ch in value):
-        return value
-    return "'" + value.replace("'", "'\"'\"'") + "'"

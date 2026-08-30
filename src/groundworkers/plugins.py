@@ -20,6 +20,7 @@ from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
+from groundskeeping.contracts import CommandPlan
 from oa_configurator import (  # type: ignore[import-untyped]
     PackageConfigBase,
     ResolvedDatabase,
@@ -28,8 +29,6 @@ from oa_configurator import (  # type: ignore[import-untyped]
     Resolver,
 )
 from sqlalchemy.engine import Engine
-
-from groundworkers.application.setup.maintenance_runs import MaintenancePlan
 
 if TYPE_CHECKING:
     from groundskeeping.configurator import (
@@ -137,14 +136,14 @@ class PluginSetupStep:
 
     The host owns argument presentation, review, persistence, logs, retry, and
     cancellation. The plugin only translates validated values into a durable
-    ``MaintenancePlan``; it does not get a second CLI or TUI framework.
+    ``CommandPlan``; it does not get a second CLI or TUI framework.
     """
 
     key: str
     title: str
     purpose: str
     arguments: tuple[PluginSetupArgument, ...]
-    build_plan: Callable[[Mapping[str, object], str], MaintenancePlan]
+    build_plan: Callable[[Mapping[str, object], str], CommandPlan]
     apply_label: str = "Run"
 
 
