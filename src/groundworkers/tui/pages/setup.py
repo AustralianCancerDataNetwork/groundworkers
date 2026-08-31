@@ -191,7 +191,7 @@ class SetupPage(GroundworkersPage):
         if not isinstance(view, TableView):
             self._show_current_view(context)
             return
-        context.surface.show_view(self.route.key, view)
+        context.surface.refresh_view(self.route.key, view)
         self._show_section_detail(context)
 
     def _config_path_was_rejected(self) -> bool:
