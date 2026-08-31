@@ -1180,7 +1180,7 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "numpy", specifier = ">=1.26,<3" },
-    { name = "oa-configurator", git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git?branch=path_config" },
+    { name = "oa-configurator", specifier = ">=1.3.0,<2" },
     { name = "omop-alchemy", specifier = ">=1.1,<2" },
     { name = "omop-emb", specifier = ">=2.1,<3" },
     { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=2.1,<3" },
@@ -2489,8 +2489,8 @@ wheels = [
 
 [[package]]
 name = "oa-configurator"
-version = "1.2.2.dev2+g18e622b96"
-source = { git = "https://github.com/AustralianCancerDataNetwork/oa-configurator.git?branch=path_config#18e622b964d5420ac08481cd7ecd3ac4858d2727" }
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "pydantic" },
@@ -2498,6 +2498,11 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tomli-w" },
     { name = "typer" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ea/aa/71f787266a0a2baddf9c6452a43be901690acc5f5888de1d07c8f6adbf9b/oa_configurator-1.3.0.tar.gz", hash = "sha256:70bb6648ce94f9d09f870b02962f40a004d20aec0cfcad45b6a7fd5dcf0fe33a", size = 191240, upload-time = "2026-08-31T00:41:59.351Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/cd/8af5f354c87225732fadcf8213fddbccb6e6468868533e84a0be842e2a62/oa_configurator-1.3.0-py3-none-any.whl", hash = "sha256:9b92391c9033fbab78bd5a26932168dd184ca175f391de8099ce537cf71cf6ab", size = 67448, upload-time = "2026-08-31T00:41:58.074Z" },
 ]
 
 [[package]]
