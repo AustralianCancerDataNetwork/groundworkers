@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -52,6 +53,8 @@ class OmopEmbAdapter:
         self._configuration_detail = configuration_detail
         self._backend: EmbeddingBackend | None = None
         self._model_backend: ModelBackend | None = None
+        self._reader_cache: dict[tuple[str, str, str], EmbeddingReaderInterface] = {}
+        self._reader_cache_lock = threading.Lock()
 
     def is_available(self) -> bool:
         """Return whether the store is reachable and has a registered model."""
@@ -97,10 +100,12 @@ class OmopEmbAdapter:
             return False, f"Embedding query probe failed with {type(exc).__name__}."
 
     def close(self) -> None:
-        """Release cached storage and model backends."""
+        """Release cached readers, storage, and model backends."""
 
-        self._backend = None
-        self._model_backend = None
+        with self._reader_cache_lock:
+            self._reader_cache.clear()
+            self._backend = None
+            self._model_backend = None
 
     def resolve_model_name(self, model_name: str | None = None) -> str:
         """Resolve a caller-supplied or configured registered model name."""
@@ -477,14 +482,24 @@ class OmopEmbAdapter:
         )
 
     def _build_reader(self, record: EmbeddingModelRecord) -> EmbeddingReaderInterface:
-        return EmbeddingReaderInterface(
-            model=record.model_name,
-            backend=self._get_backend(),
-            metric_type=record.metric_type or MetricType.COSINE,
-            omop_cdm_engine=self._cdm_engine,
-            provider_type=enum_value(record.provider_type) or "ollama",
-            faiss_cache_dir=self._faiss_cache_dir,
-        )
+        metric_type = record.metric_type or MetricType.COSINE
+        provider_type = enum_value(record.provider_type) or "ollama"
+        cache_key = (record.model_name, str(metric_type), provider_type)
+        with self._reader_cache_lock:
+            cached = self._reader_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            reader = EmbeddingReaderInterface(
+                model=record.model_name,
+                backend=self._get_backend(),
+                metric_type=metric_type,
+                omop_cdm_engine=self._cdm_engine,
+                provider_type=provider_type,
+                faiss_cache_dir=self._faiss_cache_dir,
+            )
+            self._reader_cache[cache_key] = reader
+            return reader
 
     def _model_backend_for(self, record: EmbeddingModelRecord) -> ModelBackend:
         if self._model_backend_factory is None:

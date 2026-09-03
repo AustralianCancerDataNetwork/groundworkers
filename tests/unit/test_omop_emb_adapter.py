@@ -406,6 +406,35 @@ def test_reader_uses_registry_provider_metric_and_faiss_cache(monkeypatch):
     }
 
 
+def test_reader_is_cached_until_adapter_close(monkeypatch):
+    created: list[object] = []
+
+    class CapturingReader:
+        def __init__(self, **kwargs):
+            created.append(self)
+
+    adapter = OmopEmbAdapter(
+        backend_factory=lambda: "store",  # type: ignore[arg-type,return-value]
+        backend_type="pgvector",
+    )
+    monkeypatch.setattr(
+        "groundworkers.adapters.omop_emb.EmbeddingReaderInterface", CapturingReader
+    )
+    record = model_record()
+
+    first = adapter._build_reader(record)
+    second = adapter._build_reader(record)
+
+    assert first is second
+    assert len(created) == 1
+
+    adapter.close()
+    third = adapter._build_reader(record)
+
+    assert third is not first
+    assert len(created) == 2
+
+
 def test_resolve_model_name_uses_registry_record(monkeypatch):
     adapter = build_adapter()
     monkeypatch.setattr(
