@@ -88,6 +88,14 @@ class StubEmbAdapter:
     async def async_search(self, **kwargs) -> dict:
         return self.search(**kwargs)
 
+    async def async_search_batch(self, **kwargs) -> dict:
+        self.calls.append(("search_batch", kwargs))
+        return {
+            "query_texts": kwargs["queries"],
+            "model_name": kwargs["model_name"] or "demo-model",
+            "results": [[] for _ in kwargs["queries"]],
+        }
+
     async def async_encode(self, text: str, model_name: str | None) -> dict:
         return self.encode(text=text, model_name=model_name)
 
@@ -189,6 +197,51 @@ def test_embedding_search_rejects_empty_query():
         "error": True,
         "code": "INVALID_INPUT",
         "message": "query must be a non-empty string",
+    }
+    assert adapter.calls == []
+
+
+def test_embedding_search_batch_passes_shared_filters_and_batch_size():
+    adapter = StubEmbAdapter()
+    server = build_server(adapter)
+
+    result = server.call(
+        "embedding_search_batch",
+        queries=["hypertension", "diabetes"],
+        limit=500,
+        domain="Condition",
+        standard_only=True,
+        batch_size=16,
+    )
+
+    assert result["query_texts"] == ["hypertension", "diabetes"]
+    assert adapter.calls == [
+        (
+            "search_batch",
+            {
+                "queries": ["hypertension", "diabetes"],
+                "limit": 50,
+                "domain": "Condition",
+                "vocabulary": None,
+                "standard_only": True,
+                "active_only": True,
+                "model_name": None,
+                "batch_size": 16,
+            },
+        )
+    ]
+
+
+def test_embedding_search_batch_rejects_empty_query():
+    adapter = StubEmbAdapter()
+    server = build_server(adapter)
+
+    result = server.call("embedding_search_batch", queries=["", "diabetes"])
+
+    assert result == {
+        "error": True,
+        "code": "INVALID_INPUT",
+        "message": "queries must not contain empty strings",
     }
     assert adapter.calls == []
 

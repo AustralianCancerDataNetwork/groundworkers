@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -321,6 +322,84 @@ class OmopEmbAdapter:
             "query_text": query,
             "model_name": record.model_name,
             "results": [self._serialise_nearest_match(match) for match in matches],
+        }
+
+    async def async_search_batch(
+        self,
+        queries: list[str],
+        limit: int,
+        domain: str | None,
+        vocabulary: str | None,
+        standard_only: bool,
+        active_only: bool,
+        model_name: str | None,
+        batch_size: int = 32,
+    ) -> dict[str, Any]:
+        """Encode and search multiple queries in one provider/index operation.
+
+        The query filters are intentionally shared across the batch. Callers with
+        different domain or vocabulary constraints should partition their inputs
+        first, then merge the aligned results by their own item identifiers.
+        """
+        if not queries:
+            raise GroundworkersError("INVALID_INPUT", "queries must be non-empty")
+        if any(not query.strip() for query in queries):
+            raise GroundworkersError(
+                "INVALID_INPUT", "queries must not contain empty strings"
+            )
+        if batch_size <= 0:
+            raise GroundworkersError("INVALID_INPUT", "batch_size must be positive")
+
+        record = self._resolve_model_record(model_name)
+        model_backend = self._model_backend_for(record)
+        reader = self._build_reader(record)
+        concept_filter = self._build_concept_filter(
+            domain=domain,
+            vocabulary=vocabulary,
+            standard_only=standard_only,
+            active_only=active_only,
+        )
+        try:
+            vectors = await model_backend.async_embed_texts(
+                queries,
+                role=EmbeddingRole.QUERY,
+                batch_size=batch_size,
+            )
+            query_embeddings = _embedding_array(vectors, expected_rows=len(queries))
+            # Database/FAISS search is synchronous in omop-emb. Keep it off the
+            # event loop while the provider-facing part remains natively async.
+            raw = await asyncio.to_thread(
+                reader.get_nearest_concepts,
+                query_embedding=query_embeddings,
+                concept_filter=concept_filter,
+                k=limit,
+                faiss_index_config=record.index_config,
+            )
+        except GroundworkersError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "Async batch embedding search failed for model %r",
+                record.model_name,
+            )
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                "The configured embedding model could not search the batch.",
+            ) from exc
+
+        if len(raw) != len(queries):
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                "The embedding index returned misaligned batch results.",
+            )
+
+        return {
+            "query_texts": queries,
+            "model_name": record.model_name,
+            "results": [
+                [self._serialise_nearest_match(match) for match in matches]
+                for matches in raw
+            ],
         }
 
     async def async_encode(self, text: str, model_name: str | None) -> dict[str, Any]:

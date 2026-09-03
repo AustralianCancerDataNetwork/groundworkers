@@ -278,6 +278,75 @@ def test_async_search_embeds_natively_before_stored_vector_lookup(monkeypatch):
     assert reader.calls[0]["k"] == 7
 
 
+def test_async_search_batch_embeds_and_searches_aligned_queries(monkeypatch):
+    backend = StubModelBackend(vectors=((0.1, 0.2, 0.3), (0.4, 0.5, 0.6)))
+    adapter = build_adapter(model_backend=backend)
+    record = model_record()
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: record)
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+    monkeypatch.setattr(adapter, "_build_concept_filter", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        reader,
+        "get_nearest_concepts",
+        lambda **kwargs: ((nearest_match(concept_id=111),), (nearest_match(concept_id=222),)),
+    )
+
+    result = asyncio.run(
+        adapter.async_search_batch(
+            ["hypertension", "diabetes"],
+            7,
+            "Condition",
+            "SNOMED",
+            True,
+            True,
+            None,
+            batch_size=16,
+        )
+    )
+
+    assert [len(row) for row in result["results"]] == [1, 1]
+    assert [row[0]["concept_id"] for row in result["results"]] == [111, 222]
+    assert backend.calls == [
+        {
+            "texts": ["hypertension", "diabetes"],
+            "role": EmbeddingRole.QUERY,
+            "batch_size": 16,
+            "async": True,
+        }
+    ]
+
+
+def test_async_search_batch_rejects_misaligned_results(monkeypatch):
+    backend = StubModelBackend(vectors=((0.1, 0.2, 0.3), (0.4, 0.5, 0.6)))
+    adapter = build_adapter(model_backend=backend)
+    record = model_record()
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: record)
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+    monkeypatch.setattr(adapter, "_build_concept_filter", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        reader,
+        "get_nearest_concepts",
+        lambda **kwargs: ((nearest_match(concept_id=111),),),
+    )
+
+    with pytest.raises(GroundworkersError) as caught:
+        asyncio.run(
+            adapter.async_search_batch(
+                ["hypertension", "diabetes"],
+                7,
+                "Condition",
+                "SNOMED",
+                True,
+                True,
+                None,
+            )
+        )
+
+    assert caught.value.code == "BACKEND_UNAVAIL"
+
+
 def test_live_encoding_rejects_registered_model_that_is_not_configured(monkeypatch):
     backend = StubModelBackend(model="configured-model")
     adapter = build_adapter(model_backend=backend)

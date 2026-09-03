@@ -25,7 +25,7 @@ The MCP surface is organized by the job a caller is trying to do. Tool registrat
 | Resolver | `concept_ground` | Graph runtime |
 | Search | `concept_search_exact`, `concept_search_fulltext`, `concept_navigate_to_standard` | CDM vocabulary runtime |
 | Mapping | `concept_search_normalized`, `concept_candidate_bundle`, `concept_nearest_standard_ancestor`, `concept_mapping_context`, `concept_map_to_value`, `concept_resolve_mapping_expression`, `mapping_evaluate_candidates` | CDM runtime; some operations also require graph or embeddings |
-| Embedding | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode` | `omop_emb` configured |
+| Embedding | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_search_batch`, `embedding_encode` | `omop_emb` configured |
 | Text | `text_normalize`, `text_mapping_cleanup`, `text_decompose`, `text_disambiguate` | Chat model configured |
 | Domain | `domain_classify` | Chat model configured |
 | Source planning | `source_plan`, `source_plan_assisted` | Source-planning service; assisted path also needs chat |

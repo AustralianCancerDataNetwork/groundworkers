@@ -47,6 +47,7 @@ class ConceptGroundingService:
         parent_ids: tuple[int, ...] | None = None,
         standard_only: bool = False,
         active_only: bool = False,
+        include_embedding: bool = True,
     ) -> dict[str, Any]:
         stripped = query.strip()
         if not stripped:
@@ -87,6 +88,7 @@ class ConceptGroundingService:
                 tiers=self._build_tier_plan(
                     query=stripped,
                     search_space_narrowed=bool(canonical_domain or vocabulary_id),
+                    include_embedding=include_embedding,
                 ),
                 min_fulltext_overlap=self._min_fulltext_overlap,
             )
@@ -116,6 +118,7 @@ class ConceptGroundingService:
         parent_ids: tuple[int, ...] | None = None,
         standard_only: bool = False,
         active_only: bool = False,
+        include_embedding: bool = True,
     ) -> dict[str, Any]:
         """MCP-facing grounding with native async embedding resolution."""
 
@@ -151,6 +154,7 @@ class ConceptGroundingService:
                 tiers=self._build_tier_plan(
                     query=stripped,
                     search_space_narrowed=bool(canonical_domain or vocabulary_id),
+                    include_embedding=include_embedding,
                 ),
                 min_fulltext_overlap=self._min_fulltext_overlap,
             )
@@ -227,12 +231,13 @@ class ConceptGroundingService:
         *,
         query: str,
         search_space_narrowed: bool,
+        include_embedding: bool = True,
     ) -> tuple[tuple[Any, ...], ...]:
         tiers: list[tuple[Any, ...]] = [
             (ExactLabelResolver(), ExactSynonymResolver()),
             (FullTextResolver(), FullTextSynonymResolver()),
         ]
-        if self._graph.embedding_resolver_active:
+        if include_embedding and self._graph.embedding_resolver_active:
             tiers.append((EmbeddingResolver(),))
 
         # Partial matching without a domain/vocabulary constraint runs ILIKE against
