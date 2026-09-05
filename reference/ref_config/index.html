@@ -1399,6 +1399,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../development/plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/testing/" class="md-nav__link">
         
   
@@ -2116,11 +2144,6 @@ console. Each optional backend is resolved to <code>None</code> when unconfigure
 availability is decided in one place instead of at every call site.</p>
 <p>Settings are read through <code>groundworkers</code>: this type deliberately does not
 re-export them, so each one has exactly one name.</p>
-<p>There is one database engine, not two. The vocabulary is reached through
-<code>cdm_engine</code> with <code>cdm_database.vocab_schema</code> applied on top, so a CDM
-entry that splits its vocabulary onto a second connection is refused at
-bootstrap rather than represented here. See
-:func:<code>split_vocabulary_connection</code>.</p>
 
 
 

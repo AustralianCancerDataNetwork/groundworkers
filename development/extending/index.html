@@ -16,7 +16,7 @@
         <link rel="prev" href="../integration/">
       
       
-        <link rel="next" href="../../usage/testing/">
+        <link rel="next" href="../plugins/">
       
       
         
@@ -1534,6 +1534,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/testing/" class="md-nav__link">
         
   
@@ -2030,7 +2058,7 @@
 
 
 <h1 id="extending-groundworkers">Extending groundworkers</h1>
-<p>This guide is for contributors adding new adapters, services, MCP tools, or REST endpoints. The main rule is simple:</p>
+<p>This guide is for contributors adding new adapters, services, MCP tools, or REST endpoints directly in this repository. If you're adding a self-contained capability as a separate installable package instead — no core file edits — see <a href="../plugins/">Plugin architecture</a>. The main rule here is simple:</p>
 <p><strong>keep business logic above the transport layer and keep dependency details below it.</strong></p>
 <h2 id="current-extension-points">Current extension points</h2>
 <table>

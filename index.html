@@ -364,6 +364,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#before-assuming-a-capability-is-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before assuming a capability is available
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#where-to-start" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -375,10 +386,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#relation-to-groundcrew" class="md-nav__link">
+  <a href="#relationship-to-groundcrew" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Relation to groundcrew
+        Relationship to groundcrew
       
     </span>
   </a>
@@ -1510,6 +1521,34 @@
   
   
     <li class="md-nav__item">
+      <a href="development/plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="usage/testing/" class="md-nav__link">
         
   
@@ -1894,6 +1933,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#before-assuming-a-capability-is-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before assuming a capability is available
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#where-to-start" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1905,10 +1955,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#relation-to-groundcrew" class="md-nav__link">
+  <a href="#relationship-to-groundcrew" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Relation to groundcrew
+        Relationship to groundcrew
       
     </span>
   </a>
@@ -1998,7 +2048,18 @@
     A --> DB[(OMOP CDM / vocab)]
     A --> LLM[LLM API]
 </div>
-<p>The transport is thin, reusable workflow logic lives in <code>services/</code>, and concrete dependencies are isolated behind <code>adapters/</code>. See <a href="architecture/">Architecture</a> for configuration and startup wiring.</p>
+<ul>
+<li><strong>Services</strong> hold reusable workflow logic. </li>
+<li><strong>Adapters</strong> isolate concrete dependencies. </li>
+<li>The transport layer validates input, invokes the runtime, and translates the result for its caller.</li>
+<li>See <a href="architecture/">Architecture</a> for configuration and startup wiring.</li>
+</ul>
+<h2 id="before-assuming-a-capability-is-available">Before assuming a capability is available</h2>
+<p>Availability follows configuration. A CDM database enables the core vocabulary and mapping services. An embedding model plus vector store enables embedding operations. A chat model enables text preprocessing, domain classification, and assisted source planning. Semantic projection is separately opt-in.</p>
+<p>Run this before integrating against an environment:</p>
+<div class="highlight"><pre><span></span><code>groundworkers<span class="w"> </span>--describe
+</code></pre></div>
+<p>The output includes the active tools, prompts, resources, plugins, redacted configuration, and safe plugin issues.</p>
 <h2 id="where-to-start">Where to start</h2>
 <ul>
 <li><a href="concepts/">Concepts and capability choices</a> to understand grounding, mapping, retrieval, and optional infrastructure</li>
@@ -2008,13 +2069,8 @@
 <li><a href="usage/configuration/">Configuration</a> for the shared-stack config model and runtime combinations</li>
 <li><a href="tools/overview/">Tools overview</a> for the discoverable MCP surface</li>
 </ul>
-<h2 id="relation-to-groundcrew">Relation to groundcrew</h2>
-<p><code>groundworkers</code> and <code>groundcrew</code> are intentionally separate:</p>
-<ul>
-<li><code>groundworkers</code> owns reusable stateless capabilities</li>
-<li><code>groundcrew</code> owns orchestration, session state, and job lifecycle</li>
-</ul>
-<p>In the usual deployment, <code>groundcrew</code> talks to <code>groundworkers</code> over MCP. A Python application can use the same service layer directly through <code>build_application(...)</code>.</p>
+<h2 id="relationship-to-groundcrew">Relationship to groundcrew</h2>
+<p><code>groundworkers</code> owns reusable stateless capabilities. <code>groundcrew</code> owns session state, job lifecycle, and orchestration policy. In the usual deployment, <code>groundcrew</code> calls Groundworkers over MCP; a Python application can use the same services directly.</p>
 
 
 

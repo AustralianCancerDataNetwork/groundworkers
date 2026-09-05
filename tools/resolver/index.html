@@ -1457,6 +1457,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../development/plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/testing/" class="md-nav__link">
         
   
@@ -1885,11 +1913,13 @@
 <span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;domain&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Condition&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;vocabulary_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SNOMED&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;parent_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">441840</span><span class="p">]</span>
+<span class="w">  </span><span class="nt">&quot;parent_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">441840</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;include_embedding&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>
 </code></pre></div>
 <p>All parameters except <code>query</code> are optional. <code>limit</code> is clamped to <code>1..20</code>.</p>
 <p><code>parent_ids</code> is an optional ancestry constraint. When provided, returned concepts must be descendants of at least one listed concept. When omitted, the grounding search runs without an ancestry constraint.</p>
+<p>Set <code>include_embedding</code> to <code>false</code> to run only the deterministic exact/full-text tiers and avoid a live embedding request. This is useful when a caller is already scheduling a separate batched embedding search.</p>
 <p><strong>Response</strong>:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;lung cancer&quot;</span><span class="p">,</span>

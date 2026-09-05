@@ -1399,6 +1399,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../development/plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../usage/testing/" class="md-nav__link">
         
   
@@ -1845,6 +1873,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.canonicalize_domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        canonicalize_domain
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.concept_views" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1867,10 +1906,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.probe" class="md-nav__link">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.known_domains" class="md-nav__link">
     <span class="md-ellipsis">
       
-        probe
+        known_domains
       
     </span>
   </a>
@@ -1878,10 +1917,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.raw_standard_flags" class="md-nav__link">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.probe" class="md-nav__link">
     <span class="md-ellipsis">
       
-        raw_standard_flags
+        probe
       
     </span>
   </a>
@@ -1993,6 +2032,17 @@
     <span class="md-ellipsis">
       
         async_search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_emb.OmopEmbAdapter.async_search_batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async_search_batch
       
     </span>
   </a>
@@ -2508,6 +2558,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.canonicalize_domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        canonicalize_domain
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.concept_views" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2530,10 +2591,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.probe" class="md-nav__link">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.known_domains" class="md-nav__link">
     <span class="md-ellipsis">
       
-        probe
+        known_domains
       
     </span>
   </a>
@@ -2541,10 +2602,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.raw_standard_flags" class="md-nav__link">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.probe" class="md-nav__link">
     <span class="md-ellipsis">
       
-        raw_standard_flags
+        probe
       
     </span>
   </a>
@@ -2656,6 +2717,17 @@
     <span class="md-ellipsis">
       
         async_search
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_emb.OmopEmbAdapter.async_search_batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async_search_batch
       
     </span>
   </a>
@@ -3336,6 +3408,30 @@ failure this property exists to prevent.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.canonicalize_domain" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">canonicalize_domain</span><span class="p">(</span><span class="n">domain</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Resolve a loosely-typed domain to its canonical <code>domain_id</code>.</p>
+<p>Returns <code>None</code> for an unrecognised domain so the caller can reject it,
+which is distinct from <code>None</code> input meaning "no domain constraint".
+Use :meth:<code>describe_unknown_domain</code> to build the message.</p>
+<p>This previously matched against a hardcoded six-name tuple — the set
+<code>domain_classify</code> emits — so the other forty-four domains only worked
+when supplied in exactly the right case.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.concept_views" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">concept_views</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
 
@@ -3376,15 +3472,15 @@ backend errors during enrichment.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.probe" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">probe</span><span class="p">()</span></code>
+<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.known_domains" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">known_domains</span><span class="p">()</span></code>
 
 </h4>
 
 
     <div class="doc doc-contents ">
 
-        <p>Return (available, detail) without raising.</p>
+        <p>Every valid <code>domain_id</code>, for validation and select lists.</p>
 
 
     </div>
@@ -3394,19 +3490,15 @@ backend errors during enrichment.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.raw_standard_flags" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">raw_standard_flags</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.probe" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">probe</span><span class="p">()</span></code>
 
 </h4>
 
 
     <div class="doc doc-contents ">
 
-        <p>Batch-fetch the raw OMOP <code>concept.standard_concept</code> flag per concept_id.</p>
-<p><code>omop-graph</code> exposes <code>S</code> and <code>C</code> as one combined boolean. Groundworkers
-keeps those flags distinct for grounding, so this method reads the raw
-value from the CDM engine. It returns <code>S</code>, <code>C</code>, another non-blank value,
-or <code>None</code> for an unset flag; unknown concept IDs are omitted.</p>
+        <p>Return (available, detail) without raising.</p>
 
 
     </div>
@@ -3635,6 +3727,31 @@ Groundworkers process.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="groundworkers.adapters.omop_emb.OmopEmbAdapter.async_search_batch" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">async_search_batch</span><span class="p">(</span><span class="n">queries</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">vocabulary</span><span class="p">,</span> <span class="n">standard_only</span><span class="p">,</span> <span class="n">active_only</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-async"><code>async</code></small>
+  </span>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Encode and search multiple queries in one provider/index operation.</p>
+<p>The query filters are intentionally shared across the batch. Callers with
+different domain or vocabulary constraints should partition their inputs
+first, then merge the aligned results by their own item identifiers.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="groundworkers.adapters.omop_emb.OmopEmbAdapter.close" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">close</span><span class="p">()</span></code>
 
@@ -3643,7 +3760,7 @@ Groundworkers process.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Release cached storage and model backends.</p>
+        <p>Release cached readers, storage, and model backends.</p>
 
 
     </div>

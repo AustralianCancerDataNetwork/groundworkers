@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://AustralianCancerDataNetwork.github.io/groundworkers/tools/semantic_projection/">
+        <link rel="canonical" href="https://AustralianCancerDataNetwork.github.io/groundworkers/development/plugins/">
       
       
-        <link rel="prev" href="../system/">
+        <link rel="prev" href="../extending/">
       
       
-        <link rel="next" href="../../services/graph/">
+        <link rel="next" href="../../usage/testing/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Semantic Projection Tools - groundworkers</title>
+        <title>Plugin architecture - groundworkers</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#semantic-projection-tools" class="md-skip">
+        <a href="#plugin-architecture" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Semantic Projection Tools
+              Plugin architecture
             
           </span>
         </div>
@@ -576,8 +576,6 @@
       
   
   
-    
-  
   
   
     
@@ -590,11 +588,13 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -615,7 +615,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -633,7 +633,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../overview/" class="md-nav__link">
+      <a href="../../tools/overview/" class="md-nav__link">
         
   
   
@@ -661,7 +661,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../concept/" class="md-nav__link">
+      <a href="../../tools/concept/" class="md-nav__link">
         
   
   
@@ -689,7 +689,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../resolver/" class="md-nav__link">
+      <a href="../../tools/resolver/" class="md-nav__link">
         
   
   
@@ -717,7 +717,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../search/" class="md-nav__link">
+      <a href="../../tools/search/" class="md-nav__link">
         
   
   
@@ -745,7 +745,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mapping/" class="md-nav__link">
+      <a href="../../tools/mapping/" class="md-nav__link">
         
   
   
@@ -773,7 +773,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../embedding/" class="md-nav__link">
+      <a href="../../tools/embedding/" class="md-nav__link">
         
   
   
@@ -801,7 +801,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../text/" class="md-nav__link">
+      <a href="../../tools/text/" class="md-nav__link">
         
   
   
@@ -829,7 +829,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../domain/" class="md-nav__link">
+      <a href="../../tools/domain/" class="md-nav__link">
         
   
   
@@ -857,7 +857,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../knowledge/" class="md-nav__link">
+      <a href="../../tools/knowledge/" class="md-nav__link">
         
   
   
@@ -885,7 +885,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../source_planning/" class="md-nav__link">
+      <a href="../../tools/source_planning/" class="md-nav__link">
         
   
   
@@ -913,7 +913,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../system/" class="md-nav__link">
+      <a href="../../tools/system/" class="md-nav__link">
         
   
   
@@ -938,37 +938,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Semantic Projection Tools
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../tools/semantic_projection/" class="md-nav__link">
         
   
   
@@ -984,48 +957,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#semantic_project" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        semantic_project
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#typical-downstream-use" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Typical downstream use
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1327,8 +1258,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -1339,13 +1272,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
           <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
@@ -1366,7 +1297,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1412,7 +1343,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/integration/" class="md-nav__link">
+      <a href="../integration/" class="md-nav__link">
         
   
   
@@ -1440,7 +1371,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/extending/" class="md-nav__link">
+      <a href="../extending/" class="md-nav__link">
         
   
   
@@ -1465,10 +1396,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../development/plugins/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plugin architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1484,6 +1442,137 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-plugin-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a plugin is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-from-the-use-case" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start from the use case
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Start from the use case">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assumptions-this-table-is-making" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assumptions this table is making
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-and-register-a-new-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build and register a new plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Package configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sensitive-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sensitive fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readiness-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readiness verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lifecycle-and-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle and diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1836,10 +1925,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#semantic_project" class="md-nav__link">
+  <a href="#what-a-plugin-is" class="md-nav__link">
     <span class="md-ellipsis">
       
-        semantic_project
+        What a plugin is
       
     </span>
   </a>
@@ -1847,10 +1936,99 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#typical-downstream-use" class="md-nav__link">
+  <a href="#start-from-the-use-case" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Typical downstream use
+        Start from the use case
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Start from the use case">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assumptions-this-table-is-making" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assumptions this table is making
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#build-and-register-a-new-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build and register a new plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Package configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sensitive-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sensitive fields
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#setup-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#readiness-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Readiness verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lifecycle-and-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle and diagnostics
       
     </span>
   </a>
@@ -1900,10 +2078,10 @@
     
     
       <li class="md-path__item">
-        <a href="../overview/" class="md-path__link">
+        <a href="../../architecture/" class="md-path__link">
           
   <span class="md-ellipsis">
-    Tools
+    Development and architecture
   </span>
 
         </a>
@@ -1925,120 +2103,204 @@
   
 
 
-<h1 id="semantic-projection-tools">Semantic Projection Tools</h1>
-<p><code>semantic_project</code> is the MCP surface for deterministic semantic projection — turning a grounded OMOP concept into one or more CDM rows. It is registered only when <code>groundworkers.semantic_projection_enabled = true</code> (default <code>false</code>; see <a href="../../usage/configuration/#semantic_projection">Configuration</a>).</p>
-<p>It is not a grounding tool. Callers ground a concept first (<code>concept_ground</code>, or their own logic) and pass the result in. It is a thin wrapper over <code>SemanticProjectionService</code> — see <a href="../../services/semantic_projection/">SemanticProjectionService</a> for the full definition catalogue and selection rules.</p>
-<hr />
-<h2 id="semantic_project"><code>semantic_project</code></h2>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;grounded_concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4152280</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;grounded_domain&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Condition&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;grounded_concept_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Major depressive disorder&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;definition_hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition_with_status_from_secondary_field&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;raw_source_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;role_field&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">}</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
+<h1 id="plugin-architecture">Plugin architecture</h1>
+<h2 id="what-a-plugin-is">What a plugin is</h2>
+<p>Groundworkers plugins are independently installed packages that add an adapter, service, and MCP surface without adding plugin-specific imports to Groundworkers. They register one ready-to-use plugin object under the <code>groundworkers.plugins</code> entry-point group.</p>
+<div class="highlight"><pre><span></span><code><span class="k">[project.entry-points.</span><span class="s2">&quot;groundworkers.plugins&quot;</span><span class="k">]</span>
+<span class="n">my_plugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;my_package.plugin:plugin&quot;</span>
 </code></pre></div>
-<p><code>grounded_concept_id</code> and <code>grounded_domain</code> are required. Everything else is optional.</p>
-<p><code>definition_hint</code> selects a definition explicitly. Omit it only when exactly one registered definition applies to <code>grounded_domain</code>.</p>
-<p><code>context</code> carries whatever the selected definition needs beyond the grounded concept itself — see the field-by-field description in <a href="../../services/semantic_projection/#method">SemanticProjectionService</a>.</p>
-<p><strong>Response (row kept):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;definition_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition_with_status_from_secondary_field&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition_modifier&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;rows&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;row_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;table&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition_occurrence&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;condition_concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4152280</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;condition_status_concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">32902</span>
-<span class="w">      </span><span class="p">}</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;links&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;constraint_checks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;unresolved_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;suppressed_rows&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;audit_notes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Diagnosis paired with a separately-collected Primary/Contributing/Non-contributing role field. ...&quot;</span><span class="p">]</span>
-<span class="p">}</span>
+<div  class="mermaid">flowchart LR
+    subgraph PKG["my_package — a separate installed package"]
+        direction TB
+        CFG["Config class<br/><i>the settings this plugin needs</i>"]
+        OBJ["Plugin object<br/>name &middot; config class &middot; build() &middot; register()"]
+    end
+
+    subgraph HOST["Groundworkers — the host application"]
+        direction TB
+        DISC["Discovery<br/><i>looks up installed plugins</i>"]
+        CTX["Shared connections<br/><i>database, embeddings — already<br/>set up by Groundworkers itself</i>"]
+        SRV["Shared MCP tool server"]
+    end
+
+    OBJ -.->|"found via the environment's<br/>own package listing"| DISC
+    DISC -->|"reads + validates"| CFG
+    CTX -->|"handed to"| OBJ
+    OBJ -->|"register() adds its tools"| SRV
+</div>
+<p>The object implements <code>GroundworkersPlugin</code>: a stable <code>name</code>, an optional <code>PackageConfigBase</code> class, <code>build(context, config)</code>, and <code>register(server, state)</code>. The plugin name and <code>config_cls.tool_name</code> must match. <strong>Installed plugin names must be unique.</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">MyPlugin</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;my_plugin&quot;</span>
+    <span class="n">config_cls</span> <span class="o">=</span> <span class="n">ExampleConfig</span>  <span class="c1"># or None, if this plugin needs no configuration</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+        <span class="o">...</span>  <span class="c1"># return a service object, or None if a prerequisite is unavailable</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">server</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
+        <span class="o">...</span>  <span class="c1"># add this plugin&#39;s MCP tools/resources</span>
+
+
+<span class="n">plugin</span> <span class="o">=</span> <span class="n">MyPlugin</span><span class="p">()</span>
 </code></pre></div>
-<p><strong>Response (row suppressed — role field raw code <code>"3"</code>, Non-contributing):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;definition_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition_with_status_from_secondary_field&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition_modifier&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;suppressed&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;rows&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;links&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;constraint_checks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;unresolved_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;suppressed_rows&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;row_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;condition&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;derivation rule for &#39;condition_status_concept_id&#39; matched a suppress code on &#39;source.raw_source_fields.role_field&#39;&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;source_field&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;source.raw_source_fields.role_field&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;source_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;3&quot;</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;audit_notes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
-<span class="p">}</span>
-</code></pre></div>
-<p>Nothing is silently missing here — <code>rows</code> is empty <em>and</em> <code>suppressed_rows</code> explains why, with the exact source field and code that triggered it.</p>
-<p><strong>Response (no hint, ambiguous domain):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;definition_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;no_match&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;rows&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;links&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;constraint_checks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;unresolved_fields&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;suppressed_rows&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">&quot;audit_notes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="s2">&quot;4 definitions match domain &#39;Condition&#39; [&#39;condition_with_status_from_secondary_field&#39;, &#39;criteria_gate_condition&#39;, &#39;family_history_condition&#39;, &#39;family_member_history_bundle&#39;]; pass definition_hint to disambiguate&quot;</span>
-<span class="w">  </span><span class="p">]</span>
-<span class="p">}</span>
-</code></pre></div>
-<p><strong>When to use it:</strong></p>
-<p>Use <code>semantic_project</code> when:</p>
-<ul>
-<li>a grounded item needs a second CDM column populated from a sibling source field (a role/status pairing)</li>
-<li>a fixed entity concept should carry context like family history while the grounded plain concept belongs in the OMOP value slot</li>
-<li>a source item should sometimes produce no CDM record at all, deterministically and auditably, rather than via ad hoc caller logic</li>
-<li>a grounded quantitative finding needs both a literal numeric value and a mapped OMOP unit concept</li>
-<li>you need the same input to always produce the same output — there is no LLM call anywhere in this path</li>
-</ul>
-<p><strong>Error cases:</strong></p>
+<h2 id="start-from-the-use-case">Start from the use case</h2>
+<p>A plugin's configuration should follow from what it needs to be able to complete its task. </p>
+<p>Work through each requirement before writing the class.</p>
+<p>For example, a plugin recommending comparator cohorts might reason like this.</p>
+<p><strong>Reuse a resource Groundworkers already resolved.</strong> Nothing to declare — read it straight off <code>PluginContext</code> inside <code>build()</code>:</p>
 <table>
 <thead>
 <tr>
-<th>Error code</th>
-<th>Condition</th>
+<th>Use case</th>
+<th>What you need</th>
+<th>How you get it</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>INVALID_INPUT</code></td>
-<td>Request failed validation (e.g. non-numeric <code>grounded_concept_id</code>)</td>
+<td>Look up existing OMOP concepts</td>
+<td>Read access to the CDM vocabulary connection Groundworkers already opened</td>
+<td><code>context.cdm_engine</code> / <code>context.resolver</code></td>
 </tr>
 <tr>
-<td><code>QUERY_ERROR</code></td>
-<td>Definition execution failed unexpectedly (e.g. a <code>suppression_mode="fail"</code> policy actually triggered)</td>
+<td>Rank or filter by similarity to concepts Groundworkers already embedded</td>
+<td>The concept embeddings Groundworkers already populated, via omop-emb</td>
+<td><code>context.vector_store</code> + <code>context.embedding_backend_factory</code></td>
+</tr>
+<tr>
+<td>Ask an LLM to help decide something</td>
+<td>The chat model Groundworkers already configured, via omop-llm</td>
+<td><code>context.chat_backend_factory</code></td>
 </tr>
 </tbody>
 </table>
-<p>A <code>NOT_FOUND</code>-style outcome for an unknown <code>definition_hint</code> is <em>not</em> an error — it comes back as <code>status="no_match"</code> with an audit note naming the unknown hint, since the request was well-formed and the server made a deterministic decision about it.</p>
-<h2 id="typical-downstream-use">Typical downstream use</h2>
-<div  class="mermaid">flowchart TD
-    C[concept_ground] --> G[grounded concept + domain]
-    G --> P[semantic_project]
-    CTX[context: raw_value / raw_source_fields] --> P
-    P -->|ok / partial| R[CDM rows to store]
-    P -->|suppressed| N[nothing stored, reason recorded]
-    P -->|no_match| F[caller falls back to the plain grounded concept]
+<p><strong>Create something this plugin owns.</strong> Each becomes a field on its own <code>PackageConfigBase</code> — see <a href="#package-configuration">Package configuration</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Use case</th>
+<th>What you need</th>
+<th>Configuration field established</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Store its own distinct non-CDM source tables</td>
+<td>A database connection this plugin owns and writes to</td>
+<td><code>comparator_db: Annotated[str, RefTo(CDMDatabaseConfig)] = "cdm_db"</code></td>
+<td>Same shape as a core reference, but the operator points it at a new entry when they configure the plugin</td>
+</tr>
+<tr>
+<td>Vectorised <em>arbitrary free text or objects</em> for similarity search</td>
+<td>Its own embedding model</td>
+<td><code>embedding_model_name: Annotated[str \| None, RefTo(ModelConfig)] = None</code></td>
+<td>Optional, independent of Groundworkers' own model choice</td>
+</tr>
+<tr>
+<td>Store and search those vectors</td>
+<td>Its own vector index</td>
+<td><code>vector_store_name: Annotated[str \| None, RefTo(VectorStoreConfig)] = None</code></td>
+<td><strong>Not existing OMOP concepts, see above</strong></td>
+</tr>
+<tr>
+<td>Let operators tune how strict "similar enough" is</td>
+<td>Parameter the plugin's logic requires</td>
+<td><code>min_databases_default: int = Field(default=2, ge=1)</code></td>
+<td>A plain setting, nothing to resolve</td>
+</tr>
+</tbody>
+</table>
+<p>The concept-embedding row and the free-text-embedding row look similar but are not the same decision: the first reuses a vector store Groundworkers already populated with OMOP concepts; the second stands up an independent embedding model and vector store for data that was never a concept to begin with. Reusing <code>context.vector_store</code> for the second case would put unrelated vectors in Groundworkers' own concept index.</p>
+<h3 id="assumptions-this-table-is-making">Assumptions this table is making</h3>
+<ul>
+<li><strong>Vocabulary only, so far.</strong> Every example above reads OMOP <em>vocabulary</em> i.e. operations over concepts, concept relationships, concept embeddings. Nothing about <code>context.cdm_engine</code> restricts a plugin to vocabulary tables specifically, however. These tables are available over the same CDM connection groundworkers itself uses, and a plugin <em>could</em> query clinical/person-level tables (<code>condition_occurrence</code>, <code>drug_exposure</code>, etc.) through it just as easily, subject to whatever environmental and procedural access controls actually govern that data. </li>
+<li><strong>Plugin graph access is TODO.</strong> <code>PluginContext</code> does not expose graph traversal at this time, which means that a plugin that wants graph traversal would have to depend on <code>omop-graph</code> itself and build its own adapter, reusing <code>context.cdm_engine</code> for the connection but not groundworkers' own shared instance. Recommend not doing it that way, however, as it would be easier to expose the core graph the same way <code>vector_store</code> and <code>embedding_backend_factory</code> already are. </li>
+</ul>
+<h2 id="build-and-register-a-new-plugin">Build and register a new plugin</h2>
+<p><code>build()</code> receives <code>PluginContext</code>. The context provides the resolved CDM database and engine, vector store, shared lazy model backend factories, and a deliberately narrow resolver for independent named OA resources. Return <code>None</code> when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.</p>
+<p><code>register()</code> adds MCP tools, prompts, or resources against the state returned by <code>build()</code>. The shared MCP registration wrapper supplies the same safe error translation used by core tools. Code-defined prompts can continue to derive their arguments from the callable signature. A plugin publishing data-defined prompts can pass explicit string metadata with <code>PromptArgument</code>; this keeps dynamic pack fields out of Python closure signatures:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">PromptArgument</span>
+
+<span class="n">server</span><span class="o">.</span><span class="n">prompt</span><span class="p">(</span>
+    <span class="s2">&quot;my_pack_workflow&quot;</span><span class="p">,</span>
+    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Run my pack workflow&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Start the workflow published by my pack.&quot;</span><span class="p">,</span>
+    <span class="n">arguments</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">PromptArgument</span><span class="p">(</span>
+            <span class="s2">&quot;request&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;The user&#39;s starting request.&quot;</span><span class="p">,</span>
+            <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">],</span>
+<span class="p">)(</span><span class="n">handler</span><span class="p">)</span>
+</code></pre></div>
+<div  class="mermaid">sequenceDiagram
+    participant Env as Installed packages
+    participant GW as Groundworkers (host)
+    participant P as my_package (a plugin)
+
+    Note over Env: 1.
+
+    GW->>Env: At startup: list every registered plugin
+    Env-->>GW: my_package's plugin object
+
+    Note over GW,P: 2.
+
+    GW->>P: Resolve its config class into validated settings
+    GW->>P: build(shared connections, those settings)
+    P-->>GW: its own service object (or "not available")
+
+    GW->>P: register(shared MCP server, that service object)
+    P-->>GW: adds its own tools to the shared server
+
+    Note over GW: 3.
 </div>
+<ol>
+<li>The plugin's own installer registered one entry: "here is my plugin object."</li>
+<li>Groundworkers' code never imports <code>my_package</code> by name. It only expects four things on the object (<code>name</code>, optional <code>PackageConfigBase</code> class, plus <code>build</code> and <code>register</code> methods, described above).</li>
+<li>The plugin's tools are now callable through the one Groundworkers server.</li>
+</ol>
+<h2 id="package-configuration">Package configuration</h2>
+<p>A plugin with scalar and <code>RefTo</code> fields receives a setup-console page without any Groundskeeping-aware plugin code:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">ClassVar</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">oa_configurator</span><span class="w"> </span><span class="kn">import</span> <span class="n">CDMDatabaseConfig</span><span class="p">,</span> <span class="n">PackageConfigBase</span><span class="p">,</span> <span class="n">RefTo</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ExampleConfig</span><span class="p">(</span><span class="n">PackageConfigBase</span><span class="p">):</span>
+    <span class="n">tool_name</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;my_plugin&quot;</span>
+
+    <span class="n">database</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">RefTo</span><span class="p">(</span><span class="n">CDMDatabaseConfig</span><span class="p">)]</span> <span class="o">=</span> <span class="s2">&quot;cdm_db&quot;</span>
+    <span class="n">retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</code></pre></div>
+<p>The generic workflow maps supported Pydantic scalars to Groundskeeping fields, offers existing references of the correct concrete type, and can create a new reference chain recursively through oa-configurator's public <code>plan_configure()</code> API. Candidates remain private to the Groundworkers provider; review output is redacted and persistence is revision-aware.</p>
+<p>Schemas requiring live discovery or a conditional flow (and therefore not fitting the default configuration UX specification) may additionally implement the runtime-checkable <code>GroundworkersPluginConfigUI</code> protocol. Its <code>tui_workflow(operation)</code> method returns a custom <code>(ConfigWorkflowSpec, ConfigMutationService)</code> pair. Keep Groundskeeping in the plugin's optional TUI dependencies so headless plugin imports remain lightweight.</p>
+<h3 id="sensitive-fields">Sensitive fields</h3>
+<p><code>PackageConfigBase</code> inherits oa-configurator's <code>SecretSafeModel</code>. A plugin developer must mark every plugin-owned secret with <code>Sensitive()</code> so model representations, interactive fields, configuration views, and review diffs can redact it by schema declaration. Groundworkers does not infer sensitivity from field names.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Annotated</span><span class="p">,</span> <span class="n">ClassVar</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">oa_configurator</span><span class="w"> </span><span class="kn">import</span> <span class="n">PackageConfigBase</span><span class="p">,</span> <span class="n">Sensitive</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">Field</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ExampleConfig</span><span class="p">(</span><span class="n">PackageConfigBase</span><span class="p">):</span>
+    <span class="n">tool_name</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;my_plugin&quot;</span>
+    <span class="n">api_token</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">Sensitive</span><span class="p">()]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<p>The <code>oa_configurator.Secret</code> alias is equivalent to <code>Annotated[str | None, Sensitive()]</code>. Prefer a <code>RefTo</code> field when a plugin can reuse an existing database, model, provider, or vector-store entry. The plugin then stores only the logical reference name; sensitivity remains declared on the referenced schema, such as <code>ConnectionConfig.password</code> or <code>ProviderConfig.api_key</code>, and the generic recursive configuration workflow preserves those declarations.</p>
+<p>This protects display and logging surfaces; it does not encrypt persisted configuration. Plugin documentation must describe the storage expectations for any secret it introduces.</p>
+<h2 id="setup-steps">Setup steps</h2>
+<p>Plugin data preparation belongs in registered setup steps. A plugin may expose a <code>setup_steps</code> tuple of <code>PluginSetupStep</code> instances. Each step declares a stable key, operator copy, typed arguments, and a <code>build_plan(values, config_path)</code> callable that returns a <code>MaintenancePlan</code>.</p>
+<p>The host provides the common setup-console form and review flow, passes argument values only to that run, and starts the resulting plan through the durable maintenance-run store. Logs, progress, cancellation, retry, and the Runs view are therefore shared by core operations and plugins.</p>
+<p>Setup arguments are separate from package configuration: database/model references and policy defaults belong in configuration, while paths to an input export belong to the one-off setup run.</p>
+<p>Long-running plugin work should be represented by commands in the plan and run out of process. The command may invoke the plugin's own setup module or console entry point; Groundworkers does not import plugin internals or reproduce their loading logic.</p>
+<h2 id="readiness-verification">Readiness verification</h2>
+<p>A plugin may implement <code>GroundworkersPluginReadiness.verify_readiness(state)</code> when operators need to distinguish valid package configuration from an initialised, usable capability.</p>
+<p>Verification is read-only and returns a <code>PluginReadinessResult</code> containing a stable state, a summary, and <code>PluginReadinessField</code> values. Display values must never contain credentials, connection URLs, or raw exception text.</p>
+<p>The contract is headless: it contains no Groundskeeping types. Groundworkers uses the same result for generic setup-console rendering, while a plugin may return <code>result.as_dict()</code> from its own MCP status tool. Plugins own dependency- specific checks; the host only builds current plugin state, handles unavailable configuration safely, and maps readiness states to existing Groundskeeping status, table, empty, action, and detail contracts.</p>
+<h2 id="lifecycle-and-diagnostics">Lifecycle and diagnostics</h2>
+<p>Groundworkers discovers the plugin set once per application build, validates its identities, resolves each package configuration, and builds state. MCP registration uses those same discovered objects. <code>groundworkers --describe</code> lists active plugins and safe <code>plugin_issues</code> for plugins skipped because their configuration, prerequisites, build, or registration failed.</p>
 
 
 
