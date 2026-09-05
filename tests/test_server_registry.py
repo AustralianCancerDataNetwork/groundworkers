@@ -2,13 +2,14 @@ import asyncio
 import inspect
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from groundworkers.app import build_adapters, build_application
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.server import GroundworkersMCPServer
+from groundworkers.base.server import GroundworkersMCPServer, PromptArgument
 from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.server import create_server, main, parse_args, run_rest_api
 from tests.support.stack_config import (
@@ -264,6 +265,63 @@ def test_fastmcp_preserves_native_async_tool_invocation(
     }
 
 
+def test_fastmcp_preserves_explicit_prompt_metadata_and_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp.server.fastmcp import FastMCP
+
+    captured: dict[str, Any] = {}
+    server = GroundworkersMCPServer("groundworkers-test")
+
+    @server.prompt(
+        "structure_question",
+        title="Structure a research question",
+        description="Start a structured research-question workflow.",
+        arguments=[
+            PromptArgument(
+                "question",
+                "The research question to structure.",
+                required=True,
+            )
+        ],
+    )
+    def structure_question(**arguments: str) -> str:
+        return arguments["question"]
+
+    def capture_run(app: FastMCP, transport: str) -> None:
+        captured["app"] = app
+        captured["transport"] = transport
+
+    monkeypatch.setattr(FastMCP, "run", capture_run)
+    server.run(transport="stdio")
+
+    app = captured["app"]
+    assert isinstance(app, FastMCP)
+    prompt = app._prompt_manager.get_prompt("structure_question")
+    assert prompt is not None
+    assert prompt.title == "Structure a research question"
+    assert prompt.description == "Start a structured research-question workflow."
+    assert prompt.arguments is not None
+    assert [argument.model_dump() for argument in prompt.arguments] == [
+        {
+            "name": "question",
+            "description": "The research question to structure.",
+            "required": True,
+        }
+    ]
+    rendered = asyncio.run(prompt.render({"question": "Does treatment work?"}))
+    assert rendered[0].content.text == "Does treatment work?"
+
+    with pytest.raises(ValueError, match="Missing required prompt arguments"):
+        server.call_prompt("structure_question")
+    with pytest.raises(ValueError, match="Unknown prompt arguments"):
+        server.call_prompt(
+            "structure_question",
+            question="Does treatment work?",
+            unexpected="value",
+        )
+
+
 def test_parse_args_accepts_rest_transport() -> None:
     args = parse_args(["--transport", "rest", "--port", "8088"])
 
@@ -483,7 +541,10 @@ def test_logging_reapplies_with_the_stack_once_loaded(
         classmethod(lambda cls, cfg=None, *, verbosity=0, **kw: calls.append(cfg)),
     )
     monkeypatch.setattr("groundworkers.server.build_app_config", lambda *, config_path=None: config)
-    monkeypatch.setattr("groundworkers.server.build_application", lambda cfg: object())
+    monkeypatch.setattr(
+        "groundworkers.server.build_application",
+        lambda cfg: SimpleNamespace(plugins={}, plugin_issues={}),
+    )
     monkeypatch.setattr("groundworkers.server.create_server", lambda cfg, app: _DescribeStub())
 
     main(["--describe"])

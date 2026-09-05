@@ -19,6 +19,8 @@ from groundskeeping.contracts import (
     SurfaceView,
     TableView,
     TextView,
+    collapse_tqdm_tail,
+    read_log_tail,
 )
 from groundskeeping.contracts.wizards import WizardController
 
@@ -66,7 +68,7 @@ from groundworkers.tui.presenters.graph import GraphPresenter
 from groundworkers.tui.presenters.llm_provider import LlmProviderPresenter
 from groundworkers.tui.presenters.overview import OverviewPresenter
 from groundworkers.tui.presenters.performance import PerformancePresenter
-from groundworkers.tui.presenters.runs import RunsPresenter, format_progress_tail
+from groundworkers.tui.presenters.runs import RunsPresenter
 from groundworkers.tui.state import SetupSession
 from groundworkers.tui.wizards.config_location import ConfigLocationWizardController
 from groundworkers.tui.wizards.graph_maintenance import GraphMaintenanceWizardController
@@ -189,7 +191,7 @@ class SetupPage(GroundworkersPage):
         if not isinstance(view, TableView):
             self._show_current_view(context)
             return
-        context.surface.show_view(self.route.key, view)
+        context.surface.refresh_view(self.route.key, view)
         self._show_section_detail(context)
 
     def _config_path_was_rejected(self) -> bool:
@@ -475,7 +477,13 @@ class SetupPage(GroundworkersPage):
         if action_key == "runs.refresh":
             self._show_current_state(context)
             return
-        if action_key in {"runs.cancel", "runs.retry", "runs.postflight", "runs.export"}:
+        if action_key in {
+            "runs.cancel",
+            "runs.retry",
+            "runs.postflight",
+            "runs.copy_log",
+            "runs.export",
+        }:
             self._handle_run_action(action_key, context)
             return
         if action_key == "database.test_connections":
@@ -845,7 +853,7 @@ class SetupPage(GroundworkersPage):
                     if step_index is not None
                     else ""
                 )
-                tail = format_progress_tail(tail)
+                tail = collapse_tqdm_tail(tail)
                 step_label = (
                     f"{step_index + 1}/{run.total} · "
                     f"{run.steps[step_index].spec.key}"
@@ -888,12 +896,30 @@ class SetupPage(GroundworkersPage):
                     self._selected_run_id
                 )
                 context.notify(f"Postflight run {started.run_id} started.")
+            elif action_key == "runs.copy_log":
+                self._copy_selected_run_log(context)
             else:
                 commands = self._runs.store.export_commands(self._selected_run_id)
                 context.notify("\n".join(commands))
         except (KeyError, ValueError, RuntimeError) as exc:
             context.notify(str(exc), severity="warning")
         self._show_current_state(context)
+
+    def _copy_selected_run_log(self, context: PageContext) -> None:
+        assert self._selected_run_id is not None
+        run = self._runs.store.get(self._selected_run_id, recover=False)
+        step_index = _selected_log_step(run)
+        path = None if step_index is None else run.steps[step_index].log_path
+        if path is None:
+            context.notify("No log output is available for this run.", severity="warning")
+            return
+        try:
+            text = read_log_tail(path)
+        except OSError:
+            context.notify("Could not read log file.", severity="error")
+            return
+        self.app.copy_to_clipboard(text)
+        context.notify("Log tail copied to clipboard.")
 
     def _set_embedding_vocabulary_selection(
         self,
@@ -988,7 +1014,11 @@ def verify_embedding_model(snapshot):
 
 
 def _selected_log_step(run) -> int | None:
-    if run.current_step is not None:
+    if (
+        run.current_step is not None
+        and 0 <= run.current_step < len(run.steps)
+        and run.steps[run.current_step].log_path is not None
+    ):
         return run.current_step
     return next(
         (

@@ -8,6 +8,12 @@ from groundworkers.bootstrap import build_app_config
 
 
 def _load_integration_adapter():
+    if os.getenv("GROUNDWORKERS_RUN_EMBEDDING_INTEGRATION") != "1":
+        pytest.skip(
+            "embedding integration is opt-in; CI validates the database and graph "
+            "without provisioning an embedding model"
+        )
+
     try:
         import omop_emb  # noqa: F401
     except ImportError:
@@ -16,6 +22,11 @@ def _load_integration_adapter():
     config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv(
         "GROUNDWORKERS_CONFIG"
     )
+    if config_path is None:
+        pytest.skip(
+            "an explicit integration config path is required; set "
+            "GROUNDWORKERS_CONFIG_PATH"
+        )
     try:
         config = build_app_config(config_path=config_path)
     except (FileNotFoundError, ValueError) as exc:

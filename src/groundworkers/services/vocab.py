@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
@@ -9,12 +11,18 @@ from omop_alchemy.cdm.model.vocabulary import (
     Concept_Relationship,
     Concept_Synonym,
 )
+from omop_alchemy.cdm.query import ConceptFilter
 from sqlalchemy import column as sa_col
 from sqlalchemy import func, select
 from sqlalchemy import inspect as sa_inspect
 
 from groundworkers.adapters.cdm import CDMAdapter
+from groundworkers.base.concept_payload import serialise_concept_view
+from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.sql import effective_schema
+
+logger = logging.getLogger(__name__)
 
 # Keep this service focused on vocabulary queries. Reuse an omop-graph primitive
 # when it already provides the required operation; higher-level policy belongs in
@@ -27,46 +35,68 @@ from groundworkers.base.errors import GroundworkersError
 @dataclass
 class ConceptMatch:
     """A single candidate returned by search_exact, search_normalized, or search_fulltext."""
-    concept_id: int
-    concept_name: str
-    concept_code: str
-    vocabulary_id: str
-    domain_id: str
-    concept_class_id: str
-    standard_concept: bool
-    invalid_reason: str | None
+    #: Shared concept payload from ``base.concept_payload``, so search results
+    #: report the same flags as every other concept-returning tool. Previously a
+    #: parallel field list carrying ``standard_concept`` and raw
+    #: ``invalid_reason`` but no ``classification_concept``, which meant search
+    #: could not distinguish a classification concept from an unflagged one.
+    concept: dict[str, Any]
     match_source: str           # "name" | "synonym"
     matched_synonym: str | None = None
     ts_rank: float | None = None
 
+    @property
+    def concept_id(self) -> int:
+        """Convenience accessor; the identifier is carried in ``concept``."""
+        return int(self.concept["concept_id"])
+
+    @property
+    def concept_name(self) -> str:
+        return self.concept["concept_name"]
+
 
 @dataclass
 class MappedConcept:
-    """A standard concept that a source concept maps to."""
-    concept_id: int
-    concept_name: str
-    vocabulary_id: str
-    domain_id: str
-    concept_class_id: str
-    relationship_id: str        # e.g. "Maps to" or "self" when already standard
+    """A concept reached from a source concept, plus the edge that reached it.
+
+    ``concept`` is a payload from ``base.concept_payload``, not a parallel field
+    list. This used to be five hand-listed identity fields, which meant mapping
+    results silently lacked ``concept_code``, ``is_active`` and
+    ``classification_concept`` — the flags every other concept payload reports.
+    Composing the shared payload means an upstream field reaches these results
+    without editing anything here.
+    """
+
+    concept: dict[str, Any]
+    #: ``"Maps to"``, ``"Maps to value"``, or the sentinel ``"self"`` when the
+    #: source concept was already standard and maps to itself.
+    relationship_id: str
 
 
 @dataclass
-class StandardMapping:
-    """Navigation result for a single source concept_id."""
+class ConceptMappingResult:
+    """Relationship-driven mapping result for a single source concept_id.
+
+    One shape for every navigation. ``navigate_to_standard`` and
+    ``navigate_to_value`` previously returned two dataclasses that were
+    field-for-field identical apart from whether the list was called
+    ``standard_concepts`` or ``related_concepts``; the distinction lives at the
+    wire boundary instead, where it carries meaning for the caller.
+    """
+
     source_concept_id: int
     source_concept_name: str
+    #: Strict and disjoint, as everywhere else: 'S' and 'C' respectively. A
+    #: single boolean could not express standard / classification / neither.
     source_standard_concept: bool
-    standard_concepts: list[MappedConcept] = field(default_factory=list)
+    source_classification_concept: bool
+    targets: list[MappedConcept] = field(default_factory=list)
 
 
-@dataclass
-class RelatedConceptMapping:
-    """Relationship-driven mapping result for a single source concept_id."""
-    source_concept_id: int
-    source_concept_name: str
-    source_standard_concept: bool
-    related_concepts: list[MappedConcept] = field(default_factory=list)
+#: Retained so existing type annotations and imports keep working; both
+#: navigations now return the same shape.
+StandardMapping = ConceptMappingResult
+RelatedConceptMapping = ConceptMappingResult
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +120,7 @@ class VocabService:
 
     def __init__(self, cdm: CDMAdapter) -> None:
         self._cdm = cdm
+        self._domain_names = DomainNameResolver(cdm.engine)
         self._fts_name_sidecar: bool | None = None
         self._fts_synonym_sidecar: bool | None = None
 
@@ -98,16 +129,40 @@ class VocabService:
     # ------------------------------------------------------------------
 
     def _detect_fts_sidecars(self) -> None:
-        """Detect and cache tsvector sidecar column presence (runs once)."""
+        """Detect and cache tsvector sidecar column presence (runs once).
+
+        Reflection ignores ``schema_translate_map``, so the schema has to be
+        supplied explicitly or this looks in the connection's default schema
+        while every query in this service reads the configured one. Getting that
+        wrong reports full-text as unavailable on a deployment where it is
+        installed and populated -- a silent downgrade to the slower tiers, which
+        is why the failure is logged rather than absorbed.
+        """
         if self._fts_name_sidecar is not None:
             return
+        schema = effective_schema(self._cdm.engine)
         try:
             inspector = sa_inspect(self._cdm.engine)
-            concept_cols = {c["name"] for c in inspector.get_columns("concept")}
-            synonym_cols = {c["name"] for c in inspector.get_columns("concept_synonym")}
+            concept_cols = {
+                c["name"] for c in inspector.get_columns("concept", schema=schema)
+            }
+            synonym_cols = {
+                c["name"]
+                for c in inspector.get_columns("concept_synonym", schema=schema)
+            }
             self._fts_name_sidecar = "concept_name_tsvector" in concept_cols
             self._fts_synonym_sidecar = "concept_synonym_name_tsvector" in synonym_cols
         except Exception:
+            # Broad except: full-text is optional, so an unreadable vocabulary
+            # degrades to the other tiers rather than failing the request. Logged
+            # because "no sidecar" and "could not look" are different faults and
+            # only one of them is a configuration error.
+            logger.warning(
+                "Could not inspect vocabulary tables in schema %r for full-text "
+                "sidecar columns; treating full-text as unavailable.",
+                schema,
+                exc_info=True,
+            )
             self._fts_name_sidecar = False
             self._fts_synonym_sidecar = False
 
@@ -188,8 +243,9 @@ class VocabService:
                         Concept.vocabulary_id,
                         Concept.domain_id,
                         Concept.concept_class_id,
-                        Concept.standard_concept,
-                        Concept.invalid_reason,
+                        Concept.is_standard_expr().label("standard_concept"),
+                        Concept.is_classification_expr().label("classification_concept"),
+                        Concept.is_valid_expr().label("is_active"),
                     ).where(func.lower(Concept.concept_name) == q.lower()),
                     domain=domain,
                     vocabulary_id=vocabulary_id,
@@ -213,8 +269,9 @@ class VocabService:
                                 Concept.vocabulary_id,
                                 Concept.domain_id,
                                 Concept.concept_class_id,
-                                Concept.standard_concept,
-                                Concept.invalid_reason,
+                                Concept.is_standard_expr().label("standard_concept"),
+                                Concept.is_classification_expr().label("classification_concept"),
+                                Concept.is_valid_expr().label("is_active"),
                                 Concept_Synonym.concept_synonym_name,
                             )
                             .join(Concept_Synonym, Concept_Synonym.concept_id == Concept.concept_id)
@@ -291,8 +348,9 @@ class VocabService:
                         Concept.vocabulary_id,
                         Concept.domain_id,
                         Concept.concept_class_id,
-                        Concept.standard_concept,
-                        Concept.invalid_reason,
+                        Concept.is_standard_expr().label("standard_concept"),
+                        Concept.is_classification_expr().label("classification_concept"),
+                        Concept.is_valid_expr().label("is_active"),
                     ).where(name_expr == normalized_query),
                     domain=domain,
                     vocabulary_id=vocabulary_id,
@@ -321,8 +379,9 @@ class VocabService:
                                 Concept.vocabulary_id,
                                 Concept.domain_id,
                                 Concept.concept_class_id,
-                                Concept.standard_concept,
-                                Concept.invalid_reason,
+                                Concept.is_standard_expr().label("standard_concept"),
+                                Concept.is_classification_expr().label("classification_concept"),
+                                Concept.is_valid_expr().label("is_active"),
                                 Concept_Synonym.concept_synonym_name,
                             )
                             .join(Concept_Synonym, Concept_Synonym.concept_id == Concept.concept_id)
@@ -400,8 +459,9 @@ class VocabService:
                         Concept.vocabulary_id,
                         Concept.domain_id,
                         Concept.concept_class_id,
-                        Concept.standard_concept,
-                        Concept.invalid_reason,
+                        Concept.is_standard_expr().label("standard_concept"),
+                        Concept.is_classification_expr().label("classification_concept"),
+                        Concept.is_valid_expr().label("is_active"),
                         name_rank.label("ts_rank"),
                     ).where(sa_col("concept_name_tsvector").op("@@")(tsquery)),
                     domain=domain,
@@ -430,8 +490,9 @@ class VocabService:
                                 Concept.vocabulary_id,
                                 Concept.domain_id,
                                 Concept.concept_class_id,
-                                Concept.standard_concept,
-                                Concept.invalid_reason,
+                                Concept.is_standard_expr().label("standard_concept"),
+                                Concept.is_classification_expr().label("classification_concept"),
+                                Concept.is_valid_expr().label("is_active"),
                                 Concept_Synonym.concept_synonym_name,
                                 syn_rank.label("ts_rank"),
                             )
@@ -481,16 +542,19 @@ class VocabService:
                 source_stmt = select(
                     Concept.concept_id,
                     Concept.concept_name,
+                    Concept.concept_code,
                     Concept.vocabulary_id,
                     Concept.domain_id,
                     Concept.concept_class_id,
-                    Concept.standard_concept,
+                    Concept.is_standard_expr().label("standard_concept"),
+                    Concept.is_classification_expr().label("classification_concept"),
+                    Concept.is_valid_expr().label("is_active"),
                 ).where(Concept.concept_id.in_(concept_ids))
 
                 source_rows = {int(r.concept_id): r for r in session.execute(source_stmt).all()}
 
                 non_standard_ids = [
-                    cid for cid, r in source_rows.items() if r.standard_concept != "S"
+                    cid for cid, r in source_rows.items() if not r.standard_concept
                 ]
 
                 mappings: dict[int, list[MappedConcept]] = {}
@@ -501,27 +565,27 @@ class VocabService:
                             Concept_Relationship.relationship_id,
                             Concept.concept_id,
                             Concept.concept_name,
+                            Concept.concept_code,
                             Concept.vocabulary_id,
                             Concept.domain_id,
                             Concept.concept_class_id,
+                            Concept.is_standard_expr().label("standard_concept"),
+                            Concept.is_classification_expr().label("classification_concept"),
+                            Concept.is_valid_expr().label("is_active"),
                         )
                         .join(Concept, Concept.concept_id == Concept_Relationship.concept_id_2)
                         .where(
                             Concept_Relationship.concept_id_1.in_(non_standard_ids),
                             Concept_Relationship.relationship_id.in_(self.IDENTITY_RELATIONSHIP_IDS),
-                            Concept_Relationship.invalid_reason.is_(None),
-                            Concept.standard_concept == "S",
+                            Concept_Relationship.is_valid_expr(),
+                            Concept.is_standard_expr(),
                         )
                     )
                     for row in session.execute(nav_stmt).all():
                         src = int(row.source_id)
                         mappings.setdefault(src, []).append(
                             MappedConcept(
-                                concept_id=int(row.concept_id),
-                                concept_name=row.concept_name,
-                                vocabulary_id=row.vocabulary_id,
-                                domain_id=row.domain_id,
-                                concept_class_id=row.concept_class_id,
+                                concept=serialise_concept_view(row, detail="flags"),
                                 relationship_id=row.relationship_id,
                             )
                         )
@@ -539,26 +603,23 @@ class VocabService:
             src = source_rows.get(cid)
             if src is None:
                 continue
-            is_standard = src.standard_concept == "S"
+            is_standard = bool(src.standard_concept)
             if is_standard:
-                standard_concepts = [
+                targets = [
                     MappedConcept(
-                        concept_id=int(src.concept_id),
-                        concept_name=src.concept_name,
-                        vocabulary_id=src.vocabulary_id,
-                        domain_id=src.domain_id,
-                        concept_class_id=src.concept_class_id,
+                        concept=serialise_concept_view(src, detail="flags"),
                         relationship_id="self",
                     )
                 ]
             else:
-                standard_concepts = mappings.get(cid, [])
+                targets = mappings.get(cid, [])
             results.append(
-                StandardMapping(
+                ConceptMappingResult(
                     source_concept_id=cid,
                     source_concept_name=src.concept_name,
                     source_standard_concept=is_standard,
-                    standard_concepts=standard_concepts,
+                    source_classification_concept=bool(src.classification_concept),
+                    targets=targets,
                 )
             )
 
@@ -576,25 +637,57 @@ class VocabService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
+    def _resolve_domain(self, domain: str | None) -> str | None:
+        """Canonicalise a requested domain, rejecting one that cannot exist.
+
+        Mirrors ``ConceptGroundingService._resolve_domain`` so the search tools
+        and the grounding tools agree on what a domain is and fail the same way.
+        """
+        if not domain:
+            return None
+        canonical = self._domain_names.canonical(domain)
+        if canonical is None:
+            raise GroundworkersError(
+                "INVALID_INPUT", self._domain_names.describe_unknown(domain)
+            )
+        return canonical
+
     def _apply_concept_filters(
+        self,
         stmt,
         *,
         domain: str | None,
         vocabulary_id: str | None,
         standard_only: bool,
+        include_classification: bool = False,
         active_only: bool = False,
         parent_ids: list[int] | None = None,
     ):
-        """Apply optional domain / vocabulary / standard_concept / active / parent WHERE clauses."""
-        if standard_only:
-            stmt = stmt.where(Concept.standard_concept == "S")
-        if active_only:
-            stmt = stmt.where(Concept.invalid_reason.is_(None))
-        if domain:
-            stmt = stmt.where(func.lower(Concept.domain_id) == domain.lower())
-        if vocabulary_id:
-            stmt = stmt.where(Concept.vocabulary_id == vocabulary_id)
+        """Apply optional vocabulary / standardness / validity / domain / parent filters.
+
+        Standardness, validity and vocabulary are delegated to omop-alchemy's
+        ``ConceptFilter`` — the package that owns those semantics — so this
+        service never writes a flag comparison of its own.
+
+        The domain is canonicalised against the CDM ``domain`` table before the
+        filter is built, so a loosely-typed ``"meas value"`` reaches
+        ``ConceptFilter`` as ``"Meas Value"`` and matches its case-sensitive,
+        index-friendly comparison. That replaced a local ``lower()`` comparison,
+        which worked but meant this service and the grounding path resolved
+        domains by different rules.
+
+        ``parent_ids`` stays local: ``ConceptFilter`` does not model ancestry,
+        and should not — the join to ``concept_ancestor`` is a graph concern,
+        not a flag one.
+        """
+        canonical_domain = self._resolve_domain(domain)
+        stmt = ConceptFilter(
+            domains=(canonical_domain,) if canonical_domain else None,
+            vocabularies=(vocabulary_id,) if vocabulary_id else None,
+            require_standard=standard_only,
+            include_classification=include_classification,
+            require_active=active_only,
+        ).apply(stmt)
         if parent_ids:
             stmt = stmt.where(
                 Concept.concept_id.in_(
@@ -618,10 +711,13 @@ class VocabService:
                 source_stmt = select(
                     Concept.concept_id,
                     Concept.concept_name,
+                    Concept.concept_code,
                     Concept.vocabulary_id,
                     Concept.domain_id,
                     Concept.concept_class_id,
-                    Concept.standard_concept,
+                    Concept.is_standard_expr().label("standard_concept"),
+                    Concept.is_classification_expr().label("classification_concept"),
+                    Concept.is_valid_expr().label("is_active"),
                 ).where(Concept.concept_id.in_(concept_ids))
 
                 source_rows = {int(r.concept_id): r for r in session.execute(source_stmt).all()}
@@ -634,26 +730,26 @@ class VocabService:
                             Concept_Relationship.relationship_id,
                             Concept.concept_id,
                             Concept.concept_name,
+                            Concept.concept_code,
                             Concept.vocabulary_id,
                             Concept.domain_id,
                             Concept.concept_class_id,
+                            Concept.is_standard_expr().label("standard_concept"),
+                            Concept.is_classification_expr().label("classification_concept"),
+                            Concept.is_valid_expr().label("is_active"),
                         )
                         .join(Concept, Concept.concept_id == Concept_Relationship.concept_id_2)
                         .where(
                             Concept_Relationship.concept_id_1.in_(list(source_rows.keys())),
                             Concept_Relationship.relationship_id.in_(relationship_ids),
-                            Concept_Relationship.invalid_reason.is_(None),
+                            Concept_Relationship.is_valid_expr(),
                         )
                     )
                     for row in session.execute(rel_stmt).all():
                         src = int(row.source_id)
                         related.setdefault(src, []).append(
                             MappedConcept(
-                                concept_id=int(row.concept_id),
-                                concept_name=row.concept_name,
-                                vocabulary_id=row.vocabulary_id,
-                                domain_id=row.domain_id,
-                                concept_class_id=row.concept_class_id,
+                                concept=serialise_concept_view(row, detail="flags"),
                                 relationship_id=row.relationship_id,
                             )
                         )
@@ -672,11 +768,12 @@ class VocabService:
             if src is None:
                 continue
             results.append(
-                RelatedConceptMapping(
+                ConceptMappingResult(
                     source_concept_id=cid,
                     source_concept_name=src.concept_name,
-                    source_standard_concept=src.standard_concept == "S",
-                    related_concepts=related.get(cid, []),
+                    source_standard_concept=bool(src.standard_concept),
+                    source_classification_concept=bool(src.classification_concept),
+                    targets=related.get(cid, []),
                 )
             )
         return results
@@ -689,14 +786,7 @@ class VocabService:
 def serialise_concept_match(match: ConceptMatch) -> dict:
     """Serialise a ConceptMatch to a JSON-safe dict for MCP tool responses."""
     result: dict = {
-        "concept_id": match.concept_id,
-        "concept_name": match.concept_name,
-        "concept_code": match.concept_code,
-        "vocabulary_id": match.vocabulary_id,
-        "domain_id": match.domain_id,
-        "concept_class_id": match.concept_class_id,
-        "standard_concept": match.standard_concept,
-        "invalid_reason": match.invalid_reason,
+        **match.concept,
         "match_source": match.match_source,
         "matched_synonym": match.matched_synonym,
     }
@@ -705,44 +795,35 @@ def serialise_concept_match(match: ConceptMatch) -> dict:
     return result
 
 
-def serialise_standard_mapping(mapping: StandardMapping) -> dict:
-    """Serialise a StandardMapping to a JSON-safe dict for MCP tool responses."""
+def serialise_concept_mapping(
+    mapping: ConceptMappingResult, *, targets_key: str
+) -> dict:
+    """Serialise a mapping result, naming the target list for the calling tool.
+
+    One shape internally; *targets_key* keeps the wire term meaningful —
+    ``standard_concepts`` for standardization, ``related_concepts`` for the
+    value and unit navigations.
+    """
     return {
         "source_concept_id": mapping.source_concept_id,
         "source_concept_name": mapping.source_concept_name,
         "source_standard_concept": mapping.source_standard_concept,
-        "standard_concepts": [
-            {
-                "concept_id": sc.concept_id,
-                "concept_name": sc.concept_name,
-                "vocabulary_id": sc.vocabulary_id,
-                "domain_id": sc.domain_id,
-                "concept_class_id": sc.concept_class_id,
-                "relationship_id": sc.relationship_id,
-            }
-            for sc in mapping.standard_concepts
+        "source_classification_concept": mapping.source_classification_concept,
+        targets_key: [
+            {**target.concept, "relationship_id": target.relationship_id}
+            for target in mapping.targets
         ],
     }
 
 
-def serialise_related_concept_mapping(mapping: RelatedConceptMapping) -> dict:
-    """Serialise a RelatedConceptMapping to a JSON-safe dict for MCP tool responses."""
-    return {
-        "source_concept_id": mapping.source_concept_id,
-        "source_concept_name": mapping.source_concept_name,
-        "source_standard_concept": mapping.source_standard_concept,
-        "related_concepts": [
-            {
-                "concept_id": sc.concept_id,
-                "concept_name": sc.concept_name,
-                "vocabulary_id": sc.vocabulary_id,
-                "domain_id": sc.domain_id,
-                "concept_class_id": sc.concept_class_id,
-                "relationship_id": sc.relationship_id,
-            }
-            for sc in mapping.related_concepts
-        ],
-    }
+def serialise_standard_mapping(mapping: ConceptMappingResult) -> dict:
+    """Serialise a standardization result for MCP tool responses."""
+    return serialise_concept_mapping(mapping, targets_key="standard_concepts")
+
+
+def serialise_related_concept_mapping(mapping: ConceptMappingResult) -> dict:
+    """Serialise a value/unit navigation result for MCP tool responses."""
+    return serialise_concept_mapping(mapping, targets_key="related_concepts")
 
 
 # ---------------------------------------------------------------------------
@@ -795,14 +876,7 @@ def _normalized_sql_expr(column, *, normalization_profile: str, remove_stop_phra
 
 def _row_to_match(row, match_source: str, matched_synonym: str | None, ts_rank: float | None) -> ConceptMatch:
     return ConceptMatch(
-        concept_id=int(row.concept_id),
-        concept_name=row.concept_name,
-        concept_code=row.concept_code,
-        vocabulary_id=row.vocabulary_id,
-        domain_id=row.domain_id,
-        concept_class_id=row.concept_class_id,
-        standard_concept=row.standard_concept == "S",
-        invalid_reason=row.invalid_reason,
+        concept=serialise_concept_view(row, detail="flags"),
         match_source=match_source,
         matched_synonym=matched_synonym,
         ts_rank=ts_rank,

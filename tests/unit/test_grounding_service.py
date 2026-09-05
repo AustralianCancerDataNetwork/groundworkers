@@ -12,10 +12,8 @@ class StubOmopGraphAdapter:
         self,
         *,
         embedding_resolver_active: bool = False,
-        raw_flags: dict[int, str | None] | None = None,
     ) -> None:
         self._embedding_resolver_active = embedding_resolver_active
-        self._raw_flags = {201826: "S"} if raw_flags is None else raw_flags
         self.calls: list[tuple[str, object]] = []
 
     def canonicalize_domain(self, domain: str | None) -> str | None:
@@ -53,14 +51,12 @@ class StubOmopGraphAdapter:
                 "vocabulary_id": "SNOMED",
                 "domain_id": "Condition",
                 "concept_class_id": "Clinical Finding",
+                # omop-graph >= 2.1 reports the two flags separately.
                 "standard_concept": True,
+                "classification_concept": False,
                 "is_active": True,
             }
         }
-
-    def raw_standard_flags(self, concept_ids):
-        self.calls.append(("raw_standard_flags", tuple(concept_ids)))
-        return {cid: self._raw_flags[cid] for cid in concept_ids if cid in self._raw_flags}
 
 
 class StubGraphAdapter:

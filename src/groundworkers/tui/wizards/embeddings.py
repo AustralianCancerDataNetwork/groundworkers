@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 
+from groundskeeping.contracts import Command
 from groundskeeping.contracts.actions import (
     ChoiceOption,
     FieldKind,
@@ -28,11 +29,8 @@ from groundworkers.application.setup.embedding_population import (
     load_embedding_coverage_report,
     start_embedding_population_run,
 )
-from groundworkers.application.setup.maintenance_runs import MaintenanceRun
 from groundworkers.application.setup.models import (
     EmbeddingCoverageReport,
-    EmbeddingPopulationCommand,
-    EmbeddingPopulationLaunch,
     EmbeddingPopulationRequest,
 )
 from groundworkers.tui.routes import SETUP_ROUTE
@@ -68,10 +66,6 @@ class EmbeddingPopulationWizardController:
         coverage: EmbeddingCoverageReport | None = None,
         vocabulary_mode: VocabularyMode | None = None,
         vocabularies: tuple[str, ...] | None = None,
-        launcher: Callable[
-            [EmbeddingPopulationCommand], EmbeddingPopulationLaunch | MaintenanceRun | None
-        ]
-        | None = None,
     ) -> None:
         self._session = session
         self._coverage = coverage or load_embedding_coverage_report(
@@ -79,15 +73,6 @@ class EmbeddingPopulationWizardController:
             standard_only=session.embedding_standard_only,
         )
         self._intent = INTENT_BACKFILL
-        self._launcher = launcher or (
-            lambda command: start_embedding_population_run(
-                command,
-                resource_key=(
-                    f"embedding:{session.configuration.path}:"
-                    f"{command.argv[command.argv.index('--model-name') + 1]}"
-                ),
-            )
-        )
         self._step_index = 0
         resolved_mode = vocabulary_mode or (
             "all" if session.embedding_vocabulary_selection_all else "selected"
@@ -134,7 +119,13 @@ class EmbeddingPopulationWizardController:
             )
         try:
             command = self._command()
-            launch = self._launcher(command)
+            launch = start_embedding_population_run(
+                command,
+                resource_key=(
+                    f"embedding:{self._session.configuration.path}:"
+                    f"{command.argv[command.argv.index('--model-name') + 1]}"
+                ),
+            )
         except Exception as exc:
             # Broad except: rendered as setup failure.
             return WizardResult(
@@ -143,27 +134,13 @@ class EmbeddingPopulationWizardController:
                 detail=str(exc),
                 refresh_pages=frozenset({SETUP_ROUTE.key}),
             )
-        if launch is None:
-            return WizardResult(
-                status=WizardResultStatus.FAILED,
-                summary="Embedding population was not started.",
-                detail="The launcher returned no run record.",
-                refresh_pages=frozenset({SETUP_ROUTE.key}),
-            )
-        if isinstance(launch, MaintenanceRun):
-            return WizardResult(
-                status=WizardResultStatus.APPLIED,
-                summary=f"Embedding population run {launch.run_id} started.",
-                detail=(
-                    f"The ordered run is persisted under {launch.root}. "
-                    "Reopen the setup console to inspect progress."
-                ),
-                refresh_pages=frozenset({SETUP_ROUTE.key}),
-            )
         return WizardResult(
             status=WizardResultStatus.APPLIED,
-            summary=f"Embedding population started as PID {launch.pid}.",
-            detail=f"{launch.command.display}\n\nLog: {launch.log_path}",
+            summary=f"Embedding population run {launch.run_id} started.",
+            detail=(
+                f"The ordered run is persisted under {launch.root}. "
+                "Reopen the setup console to inspect progress."
+            ),
             refresh_pages=frozenset({SETUP_ROUTE.key}),
         )
 
@@ -494,7 +471,7 @@ class EmbeddingPopulationWizardController:
             return self._request.standard_only
         return self._coverage.coverage.scope.standard_only
 
-    def _command(self) -> EmbeddingPopulationCommand:
+    def _command(self) -> Command:
         assert self._coverage is not None
         return build_embedding_population_command(
             self._coverage.configuration,

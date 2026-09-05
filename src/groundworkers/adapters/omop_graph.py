@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
-from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from omop_alchemy.cdm.model import normalised_flag
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
     Concept_Class,
@@ -23,6 +23,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
 
+from groundworkers.base.concept_payload import serialise_concept_view
+from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
 
 if TYPE_CHECKING:
@@ -63,15 +65,22 @@ class OmopGraphAdapter:
         self,
         engine: Engine,
         *,
-        vocab_schema: str = "omop_vocab",
         embedding_backend_factory: Callable[[], EmbeddingBackend] | None = None,
         resolved_embedding_model: ResolvedModel | None = None,
         model_backend_factory: Callable[[], ModelBackend] | None = None,
         embedding_metric: str = "cosine",
         faiss_cache_dir: str | None = None,
     ) -> None:
+        # No `vocab_schema` parameter. It cannot be honoured and never was: no
+        # omop-alchemy model declares `schema="vocab"`, so oa-configurator's
+        # "vocab" translate-map key is unreachable from the ORM and vocabulary
+        # tables resolve through the primary schema like every other CDM table
+        # (see omop_alchemy/config.py, `vocabulary_identity`). The engine handed
+        # in already carries the full map, so if omop-alchemy ever tags its
+        # vocabulary models the routing starts working here with no change.
+        # Re-adding the parameter would restore a caller-visible argument that
+        # silently changes nothing.
         self.engine = engine
-        self.vocab_schema = vocab_schema
         self._embedding_backend_factory = embedding_backend_factory
         self._resolved_embedding_model = resolved_embedding_model
         self._model_backend_factory = model_backend_factory
@@ -81,6 +90,7 @@ class OmopGraphAdapter:
         self._embedding_configured = False
         self._kg: KnowledgeGraph | None = None
         self._model_backend: ModelBackend | None = None
+        self._domain_names = DomainNameResolver(engine)
 
     @property
     def embedding_resolver_active(self) -> bool:
@@ -139,35 +149,6 @@ class OmopGraphAdapter:
                 return []
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return [self._serialise_concept_view(concept_view)]
-
-    def raw_standard_flags(self, concept_ids: Sequence[int]) -> dict[int, str | None]:
-        """Batch-fetch the raw OMOP ``concept.standard_concept`` flag per concept_id.
-
-        ``omop-graph`` exposes ``S`` and ``C`` as one combined boolean. Groundworkers
-        keeps those flags distinct for grounding, so this method reads the raw
-        value from the CDM engine. It returns ``S``, ``C``, another non-blank value,
-        or ``None`` for an unset flag; unknown concept IDs are omitted.
-        """
-        if not concept_ids:
-            return {}
-        unique_ids = tuple(dict.fromkeys(int(cid) for cid in concept_ids))
-        stmt = select(Concept.concept_id, Concept.standard_concept).where(
-            Concept.concept_id.in_(unique_ids)
-        )
-        try:
-            with self.engine.connect() as conn:
-                rows = conn.execute(stmt).all()
-        except Exception as exc:
-            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-        return {int(row[0]): self._normalise_raw_flag(row[1]) for row in rows}
-
-    @staticmethod
-    def _normalise_raw_flag(value: str | None) -> str | None:
-        """Normalize a raw OMOP single-character flag, treating blanks as unset."""
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
 
     def concept_views(self, concept_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
         """Batch-fetch normalized concept views keyed by concept_id.
@@ -232,9 +213,9 @@ class OmopGraphAdapter:
                 "object_id": int(edge.object_id),
                 "predicate_id": edge.predicate_id,
                 "predicate_kind": edge.predicate_kind.name,
-                # EdgeView has no normalized activity property, so apply the same
-                # blank/whitespace-tolerant invalid-reason semantics locally.
-                "valid": self._normalise_raw_flag(edge.invalid_reason) is None,
+                # EdgeView has no normalized activity property, so apply
+                # omop-alchemy's canonical flag semantics directly.
+                "valid": normalised_flag(edge.invalid_reason) is None,
             }
             for edge in raw
         ]
@@ -553,20 +534,25 @@ class OmopGraphAdapter:
     # Domain normalization
     # ------------------------------------------------------------------
 
-    _KNOWN_DOMAIN_NAMES: tuple[str, ...] = (
-        "Condition",
-        "Procedure",
-        "Drug",
-        "Measurement",
-        "Device",
-        "Observation",
-    )
-
     def canonicalize_domain(self, domain: str | None) -> str | None:
-        if domain is None:
-            return None
-        domain_lower = domain.lower()
-        return next((k for k in self._KNOWN_DOMAIN_NAMES if k.lower() == domain_lower), domain)
+        """Resolve a loosely-typed domain to its canonical ``domain_id``.
+
+        Returns ``None`` for an unrecognised domain so the caller can reject it,
+        which is distinct from ``None`` input meaning "no domain constraint".
+        Use :meth:`describe_unknown_domain` to build the message.
+
+        This previously matched against a hardcoded six-name tuple — the set
+        ``domain_classify`` emits — so the other forty-four domains only worked
+        when supplied in exactly the right case.
+        """
+        return self._domain_names.canonical(domain)
+
+    def known_domains(self) -> tuple[str, ...]:
+        """Every valid ``domain_id``, for validation and select lists."""
+        return self._domain_names.known_domains()
+
+    def describe_unknown_domain(self, domain: str) -> str:
+        return self._domain_names.describe_unknown(domain)
 
     # ------------------------------------------------------------------
     # Internals — KG lifecycle, normalization, exception translation
@@ -644,22 +630,8 @@ class OmopGraphAdapter:
     # `Any`, not `object`: these are omop-graph view/result objects whose types
     # are not exported, so their attributes cannot be checked statically.
     def _serialise_concept_view(self, concept_view: Any) -> dict[str, Any]:
-        return {
-            "concept_id": int(concept_view.concept_id),
-            "concept_name": concept_view.concept_name,
-            "concept_code": concept_view.concept_code,
-            "vocabulary_id": concept_view.vocabulary_id,
-            "domain_id": concept_view.domain_id,
-            "concept_class_id": concept_view.concept_class_id,
-            "standard_concept": bool(concept_view.standard_concept),
-            "valid_start_date": self._date_to_iso(concept_view.valid_start_date),
-            "valid_end_date": self._date_to_iso(concept_view.valid_end_date),
-            "invalid_reason": concept_view.invalid_reason,
-            # omop-graph's own normalized activity field: invalid_reason unset, with
-            # blank and whitespace-only treated as active. Do not re-derive this from
-            # the raw invalid_reason string.
-            "is_active": bool(concept_view.is_active),
-        }
+        """Full-detail concept payload. Shape owned by ``base.concept_payload``."""
+        return serialise_concept_view(concept_view, detail="full")
 
     def _serialise_ground_hit(self, result: Any) -> dict[str, Any]:
         concept_id = int(result.concept_id)
@@ -700,12 +672,6 @@ class OmopGraphAdapter:
         if isinstance(match_kind, LabelMatchKind):
             return cls._MATCH_KIND_NAMES.get(match_kind, match_kind.name)
         return str(match_kind)
-
-    @staticmethod
-    def _date_to_iso(value: date | str) -> str:
-        if isinstance(value, date):
-            return value.isoformat()
-        return value
 
     @staticmethod
     def _is_not_found(exc: Exception) -> bool:

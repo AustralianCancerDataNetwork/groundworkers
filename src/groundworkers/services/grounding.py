@@ -47,6 +47,7 @@ class ConceptGroundingService:
         parent_ids: tuple[int, ...] | None = None,
         standard_only: bool = False,
         active_only: bool = False,
+        include_embedding: bool = True,
     ) -> dict[str, Any]:
         stripped = query.strip()
         if not stripped:
@@ -62,7 +63,7 @@ class ConceptGroundingService:
                 f"limit must be a positive integer, got {limit}",
             )
 
-        canonical_domain = self._graph.canonicalize_domain(domain)
+        canonical_domain = self._resolve_domain(domain)
         search_constraint = self._build_search_constraint(
             canonical_domain,
             vocabulary_id,
@@ -87,6 +88,7 @@ class ConceptGroundingService:
                 tiers=self._build_tier_plan(
                     query=stripped,
                     search_space_narrowed=bool(canonical_domain or vocabulary_id),
+                    include_embedding=include_embedding,
                 ),
                 min_fulltext_overlap=self._min_fulltext_overlap,
             )
@@ -116,6 +118,7 @@ class ConceptGroundingService:
         parent_ids: tuple[int, ...] | None = None,
         standard_only: bool = False,
         active_only: bool = False,
+        include_embedding: bool = True,
     ) -> dict[str, Any]:
         """MCP-facing grounding with native async embedding resolution."""
 
@@ -127,7 +130,7 @@ class ConceptGroundingService:
                 "INVALID_INPUT",
                 f"limit must be a positive integer, got {limit}",
             )
-        canonical_domain = self._graph.canonicalize_domain(domain)
+        canonical_domain = self._resolve_domain(domain)
         search_constraint = self._build_search_constraint(
             canonical_domain,
             vocabulary_id,
@@ -151,6 +154,7 @@ class ConceptGroundingService:
                 tiers=self._build_tier_plan(
                     query=stripped,
                     search_space_narrowed=bool(canonical_domain or vocabulary_id),
+                    include_embedding=include_embedding,
                 ),
                 min_fulltext_overlap=self._min_fulltext_overlap,
             )
@@ -168,6 +172,23 @@ class ConceptGroundingService:
             },
         }
 
+    def _resolve_domain(self, domain: str | None) -> str | None:
+        """Canonicalise the requested domain, rejecting one that cannot exist.
+
+        A domain matching no row in the CDM ``domain`` table cannot match any
+        concept, so filtering on it returns zero results — indistinguishable
+        from a genuine miss. Failing with the valid set is the difference
+        between a confusing empty answer and a fixable message.
+        """
+        if domain is None:
+            return None
+        canonical = self._graph.canonicalize_domain(domain)
+        if canonical is None:
+            raise GroundworkersError(
+                "INVALID_INPUT", self._graph.describe_unknown_domain(domain)
+            )
+        return canonical
+
     def _build_search_constraint(
         self,
         domain: str | None,
@@ -182,10 +203,9 @@ class ConceptGroundingService:
         filter's defaults:
 
         * ``domains`` / ``vocabularies`` narrow the candidate search space.
-        * ``require_standard`` is omop-alchemy's combined standard-or-classification
-          flag (``standard_concept in ('S', 'C')``), not Groundworkers' strict ``'S'``
-          contract. It restricts *candidate resolution*; result-level strictness is
-          reported separately by ``GraphService`` from the raw flag.
+        * ``require_standard`` restricts *candidate resolution*; result-level
+          strictness is reported separately by ``GraphService``, which returns
+          ``standard_concept`` and ``classification_concept`` as distinct flags.
         * ``require_active`` drops concepts whose ``invalid_reason`` is set, using
           normalized semantics that treat blank/whitespace as active.
         * ``limit`` is deliberately never set. It would become the ANN ``k`` for the
@@ -202,6 +222,7 @@ class ConceptGroundingService:
             domains=(domain,) if domain else None,
             vocabularies=(vocabulary_id,) if vocabulary_id else None,
             require_standard=standard_only,
+            include_classification=True,
             require_active=active_only,
         )
 
@@ -210,12 +231,13 @@ class ConceptGroundingService:
         *,
         query: str,
         search_space_narrowed: bool,
+        include_embedding: bool = True,
     ) -> tuple[tuple[Any, ...], ...]:
         tiers: list[tuple[Any, ...]] = [
             (ExactLabelResolver(), ExactSynonymResolver()),
             (FullTextResolver(), FullTextSynonymResolver()),
         ]
-        if self._graph.embedding_resolver_active:
+        if include_embedding and self._graph.embedding_resolver_active:
             tiers.append((EmbeddingResolver(),))
 
         # Partial matching without a domain/vocabulary constraint runs ILIKE against

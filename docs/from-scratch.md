@@ -1,6 +1,8 @@
 # Initial local setup
 
-This is the supported fresh-local setup for Groundworkers. It assumes an OMOP CDM database whose vocabulary tables are already populated. Groundworkers does not load vocabulary data or silently create embedding stores.
+This guide sets up a local Groundworkers runtime against an existing OMOP CDM database. The vocabulary tables must already be populated; Groundworkers does not load vocabulary data.
+
+The minimum useful configuration is a CDM database. Graph indexes, embeddings, and a chat model add capabilities but are independent of the core vocabulary service.
 
 ### Current Status
 
@@ -27,76 +29,106 @@ Long running tasks (like embedding population) will be spawned and polled, and y
 
 Open **Runs** to follow progress, inspect a safe log tail, cancel active work, retry a safe failed step, or export commands. Postflight is shown only for plans that actually define postflight checks.
 
-## Install
+## 1. Install
 
-Install the setup console and the capabilities you intend to use:
+Install the setup console and the optional backends you plan to use:
 
 ```bash
 uv pip install "groundworkers[tui,embedding-pgvector]"
 ```
-## Run the setup console
+
+The `tui` extra is needed for the setup console. Embedding backend selection is via extras either `embedding-faiss` / `embedding-pgvector`. Use the `all_source` extra for XLSX, PDF, and DOCX source-planning inputs.
+
+## 2. Open the setup console
 
 ```bash
 groundworkers tui
 ```
 
-With no configuration, the console shows the default destination and opens CDM setup. The Overview separates required CDM readiness from optional graph, embedding, chat, and integration status.
-
-### Required: CDM database
-
-Configure the CDM connection and logical database. The review shows the exact redacted `[connections.*]`, `[databases.*]`, and `[tools.groundworkers]` changes that will be applied. The console preserves the shared oa-configurator entries, references, ownership, and revision checks; it does not replace them with a Groundworkers-specific schema.
-
-Run **Test connections** or **Overview → Verify all**. A connected CDM with populated vocabulary tables is the minimum usable service. Missing optional embeddings or chat remain neutral and do not make the core service fail.
-
-**Note** We assume that you will be connecting to a CDM that *already has vocabulary tables populated*.
-
-### Recommended: graph and search
-
-Select **Graph → Prepare graph** when readiness diagnostics identify missing relationship, full-text, or functional indexes. The operation is an ordered, persistent local maintenance run. Use **Performance** to review index readiness in one place and, where supported, start Groundworkers trigram or embedding-index maintenance.
-
-### Optional: embeddings
-
-Embedding operations are currently separate setup actions:
-
-1. select the unconfigured embedding row under **Database** and configure the vector store;
-2. open **Embeddings** and configure the embedding provider and model;
-3. initialize the vector store explicitly;
-4. run **Check model**, then refresh coverage;
-5. start a persistent population run for the reviewed scope.
-
-A numeric limit caps a run; it does not define whether the intent is a backfill. The Runs section exposes controls only when the selected run supports them.
-
-### Optional: chat model
-
-The **Chat Model** section configures separate named `[providers.*]` and `[models.*]` entries. The model is discovered from the configured endpoint, and credentials remain redacted in reviews and diagnostics.
-
-## Integration output
-
-After the required CDM capability is connected, choose **Overview → Show integration output**. The console provides exact commands for both supported MCP styles:
-
-```text
-groundworkers --config-path /path/to/config.toml --transport stdio
-groundworkers --config-path /path/to/config.toml --transport streamable-http --host 127.0.0.1 --port 8000
-```
-
-The output contains no rendered TOML or credentials. REST is a separate explicit CLI transport (`--transport rest`), not an alongside-MCP switch.
-
-## Copied-in configuration
-
-To inspect a deployment-managed or copied configuration without editing it:
-
-```bash
-groundworkers tui --config-path /path/to/config.toml --config-read-only
-```
-
-The console reports the read-only ownership and keeps mutation controls disabled. Change the authoritative source and reopen the console to verify the result.
-
-## Recovery and durable runs
-
-If the selected configuration is missing or malformed, run:
+To work with a specific file:
 
 ```bash
 groundworkers tui --config-path /path/to/config.toml
 ```
 
-Maintenance state is stored under `$GROUNDWORKERS_STATE_HOME`, then `$XDG_STATE_HOME/groundworkers`, or the platform state default. Set the first variable to a persistent container mount so graph and embedding runs survive a restart.
+The console shows required CDM readiness separately from optional graph, embedding, chat, and integration status. Before applying a change, review the redacted configuration diff.
+
+## 3. Configure the CDM
+
+Configure the physical connection and the logical CDM database. The setup flow writes the shared `[connections.*]`, `[databases.*]`, and `[tools.groundworkers]` entries; Groundworkers references those entries by name.
+
+Run **Test connections** or **Overview → Verify all**. A connected CDM with populated vocabulary tables is the minimum runtime needed for concept lookup, search, grounding, mapping, source planning, knowledge packs, and system status.
+
+## 4. Prepare graph and search support
+
+Open **Graph → Prepare graph** when readiness reports missing relationship, full-text, or functional indexes. The operation runs as a durable maintenance task. Use **Performance** to inspect index readiness and start supported index maintenance.
+
+Graph preparation is not required for every CDM-only operation, but `concept_ground` and several concept and mapping tools use graph-backed operations when available.
+
+## 5. Add embeddings (optional)
+
+Embedding search needs all three of these pieces:
+
+- a named embedding model;
+- a named vector store;
+- populated vectors for the intended vocabulary scope.
+
+Configure the vector store under **Database**, configure the model under **Embeddings**, initialize the store, and run the population task. Population is explicit and does not start during a query. A run limit caps one maintenance run; it does not decide whether the run is a backfill.
+
+## 6. Add a chat model (optional)
+
+Configure a provider and a structured-output chat model in **Chat Model**. Chat enables text preprocessing, structured-field domain classification, and assisted source planning. Credentials are redacted in reviews and diagnostics.
+
+## 7. Start or inspect the service
+
+After setup, inspect the active runtime:
+
+```bash
+groundworkers --config-path /path/to/config.toml --describe
+```
+
+Start MCP over stdio for a client that launches Groundworkers:
+
+```bash
+groundworkers --config-path /path/to/config.toml --transport stdio
+```
+
+Start a shared Streamable HTTP service:
+
+```bash
+groundworkers \
+  --config-path /path/to/config.toml \
+  --transport streamable-http \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
+REST is a separate explicit transport:
+
+```bash
+groundworkers \
+  --config-path /path/to/config.toml \
+  --transport rest \
+  --host 127.0.0.1 \
+  --port 8080
+```
+
+The `--describe` output shows the exact active tools, prompts, resources, plugins, and safe configuration diagnostics. Optional surfaces are omitted when their prerequisites are unavailable.
+
+## Configuration managed elsewhere
+
+To inspect a deployment-managed or copied configuration without editing it:
+
+```bash
+groundworkers tui \
+  --config-path /path/to/config.toml \
+  --config-read-only
+```
+
+Change the authoritative configuration source, then reopen the console to verify the result.
+
+## Durable maintenance runs
+
+Graph and embedding preparation tasks appear in **Runs**. From there you can follow progress, inspect a safe log tail, cancel an active task, retry a supported failure, or export commands.
+
+Set `GROUNDWORKERS_STATE_HOME` to a persistent directory when running in a container. This keeps maintenance state across process restarts. The fallback is `$XDG_STATE_HOME/groundworkers` or the platform state directory.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -16,6 +18,7 @@ from omop_emb import (
 from omop_llm import ModelBackend
 from sqlalchemy.engine import Engine
 
+from groundworkers.base.concept_payload import serialise_nearest_match
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.results import enum_value
 
@@ -50,6 +53,8 @@ class OmopEmbAdapter:
         self._configuration_detail = configuration_detail
         self._backend: EmbeddingBackend | None = None
         self._model_backend: ModelBackend | None = None
+        self._reader_cache: dict[tuple[str, str, str], EmbeddingReaderInterface] = {}
+        self._reader_cache_lock = threading.Lock()
 
     def is_available(self) -> bool:
         """Return whether the store is reachable and has a registered model."""
@@ -95,10 +100,12 @@ class OmopEmbAdapter:
             return False, f"Embedding query probe failed with {type(exc).__name__}."
 
     def close(self) -> None:
-        """Release cached storage and model backends."""
+        """Release cached readers, storage, and model backends."""
 
-        self._backend = None
-        self._model_backend = None
+        with self._reader_cache_lock:
+            self._reader_cache.clear()
+            self._backend = None
+            self._model_backend = None
 
     def resolve_model_name(self, model_name: str | None = None) -> str:
         """Resolve a caller-supplied or configured registered model name."""
@@ -322,6 +329,84 @@ class OmopEmbAdapter:
             "results": [self._serialise_nearest_match(match) for match in matches],
         }
 
+    async def async_search_batch(
+        self,
+        queries: list[str],
+        limit: int,
+        domain: str | None,
+        vocabulary: str | None,
+        standard_only: bool,
+        active_only: bool,
+        model_name: str | None,
+        batch_size: int = 32,
+    ) -> dict[str, Any]:
+        """Encode and search multiple queries in one provider/index operation.
+
+        The query filters are intentionally shared across the batch. Callers with
+        different domain or vocabulary constraints should partition their inputs
+        first, then merge the aligned results by their own item identifiers.
+        """
+        if not queries:
+            raise GroundworkersError("INVALID_INPUT", "queries must be non-empty")
+        if any(not query.strip() for query in queries):
+            raise GroundworkersError(
+                "INVALID_INPUT", "queries must not contain empty strings"
+            )
+        if batch_size <= 0:
+            raise GroundworkersError("INVALID_INPUT", "batch_size must be positive")
+
+        record = self._resolve_model_record(model_name)
+        model_backend = self._model_backend_for(record)
+        reader = self._build_reader(record)
+        concept_filter = self._build_concept_filter(
+            domain=domain,
+            vocabulary=vocabulary,
+            standard_only=standard_only,
+            active_only=active_only,
+        )
+        try:
+            vectors = await model_backend.async_embed_texts(
+                queries,
+                role=EmbeddingRole.QUERY,
+                batch_size=batch_size,
+            )
+            query_embeddings = _embedding_array(vectors, expected_rows=len(queries))
+            # Database/FAISS search is synchronous in omop-emb. Keep it off the
+            # event loop while the provider-facing part remains natively async.
+            raw = await asyncio.to_thread(
+                reader.get_nearest_concepts,
+                query_embedding=query_embeddings,
+                concept_filter=concept_filter,
+                k=limit,
+                faiss_index_config=record.index_config,
+            )
+        except GroundworkersError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "Async batch embedding search failed for model %r",
+                record.model_name,
+            )
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                "The configured embedding model could not search the batch.",
+            ) from exc
+
+        if len(raw) != len(queries):
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                "The embedding index returned misaligned batch results.",
+            )
+
+        return {
+            "query_texts": queries,
+            "model_name": record.model_name,
+            "results": [
+                [self._serialise_nearest_match(match) for match in matches]
+                for matches in raw
+            ],
+        }
+
     async def async_encode(self, text: str, model_name: str | None) -> dict[str, Any]:
         """Encode text with the model backend's native async API."""
 
@@ -397,14 +482,24 @@ class OmopEmbAdapter:
         )
 
     def _build_reader(self, record: EmbeddingModelRecord) -> EmbeddingReaderInterface:
-        return EmbeddingReaderInterface(
-            model=record.model_name,
-            backend=self._get_backend(),
-            metric_type=record.metric_type or MetricType.COSINE,
-            omop_cdm_engine=self._cdm_engine,
-            provider_type=enum_value(record.provider_type) or "ollama",
-            faiss_cache_dir=self._faiss_cache_dir,
-        )
+        metric_type = record.metric_type or MetricType.COSINE
+        provider_type = enum_value(record.provider_type) or "ollama"
+        cache_key = (record.model_name, str(metric_type), provider_type)
+        with self._reader_cache_lock:
+            cached = self._reader_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            reader = EmbeddingReaderInterface(
+                model=record.model_name,
+                backend=self._get_backend(),
+                metric_type=metric_type,
+                omop_cdm_engine=self._cdm_engine,
+                provider_type=provider_type,
+                faiss_cache_dir=self._faiss_cache_dir,
+            )
+            self._reader_cache[cache_key] = reader
+            return reader
 
     def _model_backend_for(self, record: EmbeddingModelRecord) -> ModelBackend:
         if self._model_backend_factory is None:
@@ -455,13 +550,8 @@ class OmopEmbAdapter:
 
     @staticmethod
     def _serialise_nearest_match(match: Any) -> dict[str, Any]:
-        return {
-            "concept_id": int(match.concept_id),
-            "concept_name": getattr(match, "concept_name", None),
-            "similarity": round(float(match.similarity), 6),
-            "is_standard": getattr(match, "is_standard", None),
-            "is_active": getattr(match, "is_active", None),
-        }
+        """Embedding hit payload. Shape owned by ``base.concept_payload``."""
+        return serialise_nearest_match(match)
 
 
 def _embedding_array(vectors: object, *, expected_rows: int) -> np.ndarray:

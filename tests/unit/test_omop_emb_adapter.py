@@ -92,11 +92,16 @@ class StubReader:
 
 
 def nearest_match(*, concept_id: int = 111) -> SimpleNamespace:
+    """Mirrors omop_emb.NearestConceptMatch, including the domain/vocabulary
+    fields added in omop-emb 2.1 that the adapter previously discarded."""
     return SimpleNamespace(
         concept_id=concept_id,
         concept_name="Hypertension" if concept_id == 111 else "Essential hypertension",
+        domain_id="Condition",
+        vocabulary_id="SNOMED",
         similarity=0.9876543,
         is_standard=True,
+        is_classification=False,
         is_active=True,
     )
 
@@ -157,8 +162,15 @@ def test_search_uses_configured_model_backend_and_serialises_matches(monkeypatch
             {
                 "concept_id": 111,
                 "concept_name": "Hypertension",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
                 "similarity": 0.987654,
-                "is_standard": True,
+                # One wire vocabulary across every tool: standard_concept, not
+                # is_standard. classification_concept is None because the
+                # embedding sidecar stores no 'C' column, so this channel cannot
+                # distinguish a classification concept from an unflagged one.
+                "standard_concept": True,
+                "classification_concept": False,
                 "is_active": True,
             }
         ],
@@ -266,6 +278,75 @@ def test_async_search_embeds_natively_before_stored_vector_lookup(monkeypatch):
     assert reader.calls[0]["k"] == 7
 
 
+def test_async_search_batch_embeds_and_searches_aligned_queries(monkeypatch):
+    backend = StubModelBackend(vectors=((0.1, 0.2, 0.3), (0.4, 0.5, 0.6)))
+    adapter = build_adapter(model_backend=backend)
+    record = model_record()
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: record)
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+    monkeypatch.setattr(adapter, "_build_concept_filter", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        reader,
+        "get_nearest_concepts",
+        lambda **kwargs: ((nearest_match(concept_id=111),), (nearest_match(concept_id=222),)),
+    )
+
+    result = asyncio.run(
+        adapter.async_search_batch(
+            ["hypertension", "diabetes"],
+            7,
+            "Condition",
+            "SNOMED",
+            True,
+            True,
+            None,
+            batch_size=16,
+        )
+    )
+
+    assert [len(row) for row in result["results"]] == [1, 1]
+    assert [row[0]["concept_id"] for row in result["results"]] == [111, 222]
+    assert backend.calls == [
+        {
+            "texts": ["hypertension", "diabetes"],
+            "role": EmbeddingRole.QUERY,
+            "batch_size": 16,
+            "async": True,
+        }
+    ]
+
+
+def test_async_search_batch_rejects_misaligned_results(monkeypatch):
+    backend = StubModelBackend(vectors=((0.1, 0.2, 0.3), (0.4, 0.5, 0.6)))
+    adapter = build_adapter(model_backend=backend)
+    record = model_record()
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: record)
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+    monkeypatch.setattr(adapter, "_build_concept_filter", lambda **kwargs: kwargs)
+    monkeypatch.setattr(
+        reader,
+        "get_nearest_concepts",
+        lambda **kwargs: ((nearest_match(concept_id=111),),),
+    )
+
+    with pytest.raises(GroundworkersError) as caught:
+        asyncio.run(
+            adapter.async_search_batch(
+                ["hypertension", "diabetes"],
+                7,
+                "Condition",
+                "SNOMED",
+                True,
+                True,
+                None,
+            )
+        )
+
+    assert caught.value.code == "BACKEND_UNAVAIL"
+
+
 def test_live_encoding_rejects_registered_model_that_is_not_configured(monkeypatch):
     backend = StubModelBackend(model="configured-model")
     adapter = build_adapter(model_backend=backend)
@@ -323,6 +404,35 @@ def test_reader_uses_registry_provider_metric_and_faiss_cache(monkeypatch):
         "provider_type": "openai",
         "faiss_cache_dir": "faiss-cache",
     }
+
+
+def test_reader_is_cached_until_adapter_close(monkeypatch):
+    created: list[object] = []
+
+    class CapturingReader:
+        def __init__(self, **kwargs):
+            created.append(self)
+
+    adapter = OmopEmbAdapter(
+        backend_factory=lambda: "store",  # type: ignore[arg-type,return-value]
+        backend_type="pgvector",
+    )
+    monkeypatch.setattr(
+        "groundworkers.adapters.omop_emb.EmbeddingReaderInterface", CapturingReader
+    )
+    record = model_record()
+
+    first = adapter._build_reader(record)
+    second = adapter._build_reader(record)
+
+    assert first is second
+    assert len(created) == 1
+
+    adapter.close()
+    third = adapter._build_reader(record)
+
+    assert third is not first
+    assert len(created) == 2
 
 
 def test_resolve_model_name_uses_registry_record(monkeypatch):

@@ -1,18 +1,14 @@
 """Groundworkers' catalogue of deterministic output definitions.
 
-`omop_semantics` supplies the generic building blocks (`OutputDefinition`,
-`DerivationRule`, `SpecialValuePolicy`, CDM profiles); the concrete definitions
-below are groundworkers-specific content, the same way a downstream
-application authors its own CDM profile catalogue on top of a generic schema
-library. They correspond to the `diagnosis-role-modifier` and
-`criteria-gate-yesno` core knowledge packs — this is the deterministic
-counterpart to that guidance, not a replacement for it.
+This is all just a demo for now. The definitions here are not intended to be a complete or
+robust catalogue of OMOP shapes. They are just enough to illustrate how the
+semantic projection service can be used to map grounded concepts into OMOP rows, and how
+the service can be extended with new definitions.
 
-Several definitions below apply to the Condition domain, so domain-only
-matching cannot disambiguate between them — a caller must pass
-`definition_hint` whenever multiple Condition-pattern definitions could fit.
-Domain matching still resolves unambiguously once a single definition exists
-for a non-colliding domain.
+TODO: shift this over to omop-semantics with a file-based resource backing to register
+target shapes and derivation rules. As per knowledge source the intention is that there
+is a vanilla default set that applies in all contexts, and then you can layer on definitions
+for a particular project or context.
 """
 
 from __future__ import annotations

@@ -29,6 +29,6 @@ Unit tests mock the adapter layer and run without a live database.
 |---|---|
 | Concept tools | Deterministic concept lookup, hierarchy, relationship, path, neighborhood, classified-edge, and standard-mapping tools: correct responses, `NOT_FOUND` errors, `INVALID_INPUT` guards, and depth clamping |
 | Resolver tools | `concept_ground`: empty query rejection, result ordering by score, match_kind on exact hits |
-| Embedding tools | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_encode`: correct responses, clamped limits, error propagation |
+| Embedding tools | `embedding_index_status`, `embedding_neighbours`, `embedding_search`, `embedding_search_batch`, `embedding_encode`: correct responses, clamped limits, aligned batch rows, error propagation |
 | Server registry | `create_server` with and without each adapter; system tools always present; adapter-conditional tool registration |
 | Config validation | `OmopGraphConfig` schema name validation; `OmopEmbConfig` enabled-without-url guard; extra field rejection |

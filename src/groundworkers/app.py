@@ -1,13 +1,26 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from oa_configurator import ConfigurationError, Resolver
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
 from groundworkers.config import AppConfig
+from groundworkers.plugins import (
+    GroundworkersPlugin,
+    GroundworkersPluginReadiness,
+    PluginConfigResolver,
+    PluginContext,
+    PluginReadinessResult,
+    PluginReadinessState,
+    discover_plugins,
+)
 from groundworkers.services import (
     ConceptGroundingService,
     DomainService,
@@ -25,6 +38,8 @@ if TYPE_CHECKING:
     from omop_emb import EmbeddingBackend
     from omop_llm import ModelBackend
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class Adapters:
@@ -33,6 +48,13 @@ class Adapters:
     omop_emb: OmopEmbAdapter | None = None
     llm: LLMAdapter | None = None
     embedding_configuration_detail: str | None = None
+    # Shared, lazily-built closures also exposed via PluginContext (see
+    # _build_plugin_context) so a plugin reuses the one backend connection
+    # instead of opening a second one. None when the corresponding backend
+    # is unconfigured, same gating as the adapters above.
+    embedding_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    embedding_model_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    chat_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -51,6 +73,9 @@ class GroundworkersApp:
     config: AppConfig
     adapters: Adapters
     services: Services
+    plugins: dict[str, object] = field(default_factory=dict)
+    plugin_definitions: tuple[GroundworkersPlugin, ...] = ()
+    plugin_issues: dict[str, str] = field(default_factory=dict)
 
 
 def build_adapters(config: AppConfig) -> Adapters:
@@ -102,18 +127,21 @@ def build_adapters(config: AppConfig) -> Adapters:
             configuration_detail=configuration_detail,
         )
         adapters.embedding_configuration_detail = configuration_detail
+        adapters.embedding_backend_factory = get_embedding_backend
     elif resolved_model is not None:
         adapters.embedding_configuration_detail = (
             "The embedding model is configured without a vector store. "
             "Configure groundworkers.vector_store_name to enable embedding operations."
         )
 
+    if resolved_model is not None:
+        adapters.embedding_model_backend_factory = get_model_backend
+
     # Graph and lexical services use the resolved CDM database directly. A CDM
     # configuration is therefore sufficient; no separate graph section is needed.
     complete_embedding = resolved_store is not None and resolved_model is not None
     adapters.omop_graph = OmopGraphAdapter(
         engine=config.cdm_engine,
-        vocab_schema=config.cdm_database.vocab_schema,
         embedding_backend_factory=(
             get_embedding_backend if complete_embedding else None
         ),
@@ -144,6 +172,7 @@ def build_adapters(config: AppConfig) -> Adapters:
             return chat_backend
 
         adapters.llm = LLMAdapter(backend_factory=get_chat_backend)
+        adapters.chat_backend_factory = get_chat_backend
 
     return adapters
 
@@ -177,10 +206,150 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
     return services
 
 
+def _build_plugin_context(config: AppConfig, adapters: Adapters) -> PluginContext:
+    """Assemble the resolved handles every plugin is given.
+
+    `cdm_database`/`vector_store` come straight off `AppConfig`, already
+    resolved; the three backend factories are the same lazily-built closures
+    `build_adapters` shares between `OmopEmbAdapter`/`OmopGraphAdapter`/
+    `LLMAdapter` above, now also exposed on `Adapters` for this purpose.
+    """
+
+    return PluginContext(
+        resolver=PluginConfigResolver(Resolver(config.stack)),
+        cdm_database=config.cdm_database,
+        cdm_engine=config.cdm_engine,
+        vector_store=config.vector_store,
+        embedding_backend_factory=adapters.embedding_backend_factory,
+        embedding_model_backend_factory=adapters.embedding_model_backend_factory,
+        chat_backend_factory=adapters.chat_backend_factory,
+    )
+
+
+def _build_plugins(
+    config: AppConfig,
+    context: PluginContext,
+    plugin_definitions: tuple[GroundworkersPlugin, ...],
+) -> tuple[dict[str, object], dict[str, str]]:
+    """Resolve each installed plugin's own config and build its state.
+
+    A plugin with no `config_cls` gets `config=None`. A plugin whose config
+    section is absent or fails validation is treated the same as a missing
+    optional backend elsewhere in this module: skipped, not fatal to startup.
+    """
+
+    plugins: dict[str, object] = {}
+    issues: dict[str, str] = {}
+    for plugin in plugin_definitions:
+        state, issue = _build_plugin(config, context, plugin)
+        if state is not None:
+            plugins[plugin.name] = state
+        else:
+            issues[plugin.name] = issue or "plugin prerequisites are unavailable"
+    return plugins, issues
+
+
+def _build_plugin(
+    config: AppConfig,
+    context: PluginContext,
+    plugin: GroundworkersPlugin,
+) -> tuple[object | None, str | None]:
+    plugin_config = None
+    if plugin.config_cls is not None:
+        try:
+            plugin_config = plugin.config_cls.validate_candidate(config.stack)
+        except ConfigurationError as exc:
+            logger.info(
+                "Plugin %s config not present or invalid, skipping: %s",
+                plugin.name,
+                exc,
+            )
+            return None, f"invalid configuration ({type(exc).__name__})"
+    try:
+        state = plugin.build(context, plugin_config)
+    except Exception:
+        logger.exception("Groundworkers plugin %s failed to build.", plugin.name)
+        return None, "plugin build failed"
+    if state is None:
+        return None, "plugin prerequisites are unavailable"
+    return state, None
+
+
+def verify_plugin_readiness(
+    config: AppConfig,
+    plugin: GroundworkersPlugin,
+) -> PluginReadinessResult:
+    """Build and run one plugin's optional read-only readiness check.
+
+    This is deliberately a headless host operation. TUI code may render its
+    result, while MCP tools can return the same contract directly.
+    """
+
+    if not isinstance(plugin, GroundworkersPluginReadiness):
+        return PluginReadinessResult(
+            state=PluginReadinessState.UNCONFIGURED,
+            configured=False,
+            summary="This plugin does not expose readiness verification.",
+        )
+    adapters = build_adapters(config)
+    context = _build_plugin_context(config, adapters)
+    state, issue = _build_plugin(config, context, plugin)
+    if state is None:
+        return PluginReadinessResult(
+            state=PluginReadinessState.UNCONFIGURED,
+            configured=False,
+            summary=(
+                "Plugin configuration or prerequisites are unavailable. "
+                f"Host detail: {issue or 'unknown issue'}."
+            ),
+        )
+    try:
+        return plugin.verify_readiness(state)
+    except Exception:
+        logger.exception("Groundworkers plugin %s readiness check failed.", plugin.name)
+        return PluginReadinessResult(
+            state=PluginReadinessState.ERROR,
+            summary="Plugin verification failed unexpectedly; review the host logs.",
+        )
+
+
+def load_plugin_readiness(
+    config_path: str,
+    plugin: GroundworkersPlugin,
+) -> PluginReadinessResult:
+    """Load current configuration and verify one plugin without TUI coupling."""
+
+    from groundworkers.bootstrap import build_app_config
+
+    try:
+        config = build_app_config(config_path=config_path)
+    except Exception:
+        logger.info(
+            "Could not load configuration while verifying plugin %s.",
+            plugin.name,
+            exc_info=True,
+        )
+        return PluginReadinessResult(
+            state=PluginReadinessState.UNCONFIGURED,
+            configured=False,
+            summary=(
+                "Create or repair the base Groundworkers configuration, then "
+                "configure this plugin."
+            ),
+        )
+    return verify_plugin_readiness(config, plugin)
+
+
 def build_application(config: AppConfig) -> GroundworkersApp:
     adapters = build_adapters(config)
+    context = _build_plugin_context(config, adapters)
+    plugin_definitions = tuple(discover_plugins())
+    plugins, plugin_issues = _build_plugins(config, context, plugin_definitions)
     return GroundworkersApp(
         config=config,
         adapters=adapters,
         services=build_services(config, adapters),
+        plugins=plugins,
+        plugin_definitions=plugin_definitions,
+        plugin_issues=plugin_issues,
     )

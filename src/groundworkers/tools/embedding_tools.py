@@ -80,6 +80,45 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
         except GroundworkersError as exc:
             return exc.to_dict()
 
+    @server.tool("embedding_search_batch")
+    async def embedding_search_batch(
+        queries: list[str],
+        limit: int = 10,
+        domain: str | None = None,
+        vocabulary: str | None = None,
+        standard_only: bool = False,
+        active_only: bool = True,
+        model_name: str | None = None,
+        batch_size: int = 32,
+    ) -> dict[str, Any]:
+        """Search the embedding index for multiple queries in one batch.
+
+        All queries share the same search filters. Use separate calls when
+        domain, vocabulary, or model constraints differ.
+        """
+        if not queries:
+            return {"error": True, "code": "INVALID_INPUT", "message": "queries must be non-empty"}
+        if len(queries) > 256:
+            return {"error": True, "code": "INVALID_INPUT", "message": "queries must contain at most 256 entries"}
+        if any(not query.strip() for query in queries):
+            return {"error": True, "code": "INVALID_INPUT", "message": "queries must not contain empty strings"}
+        if batch_size <= 0 or batch_size > 128:
+            return {"error": True, "code": "INVALID_INPUT", "message": "batch_size must be between 1 and 128"}
+        safe_limit = max(1, min(limit, 50))
+        try:
+            return await emb_adapter.async_search_batch(
+                queries=queries,
+                limit=safe_limit,
+                domain=domain,
+                vocabulary=vocabulary,
+                standard_only=standard_only,
+                active_only=active_only,
+                model_name=model_name,
+                batch_size=batch_size,
+            )
+        except GroundworkersError as exc:
+            return exc.to_dict()
+
     @server.tool("embedding_encode")
     async def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
         """Encodes free text into one embedding vector using the configured model client."""

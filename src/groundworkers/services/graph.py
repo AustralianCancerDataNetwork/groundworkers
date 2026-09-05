@@ -7,33 +7,38 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from omop_alchemy.cdm.model import normalised_flag
 from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Relationship
-from omop_graph.extensions.omop_alchemy import PredicateKind
+from omop_graph.extensions.omop_alchemy import PredicateKind, RelationshipMapping
 from omop_graph.reasoning.grounding import GroundingConstraints
 from omop_graph.reasoning.resolvers.resolvers import (
     FullTextResolver,
     FullTextSynonymResolver,
 )
-from sqlalchemy import Text, cast, column, select, table
+from sqlalchemy import Text, cast, select
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.omop_graph import EmbeddingTierUnavailable, OmopGraphAdapter
+from groundworkers.base.concept_payload import project_payload
 from groundworkers.base.errors import GroundworkersError
 
 __all__ = ["GraphService", "GroundingPlan"]
 
 logger = logging.getLogger(__name__)
 
-# Lightweight reference to omop-graph's relationship-classification sidecar table
-# (populated by `omop-graph relationship-classification`). It has no ORM model, so
-# we reference it as a Core table; like the omop_alchemy CDM models it is left
-# schema-unqualified and resolves through the connection's search_path.
-_RELATIONSHIP_MAPPING = table(
-    "relationship_mapping",
-    column("relationship_id"),
-    column("predicate_kind"),
-    column("predicate_subkind"),
-)
+# omop-graph's relationship-classification sidecar table, populated by
+# `omop-graph relationship-classification`. Its own declarative model, rather than
+# a hand-written Core table: omop-graph already defines it on the shared
+# declarative Base, so borrowing that keeps one definition instead of two and
+# picks up its real column types.
+#
+# The `__table__` specifically, so `.c` access stays available. It matters that
+# this is a `Table` and not the lowercase `table()` helper -- only `Table`
+# participates in `schema_translate_map`, so a `TableClause` would compile
+# unqualified even on a correctly configured engine and resolve through
+# `search_path` while every CDM model beside it in the same query routed to the
+# configured schema.
+_RELATIONSHIP_MAPPING = RelationshipMapping.__table__
 
 
 def _short_text(value: str, *, limit: int = 120) -> str:
@@ -96,7 +101,14 @@ class GraphService:
         return self._adapter.concept_views(concept_ids)
 
     def canonicalize_domain(self, domain: str | None) -> str | None:
+        """Canonical ``domain_id``, or ``None`` if the domain is unrecognised."""
         return self._adapter.canonicalize_domain(domain)
+
+    def known_domains(self) -> tuple[str, ...]:
+        return self._adapter.known_domains()
+
+    def describe_unknown_domain(self, domain: str) -> str:
+        return self._adapter.describe_unknown_domain(domain)
 
     @property
     def embedding_resolver_active(self) -> bool:
@@ -148,16 +160,7 @@ class GraphService:
             view = views.get(concept_id)
             if view is None:
                 continue
-            results.append(
-                {
-                    "concept_id": view["concept_id"],
-                    "concept_name": view["concept_name"],
-                    "vocabulary_id": view["vocabulary_id"],
-                    "domain_id": view["domain_id"],
-                    "standard_concept": view["standard_concept"],
-                    "depth": depth,
-                }
-            )
+            results.append({**project_payload(view, detail="flags"), "depth": depth})
         results.sort(key=lambda item: (item["depth"], item["concept_id"]))
         return results
 
@@ -316,7 +319,7 @@ class GraphService:
         if predicate_subkinds:
             stmt = stmt.where(subkind_text.in_(list(predicate_subkinds)))
         if active_only:
-            stmt = stmt.where(cr.invalid_reason.is_(None))
+            stmt = stmt.where(cr.is_valid_expr())
         stmt = stmt.order_by(subkind_text, Concept.concept_name).limit(limit)
 
         id_key = "target_concept_id" if outbound else "source_concept_id"
@@ -333,7 +336,7 @@ class GraphService:
                     "domain_id": row.domain_id,
                     "concept_class_id": row.concept_class_id,
                     "standard_concept": row.standard_concept,
-                    "valid": row.invalid_reason is None,
+                    "valid": normalised_flag(row.invalid_reason) is None,
                 }
             )
         return edges
@@ -535,11 +538,6 @@ class GraphService:
 
         concept_ids = tuple(dict.fromkeys(h["concept_id"] for h in results))
         views = self._adapter.concept_views(concept_ids)
-        # omop-graph anchors its identity walks on the combined standard-or-
-        # classification flag, so a grounded result can be a classification ('C')
-        # concept. Groundworkers' public contract keeps those distinct, so read the
-        # raw flag for exactly the concepts being returned.
-        raw_flags = self._adapter.raw_standard_flags(concept_ids)
 
         matched_tier = results[0]["match_kind"] if results else None
         used_embedding = any(h["embedding_score"] is not None for h in results)
@@ -548,7 +546,6 @@ class GraphService:
                 self._merge_ground_view(
                     h,
                     views.get(h["concept_id"]),
-                    raw_flags.get(h["concept_id"]),
                 )
                 for h in results
             ],
@@ -625,7 +622,6 @@ class GraphService:
 
         concept_ids = tuple(dict.fromkeys(hit["concept_id"] for hit in results))
         views = self._adapter.concept_views(concept_ids)
-        raw_flags = self._adapter.raw_standard_flags(concept_ids)
         matched_tier = results[0]["match_kind"] if results else None
         used_embedding = any(hit["embedding_score"] is not None for hit in results)
         payload = {
@@ -633,7 +629,6 @@ class GraphService:
                 self._merge_ground_view(
                     hit,
                     views.get(hit["concept_id"]),
-                    raw_flags.get(hit["concept_id"]),
                 )
                 for hit in results
             ],
@@ -672,25 +667,30 @@ class GraphService:
     def _merge_ground_view(
         hit: dict[str, Any],
         view: dict[str, Any] | None,
-        raw_standard_flag: str | None,
     ) -> dict[str, Any]:
         """Shape one grounded hit, reporting strict standard/classification flags.
 
         ``standard_concept`` is true only for raw OMOP flag ``'S'`` and
         ``classification_concept`` only for ``'C'``, per Groundworkers' public
-        concept contract. Both are false when the flag is unknown or unset — the
-        previous unconditional ``standard_concept: True`` was safe only while
-        omop-graph 1.x anchored standardization on ``'S'`` alone.
+        concept contract. Both are false when the flag is unknown or unset.
         """
+        base = (
+            project_payload(view, detail="flags")
+            if view
+            else {
+                "concept_id": hit["concept_id"],
+                "concept_name": hit["concept_name"],
+                "vocabulary_id": None,
+                "domain_id": None,
+                "concept_code": None,
+                "concept_class_id": None,
+                "standard_concept": False,
+                "classification_concept": False,
+                "is_active": None,
+            }
+        )
         return {
-            "concept_id": hit["concept_id"],
-            "concept_name": hit["concept_name"],
-            "vocabulary_id": view["vocabulary_id"] if view else None,
-            "domain_id": view["domain_id"] if view else None,
-            "concept_class_id": view["concept_class_id"] if view else None,
-            "standard_concept": raw_standard_flag == "S",
-            "classification_concept": raw_standard_flag == "C",
-            "is_active": view["is_active"] if view else None,
+            **base,
             "match_kind": hit["match_kind"],
             "matched_label": hit["matched_label"],
             "total_score": hit["total_score"],

@@ -37,6 +37,7 @@ No live model API is required.
 Requires an embedding client configured through `omop-emb` package settings.
 
 - `embedding_search` encodes a text query on the fly
+- `embedding_search_batch` encodes and searches multiple text queries with one provider/index batch, returning rows aligned to input order
 - `embedding_encode` returns a raw embedding vector
 
 ## Availability model

@@ -230,6 +230,7 @@ class StubGroundingService:
         parent_ids: tuple[int, ...] | None = None,
         standard_only: bool = False,
         active_only: bool = False,
+        include_embedding: bool = True,
     ) -> dict:
         self.calls.append(("ground", {
             "query": query,
@@ -239,6 +240,7 @@ class StubGroundingService:
             "parent_ids": parent_ids,
             "standard_only": standard_only,
             "active_only": active_only,
+            "include_embedding": include_embedding,
         }))
         all_results = [
             _ground_result(100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"),

@@ -1,6 +1,6 @@
 # Embedding Tools
 
-Four tools expose the embedding index. All require `omop_emb` to be enabled in the config.
+Five tools expose the embedding index. All require `omop_emb` to be enabled in the config.
 
 ## `embedding_index_status`
 
@@ -70,6 +70,24 @@ All parameters except `query` are optional.
     `embedding_search` must encode the query string using a live embedding model.
     This requires `omop_emb.api_base` (and `api_key`) to be configured.  Without it
     the tool returns `BACKEND_UNAVAIL`.
+
+## `embedding_search_batch`
+
+Encodes and searches multiple query strings in one provider/index operation. The results are aligned with the input order, so `results[i]` belongs to
+`queries[i]`.
+
+```json
+{
+  "queries": ["lung adenocarcinoma", "type 2 diabetes"],
+  "limit": 5,
+  "domain": "Condition",
+  "standard_only": true,
+  "active_only": true,
+  "batch_size": 32
+}
+```
+
+All queries in a call share the same domain, vocabulary, model, and concept filters. Partition queries before calling when those constraints differ. The MCP wrapper accepts at most 256 queries; `batch_size` is the provider batch size and is bounded to 1–128.
 
 ## `embedding_encode`
 

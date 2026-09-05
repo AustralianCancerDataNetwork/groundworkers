@@ -8,3 +8,45 @@ jobs:
     uses: AustralianCancerDataNetwork/cava-devops/.github/workflows/label-gate.yml@main
   build-test:
     uses: AustralianCancerDataNetwork/cava-devops/.github/workflows/build-test.yml@main
+  build-test-postgres:
+    uses: AustralianCancerDataNetwork/cava-devops/.github/workflows/build-test-postgres.yml@main
+    with:
+      ty-src: src
+      postgres-image: pgvector/pgvector:pg18
+      postgres-db: test_db
+      postgres-user: postgres
+      postgres-password: postgres
+      setup-commands: |
+        mkdir -p "$RUNNER_TEMP/omop"
+        cp tests/support/postgres_ci_config.toml "$RUNNER_TEMP/omop/config.toml"
+        export OA_CONFIG_PATH="$RUNNER_TEMP/omop/config.toml"
+        export GROUNDWORKERS_CONFIG_PATH="$RUNNER_TEMP/omop/config.toml"
+        export GROUNDWORKERS_REQUIRE_INTEGRATION=1
+        export GROUNDWORKERS_TEST_DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/test_db"
+        echo "OA_CONFIG_PATH=$RUNNER_TEMP/omop/config.toml" >> "$GITHUB_ENV"
+        echo "GROUNDWORKERS_CONFIG_PATH=$RUNNER_TEMP/omop/config.toml" >> "$GITHUB_ENV"
+        echo "GROUNDWORKERS_REQUIRE_INTEGRATION=1" >> "$GITHUB_ENV"
+        echo "GROUNDWORKERS_TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/test_db" >> "$GITHUB_ENV"
+        uv run omop-config connections add pg_test \
+          --dialect postgresql+psycopg \
+          --host localhost \
+          --port 5432 \
+          --user postgres \
+          --password postgres \
+          --database-name test_db \
+          --test-only false
+        uv run omop-config databases add test_cdm_db \
+          --kind cdm \
+          --connection pg_test \
+          --schema-name public
+        uv run omop-config databases add test_vector_db \
+          --kind generic \
+          --connection pg_test \
+          --schema-name public
+        uv run omop-config vector-stores add test_embeddings \
+          --backend-type pgvector \
+          --database test_vector_db
+        uv run omop-config configure groundworkers \
+          --cdm-db test_cdm_db \
+          --vector-store-name test_embeddings
+        uv run python -m tests.support.seed_postgres_fixture

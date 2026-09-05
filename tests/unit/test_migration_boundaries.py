@@ -109,18 +109,9 @@ def test_migration_dependencies_use_explicit_public_boundaries() -> None:
 
     assert "omop-llm>=1,<2" in dependencies
 
-    # RELEASE BLOCKER. The steady state is no source pins at all -- none may
-    # survive into a publishable artifact. One temporary exception is allowed
-    # while oa-configurator's public path-based loader is unreleased, and it is
-    # pinned exactly here so that removing it fails this test and forces the
-    # assertion back to `assert not sources`.
+    # RELEASE BLOCKER. No source pins may survive into a publishable artifact.
     sources = metadata.get("tool", {}).get("uv", {}).get("sources", {})
-    assert sources == {
-        "oa-configurator": {
-            "git": "https://github.com/AustralianCancerDataNetwork/oa-configurator.git",
-            "branch": "path_config",
-        }
-    }
+    assert not sources
 
 
 def _python_files(root: Path) -> tuple[Path, ...]:

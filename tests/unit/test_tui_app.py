@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from oa_configurator import save_stack_config
@@ -43,6 +45,136 @@ def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
     assert spec.title == "Groundworkers"
 
 
+def test_installed_plugin_config_schema_adds_a_tier_a_page(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from oa_configurator import PackageConfigBase
+    from pydantic import Field
+
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+
+    class Config(PackageConfigBase):
+        tool_name: ClassVar[str] = "configured_plugin"
+        retries: int = Field(default=2, ge=1)
+
+    class Plugin:
+        name = "configured_plugin"
+        config_cls = Config
+
+        def build(self, context, config):
+            return None
+
+        def register(self, server, state):
+            return None
+
+        def verify_readiness(self, state):
+            raise AssertionError("A plugin that cannot build is not verified")
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    monkeypatch.setattr(
+        "groundworkers.plugins.discover_plugins", lambda: [Plugin()]
+    )
+
+    spec = build_groundworkers_tui_spec(config_path=str(config_path))
+
+    assert spec.validate().keys() == ("setup", "gw_plugin-configured_plugin")
+    page = spec.pages[1].factory(None)
+    view = page.landing_view(None)
+    assert view.status.value == "warning"
+    assert "prerequisites" in view.message
+    assert tuple(action.label for action in view.actions) == ("Configure", "Verify")
+
+
+def test_plugin_readiness_renders_generic_table_and_details(
+    tmp_path: Path, monkeypatch
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from oa_configurator import PackageConfigBase
+    from pydantic import Field
+
+    from groundworkers.plugins import (
+        PluginReadinessField,
+        PluginReadinessResult,
+        PluginReadinessState,
+    )
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+
+    class Config(PackageConfigBase):
+        tool_name: ClassVar[str] = "ready_plugin"
+        retries: int = Field(default=2, ge=1)
+
+    report = PluginReadinessResult(
+        state=PluginReadinessState.READY,
+        summary="The plugin is ready.",
+        fields=(
+            PluginReadinessField(
+                "catalogue",
+                "Catalogue",
+                "3 rows",
+                PluginReadinessState.READY,
+                "Source rows are loaded.",
+            ),
+        ),
+    )
+
+    class Plugin:
+        name = "ready_plugin"
+        config_cls = Config
+
+        def build(self, context, config):
+            return object()
+
+        def register(self, server, state):
+            return None
+
+        def verify_readiness(self, state):
+            return report
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    monkeypatch.setattr("groundworkers.plugins.discover_plugins", lambda: [Plugin()])
+
+    spec = build_groundworkers_tui_spec(config_path=str(config_path))
+    page = spec.pages[1].factory(None)
+    view = page.landing_view(None)
+
+    assert view.status.value == "ok"
+    assert view.columns == ("Check", "Value", "Status")
+    assert view.rows[0].cells == ("Catalogue", "3 rows", "Ready")
+    assert tuple(action.label for action in view.actions) == ("Configure", "Verify")
+
+
+def test_plugin_setup_wizard_exposes_protocol_spec_without_assignment_error(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from groundskeeping.contracts import CommandPlan
+
+    from groundworkers.plugins import PluginSetupStep
+    from groundworkers.tui.state import SetupSession
+    from groundworkers.tui.wizards.plugin_setup import PluginSetupWizardController
+
+    step = PluginSetupStep(
+        key="example_setup_step",
+        title="Example setup",
+        purpose="Exercise the generic setup wizard.",
+        arguments=(),
+        build_plan=lambda _values, _config_path: CommandPlan(
+            kind="example", steps=()
+        ),
+    )
+    controller = PluginSetupWizardController(
+        SetupSession(config_path=tmp_path / "config.toml"), step
+    )
+
+    assert controller.start().spec.title == "Example setup"
+
+
 def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
     """Layout only. Uses a real config so the page renders its sections.
 
@@ -59,9 +191,7 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
     save_stack_config(build_cdm_stack(), config_path)
 
     async def run_check() -> None:
-        app = OperatorApp(
-            build_groundworkers_tui_spec(config_path=str(config_path))
-        )
+        app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
 
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
@@ -125,6 +255,73 @@ def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
             assert app.query_one("#context-table").styles.display == "none"
 
     asyncio.run(run_check())
+
+
+def test_runs_page_copies_the_selected_log_tail(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from groundskeeping.app import OperatorApp
+    from groundskeeping.contracts import Command, CommandPlan, CommandStep
+
+    from groundworkers.application.setup.maintenance_runs import (
+        MaintenanceRunStore,
+        RunStatus,
+        StepStatus,
+    )
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+    from groundworkers.tui.presenters.runs import RunsPresenter
+
+    config_path = tmp_path / "config.toml"
+    save_stack_config(build_cdm_stack(), config_path)
+    store = MaintenanceRunStore(tmp_path / "state")
+    run = store.create(
+        CommandPlan(
+            kind="copy-test",
+            steps=(CommandStep("step", Command(("worker",))),),
+        )
+    )
+    log_path = run.root / "step.log"
+    log_content = "older output\n" + ("x" * 2500)
+    log_path.write_text(log_content, encoding="utf-8")
+    store.save(
+        replace(
+            run,
+            status=RunStatus.SUCCEEDED,
+            completed=1,
+            steps=(
+                replace(
+                    run.steps[0],
+                    status=StepStatus.SUCCEEDED,
+                    log_path=log_path,
+                ),
+            ),
+        )
+    )
+    monkeypatch.setattr(
+        "groundworkers.tui.presenters.runs.RunsPresenter",
+        lambda: RunsPresenter(store),
+    )
+    app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
+    copied: list[str] = []
+
+    async def run_check() -> None:
+        monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            sections = app.query_one("#sections")
+            sections.focus()
+            sections.highlighted = 8
+            await pilot.press("enter")
+            await pilot.pause()
+
+            assert str(app.query_one("#view-action-4").label) == "Copy log"
+            assert app.query_one("#view-action-4").disabled is False
+            await pilot.click("#view-action-4")
+            await pilot.pause()
+
+    asyncio.run(run_check())
+
+    assert copied == [log_content[-2000:]]
 
 
 def test_database_actions_render_in_workspace_and_verify_connections(
@@ -485,7 +682,13 @@ def test_embedding_coverage_refresh_shows_loading_state(
 
             assert str(app.query_one("#view-action-0").label) == "Check model"
             await pilot.click("#view-action-1")
-            await pilot.pause(0.05)
+            # Button events and worker startup are scheduled independently of
+            # the test driver. Wait for the synchronous loading view to become
+            # visible, but keep the deadline below slow_refresh's 0.4 seconds.
+            for _ in range(20):
+                if app.query_one("#result-loading").styles.display == "block":
+                    break
+                await pilot.pause(0.01)
 
             assert app.query_one("#result-loading").styles.display == "block"
             assert app.query_one("#result-table").styles.display == "none"
@@ -601,6 +804,9 @@ def test_a_wizard_text_box_is_actually_drawn(tmp_path: Path) -> None:
     typing it can never show, and reads as a box that ignores the keyboard.
     Asserting on the rendered height is the only thing that catches this; every
     contract-level check passes on a widget nobody can see.
+
+    groundskeeping 0.6.1 carries the ``#wizard-body TextArea`` rule that repairs
+    this, so the check now guards the dependency rather than a local override.
     """
     pytest.importorskip("groundskeeping")
 
@@ -653,7 +859,7 @@ def test_a_wizard_text_box_is_actually_drawn(tmp_path: Path) -> None:
             await pilot.pause()
             app.open_wizard(
                 EmbeddingPopulationWizardController(
-                    SetupSession(), coverage=report, launcher=lambda command: None
+                    SetupSession(), coverage=report
                 )
             )
             await pilot.pause()

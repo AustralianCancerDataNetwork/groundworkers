@@ -9,19 +9,17 @@ from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 
+from groundskeeping.contracts import Command, CommandPlan, CommandStep
 from oa_configurator import Resolver
 from sqlalchemy import text
 
 from groundworkers.application.setup.configuration import load_configuration
 from groundworkers.application.setup.maintenance_runs import (
-    MaintenancePlan,
     MaintenanceRun,
     MaintenanceRunner,
-    MaintenanceStep,
 )
 from groundworkers.application.setup.models import (
     ConfigurationSnapshot,
-    MaintenanceCommand,
 )
 from groundworkers.base.sql import quote_identifier
 from groundworkers.config import GroundworkersConfig
@@ -37,15 +35,15 @@ def build_performance_commands(
     *,
     embedding_model: str | None = None,
     config_path: str | Path | None = None,
-) -> tuple[MaintenanceCommand, ...]:
+) -> tuple[Command, ...]:
     """Build safe, out-of-process commands for the selected indexes."""
 
     environment = () if config_path is None else (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
-    commands: list[MaintenanceCommand] = []
+    commands: list[Command] = []
     selected = set(actions)
     if PerformanceRemediation.TRIGRAM_INDEXES in selected:
         commands.append(
-            MaintenanceCommand(
+            Command(
                 argv=(
                     sys.executable,
                     "-m",
@@ -59,7 +57,7 @@ def build_performance_commands(
         if not embedding_model:
             raise ValueError("A registered embedding model is required to build its index.")
         commands.append(
-            MaintenanceCommand(
+            Command(
                 argv=(
                     shutil.which("omop-emb") or "omop-emb",
                     "maintenance",
@@ -78,16 +76,16 @@ def build_performance_commands(
 
 
 def start_performance_run(
-    commands: Sequence[MaintenanceCommand],
+    commands: Sequence[Command],
     *,
     resource_key: str,
     runner: MaintenanceRunner | None = None,
 ) -> MaintenanceRun:
     return (runner or MaintenanceRunner()).start(
-        MaintenancePlan(
+        CommandPlan(
             kind="performance-preparation",
             steps=tuple(
-                MaintenanceStep(
+                CommandStep(
                     key=f"performance-{index}",
                     command=command,
                     affected_resources=(resource_key,),
@@ -110,7 +108,7 @@ def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
     try:
         if engine.dialect.name != "postgresql":
             raise ValueError("Trigram indexes require a PostgreSQL CDM database.")
-        schema = getattr(database, "vocab_schema", None) or getattr(database, "schema_name", None)
+        schema = getattr(database, "schema_name", None)
         prefix = f"{quote_identifier(engine, schema)}." if schema else ""
         with engine.begin() as connection:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))

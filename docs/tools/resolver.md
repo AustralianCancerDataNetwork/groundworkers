@@ -14,13 +14,16 @@ Full-featured free-text grounding for clinical terms and source labels.
   "limit": 5,
   "domain": "Condition",
   "vocabulary_id": "SNOMED",
-  "parent_ids": [441840]
+  "parent_ids": [441840],
+  "include_embedding": true
 }
 ```
 
 All parameters except `query` are optional. `limit` is clamped to `1..20`.
 
 `parent_ids` is an optional ancestry constraint. When provided, returned concepts must be descendants of at least one listed concept. When omitted, the grounding search runs without an ancestry constraint.
+
+Set `include_embedding` to `false` to run only the deterministic exact/full-text tiers and avoid a live embedding request. This is useful when a caller is already scheduling a separate batched embedding search.
 
 **Response**:
 

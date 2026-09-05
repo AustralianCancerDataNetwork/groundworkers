@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Literal
 
@@ -15,6 +16,25 @@ from groundworkers.base.errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PromptArgument:
+    """One explicitly advertised string argument for an MCP prompt."""
+
+    name: str
+    description: str | None = None
+    required: bool = False
+
+
+@dataclass(frozen=True)
+class _RegisteredPrompt:
+    """Transport-neutral prompt registration retained until ``run()``."""
+
+    func: Callable[..., Any]
+    title: str | None
+    description: str | None
+    arguments: tuple[PromptArgument, ...] | None
 
 
 def _callable_name(func: Callable[..., Any]) -> str:
@@ -31,7 +51,7 @@ class GroundworkersMCPServer:
     def __init__(self, name: str) -> None:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
-        self._prompts: dict[str, tuple[Callable[..., Any], str | None]] = {}
+        self._prompts: dict[str, _RegisteredPrompt] = {}
         self._resources: dict[str, tuple[Callable[..., Any], str | None]] = {}
 
     def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -79,12 +99,21 @@ class GroundworkersMCPServer:
     def prompt(
         self,
         name: str | None = None,
+        title: str | None = None,
         description: str | None = None,
+        arguments: list[PromptArgument] | tuple[PromptArgument, ...] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             prompt_name = name or _callable_name(func)
-            self._prompts[prompt_name] = (func, description)
-            return func
+            explicit_arguments = _prompt_arguments(arguments)
+            registered_func = _guard_prompt_arguments(func, explicit_arguments)
+            self._prompts[prompt_name] = _RegisteredPrompt(
+                registered_func,
+                title,
+                description,
+                explicit_arguments,
+            )
+            return registered_func
 
         return decorator
 
@@ -125,8 +154,7 @@ class GroundworkersMCPServer:
         return await result if inspect.isawaitable(result) else result
 
     def call_prompt(self, name: str, **kwargs: Any) -> Any:
-        func, _ = self._prompts[name]
-        return func(**kwargs)
+        return self._prompts[name].func(**kwargs)
 
     def describe_tools(self) -> dict[str, dict[str, Any]]:
         description: dict[str, dict[str, Any]] = {}
@@ -140,11 +168,23 @@ class GroundworkersMCPServer:
 
     def describe_prompts(self) -> dict[str, dict[str, Any]]:
         description: dict[str, dict[str, Any]] = {}
-        for name, (func, prompt_description) in self._prompts.items():
-            signature = inspect.signature(func)
+        for name, prompt in self._prompts.items():
             description[name] = {
-                "signature": str(signature),
-                "description": prompt_description or "",
+                "signature": str(inspect.signature(prompt.func)),
+                "title": prompt.title or "",
+                "description": prompt.description or "",
+                "arguments": (
+                    [
+                        {
+                            "name": argument.name,
+                            "description": argument.description or "",
+                            "required": argument.required,
+                        }
+                        for argument in prompt.arguments
+                    ]
+                    if prompt.arguments is not None
+                    else None
+                ),
             }
         return description
 
@@ -188,11 +228,97 @@ class GroundworkersMCPServer:
         )
         for tool_name, func in self._tools.items():
             app.tool(name=tool_name, description=inspect.getdoc(func) or "")(func)
-        for prompt_name, (func, description) in self._prompts.items():
-            app.prompt(name=prompt_name, description=description)(func)
+        for prompt_name, prompt in self._prompts.items():
+            if prompt.arguments is None:
+                app.prompt(
+                    name=prompt_name,
+                    title=prompt.title,
+                    description=prompt.description,
+                )(prompt.func)
+                continue
+
+            from mcp.server.fastmcp.prompts.base import Prompt as FastMCPPrompt
+            from mcp.server.fastmcp.prompts.base import (
+                PromptArgument as FastMCPPromptArgument,
+            )
+
+            app.add_prompt(
+                FastMCPPrompt(
+                    name=prompt_name,
+                    title=prompt.title,
+                    description=prompt.description,
+                    arguments=[
+                        FastMCPPromptArgument(
+                            name=argument.name,
+                            description=argument.description,
+                            required=argument.required,
+                        )
+                        for argument in prompt.arguments
+                    ],
+                    fn=prompt.func,
+                )
+            )
         for uri, (func, description) in self._resources.items():
             app.resource(uri, description=description or "")(func)
         app.run(transport=transport)
+
+
+def _prompt_arguments(
+    arguments: list[PromptArgument] | tuple[PromptArgument, ...] | None,
+) -> tuple[PromptArgument, ...] | None:
+    """Validate explicit metadata while preserving ``None`` as infer-signature mode."""
+
+    if arguments is None:
+        return None
+    resolved = tuple(arguments)
+    names = [argument.name for argument in resolved]
+    if any(not name for name in names):
+        raise ValueError("Prompt argument names must not be empty.")
+    if len(names) != len(set(names)):
+        raise ValueError("Prompt argument names must be unique.")
+    return resolved
+
+
+def _guard_prompt_arguments(
+    func: Callable[..., Any],
+    arguments: tuple[PromptArgument, ...] | None,
+) -> Callable[..., Any]:
+    """Apply explicit prompt-argument validation without synthesising signatures."""
+
+    if arguments is None:
+        return func
+
+    allowed = {argument.name for argument in arguments}
+    required = {argument.name for argument in arguments if argument.required}
+
+    def validate(values: dict[str, Any]) -> None:
+        unknown = sorted(set(values) - allowed)
+        if unknown:
+            raise ValueError(f"Unknown prompt arguments: {unknown}")
+        missing = sorted(required - set(values))
+        if missing:
+            raise ValueError(f"Missing required prompt arguments: {missing}")
+        non_strings = sorted(
+            name for name, value in values.items() if not isinstance(value, str)
+        )
+        if non_strings:
+            raise ValueError(f"Prompt arguments must be strings: {non_strings}")
+
+    if inspect.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_guarded(**kwargs: Any) -> Any:
+            validate(kwargs)
+            return await func(**kwargs)
+
+        return async_guarded
+
+    @wraps(func)
+    def guarded(**kwargs: Any) -> Any:
+        validate(kwargs)
+        return func(**kwargs)
+
+    return guarded
 
 
 def _sanitise_tool_result(result: Any, *, tool_name: str) -> Any:

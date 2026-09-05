@@ -226,12 +226,6 @@ class AppConfig:
 
     Settings are read through ``groundworkers``: this type deliberately does not
     re-export them, so each one has exactly one name.
-
-    There is one database engine, not two. The vocabulary is reached through
-    ``cdm_engine`` with ``cdm_database.vocab_schema`` applied on top, so a CDM
-    entry that splits its vocabulary onto a second connection is refused at
-    bootstrap rather than represented here. See
-    :func:`split_vocabulary_connection`.
     """
 
     stack: StackConfig

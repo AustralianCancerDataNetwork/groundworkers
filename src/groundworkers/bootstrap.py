@@ -51,7 +51,7 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
             "the CDM connection and use vocab_schema to separate them."
         )
 
-    cdm_engine = cdm_database.connection.create_engine(future=True)
+    cdm_engine = cdm_database.create_engine(future=True)
 
     embedding_model = (
         resolver.resolve_model(groundworkers.embedding_model_name)

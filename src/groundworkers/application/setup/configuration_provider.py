@@ -2011,7 +2011,20 @@ def _default_endpoint(provider_kind: str | None, stored: str | None) -> str | No
 def _endpoint_help(provider_kind: str | None) -> str:
     if provider_kind == "ollama":
         return "Ollama server root, for example http://localhost:11434. Blank uses the provider's own default."
-    return "OpenAI-compatible root (do not include /v1). Blank uses the provider's own default."
+    if provider_kind in ("openai", "vllm", "llamacpp"):
+        return (
+            "OpenAI-compatible API root, for example http://localhost:8000. A trailing "
+            "/v1 is added automatically if you leave it off. Blank uses the provider's "
+            "own default."
+        )
+    if provider_kind == "anthropic":
+        return (
+            "Anthropic API root. Blank uses Anthropic's own default "
+            "(https://api.anthropic.com)."
+        )
+    if provider_kind == "gemini":
+        return "Gemini API root. Blank uses Google's own default."
+    return "Provider API root. Blank uses the provider's own default."
 
 
 def _registry_summary(store: EmbeddingStoreSnapshot) -> str:

@@ -8,7 +8,7 @@ from .results import (
     enum_value,
     required_enum_value,
 )
-from .server import GroundworkersMCPServer
+from .server import GroundworkersMCPServer, PromptArgument
 
 __all__ = [
     "ERROR_CODES",
@@ -17,6 +17,7 @@ __all__ = [
     "GroundworkersError",
     "GroundworkersMCPServer",
     "ListResult",
+    "PromptArgument",
     "SearchHit",
     "SearchResult",
     "enum_value",

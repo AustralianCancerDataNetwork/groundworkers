@@ -235,7 +235,7 @@ def _diagnostics_for_target(
     if target.role == "embedding":
         return _embedding_diagnostics(connection, schema=target.embedding_schema)
     if target.role == "graph":
-        return _graph_diagnostics(connection, target.vocabulary_schema)
+        return _graph_diagnostics(connection, target.cdm_schema)
     if target.role == "groundworkers":
         return _groundworkers_diagnostics(
             connection,
@@ -243,7 +243,7 @@ def _diagnostics_for_target(
             engine_factory=engine_factory,
         )
     if target.role == "cdm":
-        return _cdm_diagnostics(connection, target.vocabulary_schema)
+        return _cdm_diagnostics(connection, target.cdm_schema)
     return ()
 
 
@@ -382,7 +382,7 @@ def _groundworkers_diagnostics(
     engine_factory: Callable[[str], Engine],
 ) -> tuple[ResourceDiagnostic, ...]:
     diagnostics: list[ResourceDiagnostic] = []
-    schema = target.vocabulary_schema
+    schema = target.cdm_schema
     inspector = inspect(connection)
     existing_tables = set(inspector.get_table_names(schema=schema))
     missing_trigram = tuple(

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from groundworkers.application.setup.models import ConfigurationOwnership
 from groundworkers.tui.state import SetupSession, load_tui_state
+
+logger = logging.getLogger(__name__)
 
 
 def build_groundworkers_tui_spec(
@@ -14,10 +17,20 @@ def build_groundworkers_tui_spec(
     """Build the Groundworkers console with setup as its first registered page."""
 
     from groundskeeping.app import OperatorAppSpec
-    from groundskeeping.contracts.pages import PageRegistration
+    from groundskeeping.configurator import MutationOperation
+    from groundskeeping.contracts.pages import PageRegistration, PageRoute
     from groundskeeping.contracts.views import WorkbenchLabels
 
-    from groundworkers.tui.pages import SetupPage
+    from groundworkers.app import load_plugin_readiness
+    from groundworkers.application.setup.plugin_configuration import (
+        PackageConfigMutationService,
+    )
+    from groundworkers.plugins import (
+        GroundworkersPluginConfigUI,
+        GroundworkersPluginReadiness,
+        discover_plugins,
+    )
+    from groundworkers.tui.pages import PluginConfigPage, PluginSetupPage, SetupPage
     from groundworkers.tui.presenters.chat import ChatPresenter
     from groundworkers.tui.presenters.configuration import ConfigurationPresenter
     from groundworkers.tui.presenters.database import DatabasePresenter
@@ -46,12 +59,82 @@ def build_groundworkers_tui_spec(
             runs=RunsPresenter(),
         )
 
+    pages = [PageRegistration(route=SETUP_ROUTE, factory=setup_factory)]
+    for plugin in discover_plugins():
+        try:
+            workflow_and_service = None
+            if isinstance(plugin, GroundworkersPluginConfigUI):
+                workflow_and_service = plugin.tui_workflow(MutationOperation.UPDATE)
+            if workflow_and_service is None and plugin.config_cls is not None:
+                service = PackageConfigMutationService(
+                    session.configuration.path,
+                    plugin.config_cls,
+                    ownership=session.ownership,
+                    on_applied=session.refresh_configuration,
+                )
+                workflow_and_service = (
+                    service.workflow(MutationOperation.UPDATE),
+                    service,
+                )
+        except Exception:
+            logger.exception(
+                "Could not build configuration page for plugin %s; skipping it.",
+                plugin.name,
+            )
+            continue
+        if workflow_and_service is not None:
+            workflow, service = workflow_and_service
+            readiness = None
+            if isinstance(plugin, GroundworkersPluginReadiness):
+
+                def readiness(
+                    *,
+                    plugin=plugin,
+                    config_path=str(session.configuration.path),
+                ):
+                    return load_plugin_readiness(config_path, plugin)
+
+            route = PageRoute(
+                key=workflow.target.key,
+                label=workflow.target.title,
+                purpose=workflow.purpose,
+            )
+
+            def plugin_factory(
+                _context: Any,
+                *,
+                route=route,
+                workflow=workflow,
+                service=service,
+                readiness=readiness,
+            ):
+                return PluginConfigPage(route, workflow, service, readiness)
+
+            pages.append(PageRegistration(route=route, factory=plugin_factory))
+
+        for setup_step in getattr(plugin, "setup_steps", ()):
+            setup_route = PageRoute(
+                key=setup_step.key,
+                label=setup_step.title,
+                purpose=setup_step.purpose,
+            )
+
+            def setup_factory(
+                _context: Any,
+                *,
+                route=setup_route,
+                step=setup_step,
+            ):
+                return PluginSetupPage(route, session, step)
+
+            pages.append(PageRegistration(route=setup_route, factory=setup_factory))
+
     return OperatorAppSpec(
         app_id="groundworkers",
         title="Groundworkers",
         subtitle="setup and operations",
         default_page=SETUP_ROUTE.key,
-        pages=(PageRegistration(route=SETUP_ROUTE, factory=setup_factory),),
+        pages=tuple(pages),
         workbench_labels=WorkbenchLabels(result_panel="Setup"),
         metadata={
             "config_path": str(session.configuration.path),
@@ -60,27 +143,20 @@ def build_groundworkers_tui_spec(
     )
 
 
-# Groundskeeping's theme sizes every TextArea at `height: 1fr`, which is right
-# for the workbench context pane it was written for and wrong inside a wizard:
-# the labels, help lines, and sibling fields take their auto height first, and
-# the fraction left over rounds to zero rows. The field is still focusable and
-# still editable -- it is simply not drawn, so it reads as an entry box that
-# refuses to accept typing. A type selector cannot be overridden by adding
-# another type selector, so this qualifies on the wizard body's id.
+# Groundskeeping's theme sizes every Tree, OptionList, TextArea, and DataTable
+# at `height: 1fr`, which is right for the workbench panes it was written for
+# and wrong inside a wizard: the labels, help lines, and sibling fields take
+# their auto height first, and the fraction left over rounds to zero rows. The
+# widget is still mounted and still holds its rows -- it is simply not drawn.
+# A type selector cannot be overridden by adding another type selector, so this
+# qualifies on the wizard body's id.
 #
-# Remove once groundskeeping sizes wizard fields itself; the upstream fix wants
-# the rule scoped to `#context` rather than to every TextArea in the app.
+# groundskeeping 0.6.1 fixed the TextArea half upstream (`#wizard-body TextArea`
+# in themes/groundskeeping.tcss), so only the review table is still ours to
+# repair. Remove once groundskeeping sizes `#wizard-review-table` itself; the
+# upstream fix wants the 1fr rule scoped to the workbench panes rather than
+# applied to every DataTable in the app.
 _WIZARD_FIELD_CSS = """
-#wizard-body TextArea {
-    height: 8;
-    max-height: 8;
-    border: tall $panel;
-}
-
-#wizard-body TextArea:focus {
-    border: tall $accent;
-}
-
 #wizard-body DataTable {
     height: auto;
     min-height: 4;

@@ -66,7 +66,6 @@ def _controller(report: EmbeddingCoverageReport | None = None):
     return EmbeddingPopulationWizardController(
         session,
         coverage=report if report is not None else _report(),
-        launcher=lambda command: None,
     )
 
 

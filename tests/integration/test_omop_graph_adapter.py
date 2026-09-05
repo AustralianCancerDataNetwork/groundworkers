@@ -9,6 +9,17 @@ from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
 
 
+def _vocab_schema(adapter) -> str:
+    """Return the schema selected by the resolved SQLAlchemy engine."""
+
+    schema_map = adapter.engine.get_execution_options().get("schema_translate_map", {})
+    return str(
+        schema_map.get(None)
+        or adapter.engine.dialect.default_schema_name
+        or "public"
+    )
+
+
 def _load_graph_adapter():
     try:
         import omop_graph  # noqa: F401
@@ -18,12 +29,20 @@ def _load_graph_adapter():
     config_path = os.getenv("GROUNDWORKERS_CONFIG_PATH") or os.getenv(
         "GROUNDWORKERS_CONFIG"
     )
+    if config_path is None:
+        message = (
+            "an explicit integration config path is required; set "
+            "GROUNDWORKERS_CONFIG_PATH"
+        )
+        if os.getenv("GROUNDWORKERS_REQUIRE_INTEGRATION") == "1":
+            raise RuntimeError(message)
+        pytest.skip(message)
     try:
         config = build_app_config(config_path=config_path)
     except (FileNotFoundError, ValueError) as exc:
+        if os.getenv("GROUNDWORKERS_REQUIRE_INTEGRATION") == "1":
+            raise
         pytest.skip(f"shared stack config is unavailable: {exc}")
-    if "omop_graph" not in config.stack.tools:
-        pytest.skip("omop_graph is not configured in the selected stack config")
     adapter = build_adapters(config).omop_graph
     if adapter is None:
         pytest.skip("omop_graph adapter was not built")
@@ -33,15 +52,16 @@ def _load_graph_adapter():
 
 
 def _find_nonstandard_condition_term(adapter) -> str:
+    schema = _vocab_schema(adapter)
     stmt = text(
         f"""
         SELECT c.concept_name
-        FROM {adapter.vocab_schema}.concept AS c
-        JOIN {adapter.vocab_schema}.concept_relationship AS cr
+        FROM {schema}.concept AS c
+        JOIN {schema}.concept_relationship AS cr
           ON cr.concept_id_1 = c.concept_id
          AND lower(cr.relationship_id) = 'maps to'
          AND cr.invalid_reason IS NULL
-        JOIN {adapter.vocab_schema}.concept AS s
+        JOIN {schema}.concept AS s
           ON s.concept_id = cr.concept_id_2
          AND s.standard_concept = 'S'
          AND s.domain_id = 'Condition'
@@ -51,7 +71,7 @@ def _find_nonstandard_condition_term(adapter) -> str:
           AND c.invalid_reason IS NULL
           AND NOT EXISTS (
               SELECT 1
-              FROM {adapter.vocab_schema}.concept AS c2
+              FROM {schema}.concept AS c2
               WHERE lower(c2.concept_name) = lower(c.concept_name)
                 AND c2.domain_id = 'Condition'
                 AND c2.standard_concept IN ('S', 'C')
@@ -73,6 +93,7 @@ def _find_nonstandard_condition_term(adapter) -> str:
 def _skip_if_parent_lookup_is_unindexed(adapter) -> None:
     """Skip hierarchy smoke checks when the live vocabulary DB is not shaped for them."""
 
+    schema = _vocab_schema(adapter)
     stmt = text(
         """
         SELECT indexdef
@@ -83,7 +104,7 @@ def _skip_if_parent_lookup_is_unindexed(adapter) -> None:
     )
     try:
         with adapter.engine.connect() as conn:
-            rows = conn.execute(stmt, {"schema": adapter.vocab_schema}).scalars().all()
+            rows = conn.execute(stmt, {"schema": schema}).scalars().all()
     except Exception as exc:
         # Broad except: integration environment preflight.
         pytest.skip(f"could not inspect concept_ancestor indexes: {exc}")
@@ -120,6 +141,7 @@ def test_get_concept_returns_correct_fields():
         "domain_id",
         "concept_class_id",
         "standard_concept",
+        "classification_concept",
         "valid_start_date",
         "valid_end_date",
         "invalid_reason",
@@ -230,18 +252,15 @@ def test_ground_parentless_condition_term_standardizes_nonstandard_source():
 
 
 @pytest.mark.integration
-def test_raw_standard_flags_distinguish_s_from_c_on_the_live_vocabulary():
-    """The strict flag contract, verified against real 'S' and 'C' rows.
-
-    omop-graph's ConceptView.standard_concept is true for both, so this is the
-    discriminator Groundworkers has to supply itself.
-    """
+def test_standard_flags_distinguish_s_from_c():
+    """The strict flag contract distinguishes raw OMOP ``S`` and ``C`` rows."""
     adapter = _load_graph_adapter()
 
+    schema = _vocab_schema(adapter)
     stmt = text(
         f"""
         SELECT standard_concept, MIN(concept_id) AS concept_id
-        FROM {adapter.vocab_schema}.concept
+        FROM {schema}.concept
         WHERE standard_concept IN ('S', 'C')
         GROUP BY standard_concept
         """
@@ -251,36 +270,29 @@ def test_raw_standard_flags_distinguish_s_from_c_on_the_live_vocabulary():
     if set(sampled) != {"S", "C"}:
         pytest.skip("vocabulary does not contain both 'S' and 'C' concepts")
 
-    flags = adapter.raw_standard_flags(list(sampled.values()))
-
-    assert flags[sampled["S"]] == "S"
-    assert flags[sampled["C"]] == "C"
-    # omop-graph collapses both to a single true, which is what this replaces.
     views = adapter.concept_views(list(sampled.values()))
     assert views[sampled["S"]]["standard_concept"] is True
-    assert views[sampled["C"]]["standard_concept"] is True
+    assert views[sampled["S"]]["classification_concept"] is False
+    assert views[sampled["C"]]["standard_concept"] is False
+    assert views[sampled["C"]]["classification_concept"] is True
 
 
 @pytest.mark.integration
-def test_grounding_labels_a_classification_concept_as_classification():
-    """A term whose best lexical match is an ATC/CPT4 classification node.
-
-    Before the 2.x cutover these were reported as standard_concept=true, which made
-    them look like valid CDM mapping targets.
-    """
+def test_classification_concept_is_not_standard():
+    """A classification concept is never exposed as a standard mapping target."""
     adapter = _load_graph_adapter()
-    service = ConceptGroundingService(GraphService(adapter))
 
+    schema = _vocab_schema(adapter)
     stmt = text(
         f"""
         SELECT concept_name
-        FROM {adapter.vocab_schema}.concept
+        FROM {schema}.concept
         WHERE standard_concept = 'C'
           AND domain_id = 'Drug'
           AND invalid_reason IS NULL
           AND NOT EXISTS (
               SELECT 1
-              FROM {adapter.vocab_schema}.concept AS other
+              FROM {schema}.concept AS other
               WHERE lower(other.concept_name) = lower(concept.concept_name)
                 AND other.standard_concept = 'S'
           )
@@ -293,15 +305,16 @@ def test_grounding_labels_a_classification_concept_as_classification():
     if row is None:
         pytest.skip("no uniquely named classification Drug concept was found")
 
-    result = service.ground(str(row[0]), limit=5, domain="Drug", vocabulary_id=None)
+    with adapter.engine.connect() as conn:
+        concept_id = conn.execute(
+            text(f"SELECT concept_id FROM {schema}.concept WHERE concept_name = :name"),
+            {"name": row[0]},
+        ).scalar_one()
+    classification = adapter.get_concept(int(concept_id))
 
-    results = result["results"]
-    assert results
-    classification = [hit for hit in results if hit["classification_concept"]]
-    assert classification, "expected at least one classification-labelled result"
-    for hit in classification:
-        # Strict contract: never both, and 'C' is not reported as standard.
-        assert hit["standard_concept"] is False
+    assert classification is not None
+    assert classification["classification_concept"] is True
+    assert classification["standard_concept"] is False
 
 
 @pytest.mark.integration

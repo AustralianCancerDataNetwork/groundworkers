@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from typing import Literal, cast, get_args
 
 from groundworkers._env import (
@@ -55,6 +56,7 @@ from groundworkers.transports.rest import create_rest_app
 # never passed through argparse still has to be validated here.
 MCPTransport = Literal["stdio", "sse", "streamable-http"]
 _MCP_TRANSPORTS: tuple[str, ...] = get_args(MCPTransport)
+logger = logging.getLogger(__name__)
 
 
 def create_server(
@@ -95,6 +97,20 @@ def create_server(
         vocab_service=app.services.vocab,
     )
     register_system_resources(server, config, app.adapters.omop_graph)
+
+    for plugin in app.plugin_definitions:
+        state = app.plugins.get(plugin.name)
+        if state is not None:
+            try:
+                plugin.register(server, state)
+            except Exception:
+                logger.exception(
+                    "Groundworkers plugin %s failed during MCP registration.",
+                    plugin.name,
+                )
+                app.plugin_issues[plugin.name] = "plugin registration failed"
+                app.plugins.pop(plugin.name, None)
+
     return server
 
 
@@ -185,6 +201,8 @@ def main(argv: list[str] | None = None) -> None:
                     "tools": server.describe_tools(),
                     "prompts": server.describe_prompts(),
                     "resources": server.describe_resources(),
+                    "plugins": sorted(application.plugins),
+                    "plugin_issues": dict(sorted(application.plugin_issues.items())),
                 },
                 indent=2,
             )

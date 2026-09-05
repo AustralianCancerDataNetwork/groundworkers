@@ -25,6 +25,7 @@ Use `ConceptGroundingService` when you want:
 - one ranked grounding workflow for free text
 - domain and vocabulary constraints applied consistently
 - optional ancestry constraints via `parent_ids`
+- explicit control over whether the embedding tier participates
 - an explanation of which resolver tier matched
 
 ## Core method

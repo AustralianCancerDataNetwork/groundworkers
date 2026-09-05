@@ -39,6 +39,7 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
         parent_ids: list[int] | None = None,
         standard_only: bool = False,
         active_only: bool = False,
+        include_embedding: bool = True,
     ) -> dict[str, Any]:
         """Ground free text to ranked OMOP concept candidates.
 
@@ -121,6 +122,7 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
                 parent_ids=resolved_parent_ids,
                 standard_only=standard_only,
                 active_only=active_only,
+                include_embedding=include_embedding,
             )
             duration_ms = (time.perf_counter() - started) * 1000.0
             logger.info(

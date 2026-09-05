@@ -1,6 +1,6 @@
 # Extending groundworkers
 
-This guide is for contributors adding new adapters, services, MCP tools, or REST endpoints. The main rule is simple:
+This guide is for contributors adding new adapters, services, MCP tools, or REST endpoints directly in this repository. If you're adding a self-contained capability as a separate installable package instead — no core file edits — see [Plugin architecture](plugins.md). The main rule here is simple:
 
 **keep business logic above the transport layer and keep dependency details below it.**
 

@@ -7,23 +7,26 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from groundskeeping.contracts import (
+    Command,
+    CommandPlan,
+    CommandStep,
+)
 
 from groundworkers.application.setup.maintenance_runs import (
-    MaintenancePlan,
     MaintenanceRunner,
     MaintenanceRunStore,
-    MaintenanceStep,
     ResourceBusyError,
     RunStatus,
     StepStatus,
+    run_plan_resources,
     safe_command_display,
 )
-from groundworkers.application.setup.models import MaintenanceCommand
-from groundworkers.tui.presenters.runs import RunsPresenter, format_progress_tail
+from groundworkers.tui.presenters.runs import RunsPresenter
 
 
-def _command(*code: str) -> MaintenanceCommand:
-    return MaintenanceCommand(argv=(sys.executable, "-c", *code))
+def _command(*code: str) -> Command:
+    return Command(argv=(sys.executable, "-c", *code))
 
 
 def _wait(store: MaintenanceRunStore, run_id: str):
@@ -41,11 +44,11 @@ def _wait(store: MaintenanceRunStore, run_id: str):
 
 def test_run_survives_store_reopen_and_keeps_ordered_logs(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
-    plan = MaintenancePlan(
+    plan = CommandPlan(
         kind="test",
         steps=(
-            MaintenanceStep("one", _command("print('one')"), affected_resources=("cdm:x",)),
-            MaintenanceStep("two", _command("print('two')"), affected_resources=("cdm:x",)),
+            CommandStep("one", _command("print('one')"), affected_resources=("cdm:x",)),
+            CommandStep("two", _command("print('two')"), affected_resources=("cdm:x",)),
         ),
     )
 
@@ -63,17 +66,35 @@ def test_run_survives_store_reopen_and_keeps_ordered_logs(tmp_path: Path) -> Non
     assert reopened.log_paths[1].read_text(encoding="utf-8").strip() == "two"
 
 
+def test_store_tail_log_delegates_to_bounded_shared_reader(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    run = store.create(
+        CommandPlan(
+            kind="tail",
+            steps=(CommandStep("one", _command("pass")),),
+        )
+    )
+    path = run.root / "step.log"
+    path.write_text("0123456789", encoding="utf-8")
+    store.save(replace(run, steps=(replace(run.steps[0], log_path=path),)))
+
+    assert store.tail_log(run.run_id, max_bytes=4) == "6789"
+
+
 def test_failed_run_retries_from_first_incomplete_step(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
-    plan = MaintenancePlan(
+    plan = CommandPlan(
         kind="retry",
         steps=(
-            MaintenanceStep("done", _command("print('done')")),
-            MaintenanceStep("bad", _command("raise SystemExit(3)")),
+            CommandStep("done", _command("print('done')")),
+            CommandStep("bad", _command("raise SystemExit(3)")),
         ),
     )
 
-    created = MaintenanceRunner(store).start(plan)
+    created = MaintenanceRunner(store).start(
+        plan,
+        postflight=(_command("print('verified')"),),
+    )
     finished = _wait(store, created.run_id)
     retry = store.retry(created.run_id)
 
@@ -86,9 +107,9 @@ def test_failed_run_retries_from_first_incomplete_step(tmp_path: Path) -> None:
 def test_runner_retry_preserves_lineage_on_the_started_record(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
     created = MaintenanceRunner(store).start(
-        MaintenancePlan(
+        CommandPlan(
             kind="retry-lineage",
-            steps=(MaintenanceStep("bad", _command("raise SystemExit(3)")),),
+            steps=(CommandStep("bad", _command("raise SystemExit(3)")),),
         )
     )
     _wait(store, created.run_id)
@@ -101,13 +122,15 @@ def test_runner_retry_preserves_lineage_on_the_started_record(tmp_path: Path) ->
 
 def test_postflight_is_persisted_and_can_be_rerun(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
-    plan = MaintenancePlan(
+    plan = CommandPlan(
         kind="postflight",
-        steps=(MaintenanceStep("work", _command("pass")),),
-        postflight=(_command("print('verified')"),),
+        steps=(CommandStep("work", _command("pass")),),
     )
 
-    created = MaintenanceRunner(store).start(plan)
+    created = MaintenanceRunner(store).start(
+        plan,
+        postflight=(_command("print('verified')"),),
+    )
     finished = _wait(store, created.run_id)
     rerun = MaintenanceRunner(store).rerun_postflight(created.run_id)
     rerun_finished = _wait(store, rerun.run_id)
@@ -117,13 +140,56 @@ def test_postflight_is_persisted_and_can_be_rerun(tmp_path: Path) -> None:
     assert rerun_finished.status is RunStatus.SUCCEEDED
 
 
+def test_failed_postflight_persists_its_generated_log_path(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    created = MaintenanceRunner(store).start(
+        CommandPlan(
+            kind="postflight-log",
+            steps=(CommandStep("work", _command("pass")),),
+        ),
+        postflight=(_command("raise SystemExit(4)"),),
+    )
+
+    finished = _wait(store, created.run_id)
+
+    assert finished.status is RunStatus.FAILED
+    assert finished.postflight_status is StepStatus.FAILED
+    assert len(finished.postflight_log_paths) == 1
+    assert finished.postflight_log_paths[0].is_file()
+
+
+def test_plan_level_resources_are_persisted_and_used_for_locking(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    plan = CommandPlan(
+        kind="plan-resource",
+        steps=(CommandStep("one", _command("pass")),),
+        affected_resources=("db:plan",),
+    )
+
+    run = store.create(plan)
+    conflicting = store.create(plan)
+
+    assert run.affected_resources == ("db:plan",)
+    assert run_plan_resources(store.get(run.run_id)) == ("db:plan",)
+
+    locks = store.acquire(run, run_plan_resources(run))
+    with pytest.raises(ResourceBusyError):
+        store.acquire(conflicting, run_plan_resources(conflicting))
+    store.release(run, locks)
+
+    failed = store.save(replace(run, status=RunStatus.FAILED))
+    retry = store.retry(failed.run_id)
+
+    assert retry.affected_resources == ("db:plan",)
+
+
 def test_resource_lock_blocks_active_conflict_and_releases(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
     first = store.create(
-        MaintenancePlan(kind="one", steps=(MaintenanceStep("one", _command("pass"), ("db:x",)),))
+        CommandPlan(kind="one", steps=(CommandStep("one", _command("pass"), ("db:x",)),))
     )
     second = store.create(
-        MaintenancePlan(kind="two", steps=(MaintenanceStep("two", _command("pass"), ("db:x",)),))
+        CommandPlan(kind="two", steps=(CommandStep("two", _command("pass"), ("db:x",)),))
     )
     locks = store.acquire(first, ("db:x",))
 
@@ -137,7 +203,7 @@ def test_resource_lock_blocks_active_conflict_and_releases(tmp_path: Path) -> No
 
 def test_interrupted_supervisor_is_recovered_on_reopen(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
-    run = store.create(MaintenancePlan(kind="interrupted", steps=(MaintenanceStep("one", _command("pass")),)))
+    run = store.create(CommandPlan(kind="interrupted", steps=(CommandStep("one", _command("pass")),)))
     run = store.save(
         run.__class__(
             **{
@@ -158,9 +224,9 @@ def test_interrupted_supervisor_is_recovered_on_reopen(tmp_path: Path) -> None:
 def test_orphaned_pending_run_is_recovered_after_launch_grace(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
     run = store.create(
-        MaintenancePlan(
+        CommandPlan(
             kind="orphaned-pending",
-            steps=(MaintenanceStep("one", _command("pass")),),
+            steps=(CommandStep("one", _command("pass")),),
         )
     )
     run = store.save(
@@ -178,9 +244,9 @@ def test_orphaned_pending_run_is_recovered_after_launch_grace(tmp_path: Path) ->
 def test_pending_cancellation_is_terminal(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
     run = store.create(
-        MaintenancePlan(
+        CommandPlan(
             kind="pending-cancel",
-            steps=(MaintenanceStep("one", _command("pass")),),
+            steps=(CommandStep("one", _command("pass")),),
         )
     )
 
@@ -191,7 +257,7 @@ def test_pending_cancellation_is_terminal(tmp_path: Path) -> None:
 
 
 def test_command_display_redacts_credentials() -> None:
-    command = MaintenanceCommand(
+    command = Command(
         argv=("tool", "postgresql://user:password@example/db"),
         environment=(("API_TOKEN", "secret"), ("OA_CONFIG_PATH", "/tmp/config.toml")),
     )
@@ -199,31 +265,19 @@ def test_command_display_redacts_credentials() -> None:
     display = safe_command_display(command)
 
     assert "password" not in display
-    assert "secret" not in display
+    assert "API_TOKEN=***" in display
     assert "OA_CONFIG_PATH=/tmp/config.toml" in display
 
 
-def test_format_progress_tail_collapses_tqdm_updates() -> None:
-    raw = (
-        "Preparing embedding population.\n"
-        "\x1b[2KProcessing: 10%|          | 712500/6898521 "
-        "[3:40:27<32:16:00, 53.25concept/s]\r"
-        "\x1b[2KProcessing: 10%|          | 712600/6898521 "
-        "[3:40:30<32:13:22, 53.33concept/s]\n"
+def test_secret_environment_keys_are_rejected_before_persistence(tmp_path: Path) -> None:
+    store = MaintenanceRunStore(tmp_path)
+    command = Command(
+        argv=("tool",),
+        environment=(("API_TOKEN", "secret"),),
     )
 
-    rendered = format_progress_tail(raw)
-
-    assert "Preparing embedding population." in rendered
-    assert rendered.count("Processing:") == 1
-    assert "712,600/6,898,521" in rendered
-    assert "53.33concept/s" in rendered
-    assert "ETA 32:13:22" in rendered
-    assert "█" in rendered
-
-
-def test_format_progress_tail_keeps_non_progress_output() -> None:
-    assert format_progress_tail("\x1b[31mworker warning\x1b[0m\n") == "worker warning"
+    with pytest.raises(ValueError, match="secret-bearing"):
+        store.create(CommandPlan(kind="secret", steps=(CommandStep("one", command),)))
 
 
 def test_state_files_are_private_and_corrupt_records_do_not_hide_valid_runs(
@@ -231,9 +285,9 @@ def test_state_files_are_private_and_corrupt_records_do_not_hide_valid_runs(
 ) -> None:
     store = MaintenanceRunStore(tmp_path)
     valid = store.create(
-        MaintenancePlan(
+        CommandPlan(
             kind="valid",
-            steps=(MaintenanceStep("one", _command("pass")),),
+            steps=(CommandStep("one", _command("pass")),),
         )
     )
     corrupt = store.root / "corrupt"
@@ -250,9 +304,9 @@ def test_state_files_are_private_and_corrupt_records_do_not_hide_valid_runs(
 def test_run_controls_match_the_selected_plan_and_state(tmp_path: Path) -> None:
     store = MaintenanceRunStore(tmp_path)
     run = store.create(
-        MaintenancePlan(
+        CommandPlan(
             kind="no-postflight",
-            steps=(MaintenanceStep("one", _command("pass")),),
+            steps=(CommandStep("one", _command("pass")),),
         )
     )
     view = RunsPresenter(store).landing(selected_run_id=run.run_id)
@@ -262,3 +316,32 @@ def test_run_controls_match_the_selected_plan_and_state(tmp_path: Path) -> None:
     assert actions["runs.retry"].disabled is True
     assert actions["runs.postflight"].disabled is True
     assert actions["runs.export"].disabled is False
+
+
+def test_selected_log_step_falls_back_while_current_step_starts(
+    tmp_path: Path,
+) -> None:
+    from groundworkers.tui.pages.setup import _selected_log_step
+
+    store = MaintenanceRunStore(tmp_path)
+    run = store.create(
+        CommandPlan(
+            kind="starting-step",
+            steps=(
+                CommandStep("one", _command("pass")),
+                CommandStep("two", _command("pass")),
+            ),
+        )
+    )
+    first_log = run.root / "step-01.log"
+    first_log.write_text("earlier output", encoding="utf-8")
+    current = replace(
+        run,
+        current_step=1,
+        steps=(
+            replace(run.steps[0], log_path=first_log),
+            replace(run.steps[1], status=StepStatus.RUNNING),
+        ),
+    )
+
+    assert _selected_log_step(current) == 0

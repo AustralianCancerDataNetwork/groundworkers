@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+from groundskeeping.contracts import Command
 from groundskeeping.contracts.wizards import ReviewStep, WizardResultStatus
 from oa_configurator import save_stack_config
 
 from groundworkers.application.setup.models import (
     ConnectionResult,
     DiagnosticSeverity,
-    MaintenanceCommand,
-    MaintenanceLaunch,
     ResourceDiagnostic,
 )
 from groundworkers.tui.state import SetupSession
@@ -40,13 +40,14 @@ def _readiness(*codes: str) -> ConnectionResult:
 
 class _RecordingLauncher:
     def __init__(self) -> None:
-        self.commands: list[MaintenanceCommand] = []
+        self.commands: list[Command] = []
 
-    def __call__(self, commands):
+    def __call__(self, commands, **_kwargs):
         self.commands = list(commands)
-        return tuple(
-            MaintenanceLaunch(command=c, pid=1000 + i, log_path=Path("/tmp/x.log"))
-            for i, c in enumerate(commands)
+        return SimpleNamespace(
+            run_id="test-run",
+            total=len(self.commands),
+            root=Path("/tmp/test-run"),
         )
 
 
@@ -62,10 +63,16 @@ def test_selections_start_from_what_the_check_found(tmp_path: Path) -> None:
     assert values["create_functional_indexes"] is False
 
 
-def test_running_only_indexes_needs_no_csv_step(tmp_path: Path) -> None:
+def test_running_only_indexes_needs_no_csv_step(
+    tmp_path: Path, monkeypatch
+) -> None:
     launcher = _RecordingLauncher()
+    monkeypatch.setattr(
+        "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
+        launcher,
+    )
     controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness("functional_indexes_missing"), launcher=launcher
+        _session(tmp_path), _readiness("functional_indexes_missing")
     )
     controller.submit(
         {
@@ -118,14 +125,18 @@ def test_a_directory_without_the_csvs_is_rejected(tmp_path: Path) -> None:
     assert "predicate_classification.csv" in transition.issues[0].message
 
 
-def test_a_directory_with_the_csvs_is_accepted(tmp_path: Path) -> None:
+def test_a_directory_with_the_csvs_is_accepted(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "predicates"
     source.mkdir()
     (source / "predicate_classification.csv").write_text("x", encoding="utf-8")
     (source / "predicate_mapping.csv").write_text("x", encoding="utf-8")
     launcher = _RecordingLauncher()
+    monkeypatch.setattr(
+        "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
+        launcher,
+    )
     controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness(), launcher=launcher
+        _session(tmp_path), _readiness()
     )
     controller.submit(
         {
@@ -179,15 +190,11 @@ def test_the_review_warns_about_cluster_and_the_two_stage_fulltext(
 
 
 def test_cancelling_changes_nothing(tmp_path: Path) -> None:
-    launcher = _RecordingLauncher()
-    controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness(), launcher=launcher
-    )
+    controller = GraphMaintenanceWizardController(_session(tmp_path), _readiness())
 
     result = controller.cancel()
 
     assert result.status is WizardResultStatus.CANCELLED
-    assert launcher.commands == []
 
 
 def test_the_bundled_classification_is_offered_as_a_choice(tmp_path: Path) -> None:
@@ -213,11 +220,15 @@ def test_the_bundled_classification_is_offered_as_a_choice(tmp_path: Path) -> No
 
 
 def test_accepting_the_bundled_classification_skips_the_path_step(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     launcher = _RecordingLauncher()
+    monkeypatch.setattr(
+        "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
+        launcher,
+    )
     controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness(), launcher=launcher
+        _session(tmp_path), _readiness()
     )
     controller.submit(
         {
@@ -239,15 +250,21 @@ def test_accepting_the_bundled_classification_skips_the_path_step(
     assert str(packaged_predicate_csv_dir()) in launcher.commands[0].argv
 
 
-def test_the_bundled_default_can_be_overridden(tmp_path: Path) -> None:
+def test_the_bundled_default_can_be_overridden(
+    tmp_path: Path, monkeypatch
+) -> None:
     """A site may maintain its own classification, so this stays a prompt."""
     source = tmp_path / "site-predicates"
     source.mkdir()
     (source / "predicate_classification.csv").write_text("x", encoding="utf-8")
     (source / "predicate_mapping.csv").write_text("x", encoding="utf-8")
     launcher = _RecordingLauncher()
+    monkeypatch.setattr(
+        "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
+        launcher,
+    )
     controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness(), launcher=launcher
+        _session(tmp_path), _readiness()
     )
     controller.submit(
         {
