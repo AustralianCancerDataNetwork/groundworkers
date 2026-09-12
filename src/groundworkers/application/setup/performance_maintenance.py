@@ -38,7 +38,11 @@ def build_performance_commands(
 ) -> tuple[Command, ...]:
     """Build safe, out-of-process commands for the selected indexes."""
 
-    environment = () if config_path is None else (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
+    environment = (
+        ()
+        if config_path is None
+        else (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
+    )
     commands: list[Command] = []
     selected = set(actions)
     if PerformanceRemediation.TRIGRAM_INDEXES in selected:
@@ -55,7 +59,9 @@ def build_performance_commands(
         )
     if PerformanceRemediation.EMBEDDING_INDEX in selected:
         if not embedding_model:
-            raise ValueError("A registered embedding model is required to build its index.")
+            raise ValueError(
+                "A registered embedding model is required to build its index."
+            )
         commands.append(
             Command(
                 argv=(
@@ -114,7 +120,11 @@ def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             for table, column, index_name in (
                 ("concept", "concept_name", "idx_concept_lower_name_trgm"),
-                ("concept_synonym", "concept_synonym_name", "idx_concept_synonym_lower_name_trgm"),
+                (
+                    "concept_synonym",
+                    "concept_synonym_name",
+                    "idx_concept_synonym_lower_name_trgm",
+                ),
             ):
                 connection.execute(
                     text(

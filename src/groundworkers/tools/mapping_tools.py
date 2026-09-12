@@ -4,10 +4,13 @@ from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
+from groundworkers.base.sql import NormalizationProfile
 from groundworkers.services import MappingService
 
 
-def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: MappingService) -> None:
+def register_mapping_tools(
+    server: GroundworkersMCPServer, mapping_service: MappingService
+) -> None:
     @server.tool("concept_search_normalized")
     def concept_search_normalized(
         query: str,
@@ -15,15 +18,21 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
         vocabulary_id: str | None = None,
         standard_only: bool = False,
         include_synonyms: bool = False,
-        normalization_profile: str = "verbatim",
+        normalization_profile: NormalizationProfile = NormalizationProfile.VERBATIM,
         remove_stop_phrases: bool = True,
         limit: int = 20,
+        allow_unindexed_scan: bool = False,
     ) -> dict[str, Any]:
         """Deterministic near-verbatim concept search after text normalization.
 
         Both the query and candidate concept names are normalized before comparison,
         making this more robust to punctuation and whitespace variation than
         concept_search_exact while remaining fully deterministic (no ranking).
+
+        Comparison is on a computed expression, so this tool needs a vocabulary_id
+        filter; otherwise it scans every concept and the call is refused. A domain
+        filter is not selective enough to qualify. Set allow_unindexed_scan to
+        accept the scan deliberately.
         """
         safe_limit = max(1, min(limit, 50))
         try:
@@ -36,6 +45,7 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
                 normalization_profile=normalization_profile,
                 remove_stop_phrases=remove_stop_phrases,
                 limit=safe_limit,
+                allow_unindexed_scan=allow_unindexed_scan,
             )
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}

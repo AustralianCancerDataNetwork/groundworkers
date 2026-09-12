@@ -29,7 +29,7 @@ class StubVocabAdapter:
             )
         ]
 
-    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20):
+    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20, allow_unindexed_scan=False):
         return [
             ConceptMatch(
                 concept={
@@ -349,6 +349,7 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
 
     result = service.concept_candidate_bundle(
         "type 2 diabetes",
+        vocabulary_id="ICD10CM",
         include_hierarchy_context=True,
         include_relationship_summary=True,
     )
@@ -531,7 +532,7 @@ def _service_with_recording_vocab(emb=None):
 def test_active_only_true_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes", active_only=True)
+    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM", active_only=True)
 
     assert vocab.received["exact"]["active_only"] is True
     assert vocab.received["normalized"]["active_only"] is True
@@ -541,7 +542,7 @@ def test_active_only_true_propagated_to_all_lexical_channels():
 def test_active_only_false_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes", active_only=False)
+    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM", active_only=False)
 
     assert vocab.received["exact"]["active_only"] is False
     assert vocab.received["normalized"]["active_only"] is False
@@ -565,7 +566,7 @@ def test_parent_ids_propagated_to_all_lexical_channels():
 def test_parent_ids_none_propagated_when_not_specified():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes")
+    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM")
 
     assert vocab.received["exact"]["parent_ids"] is None
     assert vocab.received["normalized"]["parent_ids"] is None
@@ -724,3 +725,22 @@ def test_nearest_standard_ancestor_still_succeeds_through_ancestry():
     assert result["found"] is True
     assert result["selected_parent"]["concept_id"] == 301
     assert result["warnings"] == []
+
+
+def test_candidate_bundle_omits_the_normalized_channel_when_it_would_scan():
+    service = MappingService(StubVocabAdapter(), graph_service=StubGraphAdapter())
+
+    result = service.concept_candidate_bundle("diabetes")
+
+    assert result["channels"]["normalized"]["available"] is False
+    assert result["channels"]["normalized"]["results"] == []
+    assert any("normalized channel omitted" in warning for warning in result["warnings"])
+
+
+def test_candidate_bundle_keeps_the_normalized_channel_when_a_vocabulary_bounds_it():
+    service = MappingService(StubVocabAdapter(), graph_service=StubGraphAdapter())
+
+    result = service.concept_candidate_bundle("diabetes", vocabulary_id="SNOMED")
+
+    assert result["channels"]["normalized"]["available"] is True
+    assert not any("normalized channel omitted" in warning for warning in result["warnings"])

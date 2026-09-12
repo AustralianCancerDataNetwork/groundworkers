@@ -69,6 +69,7 @@ def test_concept_search_normalized_clamps_limit_and_calls_service():
                 "normalization_profile": "verbatim",
                 "remove_stop_phrases": True,
                 "limit": 50,
+                "allow_unindexed_scan": False,
             },
         )
     ]

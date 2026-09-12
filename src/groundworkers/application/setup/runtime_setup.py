@@ -498,4 +498,3 @@ def _optional_str(value: object) -> str | None:
 
 def _effective_tool(stack: StackConfig, name: str):
     return stack.tools.get(name)
-

@@ -20,7 +20,11 @@ from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.base.concept_payload import serialise_concept_view
 from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
-from groundworkers.base.sql import effective_schema
+from groundworkers.base.sql import (
+    NormalizationProfile,
+    effective_schema,
+    normalization_expression,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,16 +36,18 @@ logger = logging.getLogger(__name__)
 # Return types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ConceptMatch:
     """A single candidate returned by search_exact, search_normalized, or search_fulltext."""
+
     #: Shared concept payload from ``base.concept_payload``, so search results
     #: report the same flags as every other concept-returning tool. Previously a
     #: parallel field list carrying ``standard_concept`` and raw
     #: ``invalid_reason`` but no ``classification_concept``, which meant search
     #: could not distinguish a classification concept from an unflagged one.
     concept: dict[str, Any]
-    match_source: str           # "name" | "synonym"
+    match_source: str  # "name" | "synonym"
     matched_synonym: str | None = None
     ts_rank: float | None = None
 
@@ -99,9 +105,23 @@ StandardMapping = ConceptMappingResult
 RelatedConceptMapping = ConceptMappingResult
 
 
+def _require_bounded_normalized_query(
+    vocabulary_id: str | None,
+    parent_ids: list[int] | None,
+) -> None:
+    if not (vocabulary_id or parent_ids):
+        raise GroundworkersError(
+            "INVALID_INPUT",
+            "search_normalized would scan the whole concept table. Pass "
+            "vocabulary_id or parent_ids (domain alone is not selective enough), "
+            "or pass allow_unindexed_scan=True to accept the scan.",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class VocabService:
     """Direct Python API for OMOP vocabulary search and concept navigation.
@@ -244,7 +264,9 @@ class VocabService:
                         Concept.domain_id,
                         Concept.concept_class_id,
                         Concept.is_standard_expr().label("standard_concept"),
-                        Concept.is_classification_expr().label("classification_concept"),
+                        Concept.is_classification_expr().label(
+                            "classification_concept"
+                        ),
                         Concept.is_valid_expr().label("is_active"),
                     ).where(func.lower(Concept.concept_name) == q.lower()),
                     domain=domain,
@@ -270,12 +292,20 @@ class VocabService:
                                 Concept.domain_id,
                                 Concept.concept_class_id,
                                 Concept.is_standard_expr().label("standard_concept"),
-                                Concept.is_classification_expr().label("classification_concept"),
+                                Concept.is_classification_expr().label(
+                                    "classification_concept"
+                                ),
                                 Concept.is_valid_expr().label("is_active"),
                                 Concept_Synonym.concept_synonym_name,
                             )
-                            .join(Concept_Synonym, Concept_Synonym.concept_id == Concept.concept_id)
-                            .where(func.lower(Concept_Synonym.concept_synonym_name) == q.lower()),
+                            .join(
+                                Concept_Synonym,
+                                Concept_Synonym.concept_id == Concept.concept_id,
+                            )
+                            .where(
+                                func.lower(Concept_Synonym.concept_synonym_name)
+                                == q.lower()
+                            ),
                             domain=domain,
                             vocabulary_id=vocabulary_id,
                             standard_only=standard_only,
@@ -284,10 +314,16 @@ class VocabService:
                         ).limit(remaining)
 
                         if seen_ids:
-                            syn_stmt = syn_stmt.where(Concept.concept_id.not_in(list(seen_ids)))
+                            syn_stmt = syn_stmt.where(
+                                Concept.concept_id.not_in(list(seen_ids))
+                            )
 
                         for row in session.execute(syn_stmt).all():
-                            results.append(_row_to_match(row, "synonym", row.concept_synonym_name, None))
+                            results.append(
+                                _row_to_match(
+                                    row, "synonym", row.concept_synonym_name, None
+                                )
+                            )
 
         except GroundworkersError:
             raise
@@ -311,15 +347,21 @@ class VocabService:
         standard_only: bool = False,
         active_only: bool = False,
         include_synonyms: bool = False,
-        normalization_profile: str = "verbatim",
+        normalization_profile: str
+        | NormalizationProfile = NormalizationProfile.VERBATIM,
         parent_ids: list[int] | None = None,
         remove_stop_phrases: bool = True,
         limit: int = 20,
+        allow_unindexed_scan: bool = False,
     ) -> list[ConceptMatch]:
         """Deterministic near-verbatim search after text normalization.
 
         Both the query and candidate text are normalized before comparison.
         Distinct from full-text search: deterministic equality, not ranked retrieval.
+
+        Requires ``vocabulary_id`` or ``parent_ids`` because ``domain`` alone is
+        not selective enough to avoid a whole-table scan. Pass
+        ``allow_unindexed_scan=True`` to accept that scan explicitly.
         """
         normalized_query, _steps = normalize_text_for_matching(
             query,
@@ -329,13 +371,16 @@ class VocabService:
         if not normalized_query:
             raise ValueError("query must be a non-empty string after normalization")
 
+        if not allow_unindexed_scan:
+            _require_bounded_normalized_query(vocabulary_id, parent_ids)
+
         results: list[ConceptMatch] = []
         seen_ids: set[int] = set()
 
         try:
-            name_expr = _normalized_sql_expr(
+            name_expr = normalization_expression(
                 Concept.concept_name,
-                normalization_profile=normalization_profile,
+                profile=normalization_profile,
                 remove_stop_phrases=remove_stop_phrases,
             )
 
@@ -349,7 +394,9 @@ class VocabService:
                         Concept.domain_id,
                         Concept.concept_class_id,
                         Concept.is_standard_expr().label("standard_concept"),
-                        Concept.is_classification_expr().label("classification_concept"),
+                        Concept.is_classification_expr().label(
+                            "classification_concept"
+                        ),
                         Concept.is_valid_expr().label("is_active"),
                     ).where(name_expr == normalized_query),
                     domain=domain,
@@ -366,9 +413,9 @@ class VocabService:
                 if include_synonyms:
                     remaining = limit - len(results)
                     if remaining > 0:
-                        syn_expr = _normalized_sql_expr(
+                        syn_expr = normalization_expression(
                             Concept_Synonym.concept_synonym_name,
-                            normalization_profile=normalization_profile,
+                            profile=normalization_profile,
                             remove_stop_phrases=remove_stop_phrases,
                         )
                         syn_stmt = self._apply_concept_filters(
@@ -380,11 +427,16 @@ class VocabService:
                                 Concept.domain_id,
                                 Concept.concept_class_id,
                                 Concept.is_standard_expr().label("standard_concept"),
-                                Concept.is_classification_expr().label("classification_concept"),
+                                Concept.is_classification_expr().label(
+                                    "classification_concept"
+                                ),
                                 Concept.is_valid_expr().label("is_active"),
                                 Concept_Synonym.concept_synonym_name,
                             )
-                            .join(Concept_Synonym, Concept_Synonym.concept_id == Concept.concept_id)
+                            .join(
+                                Concept_Synonym,
+                                Concept_Synonym.concept_id == Concept.concept_id,
+                            )
                             .where(syn_expr == normalized_query),
                             domain=domain,
                             vocabulary_id=vocabulary_id,
@@ -394,10 +446,16 @@ class VocabService:
                         ).limit(remaining)
 
                         if seen_ids:
-                            syn_stmt = syn_stmt.where(Concept.concept_id.not_in(list(seen_ids)))
+                            syn_stmt = syn_stmt.where(
+                                Concept.concept_id.not_in(list(seen_ids))
+                            )
 
                         for row in session.execute(syn_stmt).all():
-                            results.append(_row_to_match(row, "synonym", row.concept_synonym_name, None))
+                            results.append(
+                                _row_to_match(
+                                    row, "synonym", row.concept_synonym_name, None
+                                )
+                            )
 
         except GroundworkersError:
             raise
@@ -451,25 +509,31 @@ class VocabService:
             name_rank = func.ts_rank(sa_col("concept_name_tsvector"), tsquery)
 
             with self._cdm.session() as session:
-                name_stmt = self._apply_concept_filters(
-                    select(
-                        Concept.concept_id,
-                        Concept.concept_name,
-                        Concept.concept_code,
-                        Concept.vocabulary_id,
-                        Concept.domain_id,
-                        Concept.concept_class_id,
-                        Concept.is_standard_expr().label("standard_concept"),
-                        Concept.is_classification_expr().label("classification_concept"),
-                        Concept.is_valid_expr().label("is_active"),
-                        name_rank.label("ts_rank"),
-                    ).where(sa_col("concept_name_tsvector").op("@@")(tsquery)),
-                    domain=domain,
-                    vocabulary_id=vocabulary_id,
-                    standard_only=standard_only,
-                    active_only=active_only,
-                    parent_ids=parent_ids,
-                ).order_by(name_rank.desc()).limit(limit)
+                name_stmt = (
+                    self._apply_concept_filters(
+                        select(
+                            Concept.concept_id,
+                            Concept.concept_name,
+                            Concept.concept_code,
+                            Concept.vocabulary_id,
+                            Concept.domain_id,
+                            Concept.concept_class_id,
+                            Concept.is_standard_expr().label("standard_concept"),
+                            Concept.is_classification_expr().label(
+                                "classification_concept"
+                            ),
+                            Concept.is_valid_expr().label("is_active"),
+                            name_rank.label("ts_rank"),
+                        ).where(sa_col("concept_name_tsvector").op("@@")(tsquery)),
+                        domain=domain,
+                        vocabulary_id=vocabulary_id,
+                        standard_only=standard_only,
+                        active_only=active_only,
+                        parent_ids=parent_ids,
+                    )
+                    .order_by(name_rank.desc())
+                    .limit(limit)
+                )
 
                 if min_rank > 0.0:
                     name_stmt = name_stmt.where(name_rank >= min_rank)
@@ -481,37 +545,63 @@ class VocabService:
                 if include_synonyms and self._fts_synonym_sidecar:
                     remaining = limit - len(results)
                     if remaining > 0:
-                        syn_rank = func.ts_rank(sa_col("concept_synonym_name_tsvector"), tsquery)
-                        syn_stmt = self._apply_concept_filters(
-                            select(
-                                Concept.concept_id,
-                                Concept.concept_name,
-                                Concept.concept_code,
-                                Concept.vocabulary_id,
-                                Concept.domain_id,
-                                Concept.concept_class_id,
-                                Concept.is_standard_expr().label("standard_concept"),
-                                Concept.is_classification_expr().label("classification_concept"),
-                                Concept.is_valid_expr().label("is_active"),
-                                Concept_Synonym.concept_synonym_name,
-                                syn_rank.label("ts_rank"),
+                        syn_rank = func.ts_rank(
+                            sa_col("concept_synonym_name_tsvector"), tsquery
+                        )
+                        syn_stmt = (
+                            self._apply_concept_filters(
+                                select(
+                                    Concept.concept_id,
+                                    Concept.concept_name,
+                                    Concept.concept_code,
+                                    Concept.vocabulary_id,
+                                    Concept.domain_id,
+                                    Concept.concept_class_id,
+                                    Concept.is_standard_expr().label(
+                                        "standard_concept"
+                                    ),
+                                    Concept.is_classification_expr().label(
+                                        "classification_concept"
+                                    ),
+                                    Concept.is_valid_expr().label("is_active"),
+                                    Concept_Synonym.concept_synonym_name,
+                                    syn_rank.label("ts_rank"),
+                                )
+                                .join(
+                                    Concept_Synonym,
+                                    Concept_Synonym.concept_id == Concept.concept_id,
+                                )
+                                .where(
+                                    sa_col("concept_synonym_name_tsvector").op("@@")(
+                                        tsquery
+                                    )
+                                ),
+                                domain=domain,
+                                vocabulary_id=vocabulary_id,
+                                standard_only=standard_only,
+                                active_only=active_only,
+                                parent_ids=parent_ids,
                             )
-                            .join(Concept_Synonym, Concept_Synonym.concept_id == Concept.concept_id)
-                            .where(sa_col("concept_synonym_name_tsvector").op("@@")(tsquery)),
-                            domain=domain,
-                            vocabulary_id=vocabulary_id,
-                            standard_only=standard_only,
-                            active_only=active_only,
-                            parent_ids=parent_ids,
-                        ).order_by(syn_rank.desc()).limit(remaining)
+                            .order_by(syn_rank.desc())
+                            .limit(remaining)
+                        )
 
                         if min_rank > 0.0:
                             syn_stmt = syn_stmt.where(syn_rank >= min_rank)
                         if seen_ids:
-                            syn_stmt = syn_stmt.where(Concept.concept_id.not_in(list(seen_ids)))
+                            syn_stmt = syn_stmt.where(
+                                Concept.concept_id.not_in(list(seen_ids))
+                            )
 
                         for row in session.execute(syn_stmt).all():
-                            results.append(_row_to_match(row, "synonym", row.concept_synonym_name, float(row.ts_rank)))
+                            results.append(
+                                _row_to_match(
+                                    row,
+                                    "synonym",
+                                    row.concept_synonym_name,
+                                    float(row.ts_rank),
+                                )
+                            )
 
         except GroundworkersError:
             raise
@@ -551,7 +641,9 @@ class VocabService:
                     Concept.is_valid_expr().label("is_active"),
                 ).where(Concept.concept_id.in_(concept_ids))
 
-                source_rows = {int(r.concept_id): r for r in session.execute(source_stmt).all()}
+                source_rows = {
+                    int(r.concept_id): r for r in session.execute(source_stmt).all()
+                }
 
                 non_standard_ids = [
                     cid for cid, r in source_rows.items() if not r.standard_concept
@@ -570,13 +662,20 @@ class VocabService:
                             Concept.domain_id,
                             Concept.concept_class_id,
                             Concept.is_standard_expr().label("standard_concept"),
-                            Concept.is_classification_expr().label("classification_concept"),
+                            Concept.is_classification_expr().label(
+                                "classification_concept"
+                            ),
                             Concept.is_valid_expr().label("is_active"),
                         )
-                        .join(Concept, Concept.concept_id == Concept_Relationship.concept_id_2)
+                        .join(
+                            Concept,
+                            Concept.concept_id == Concept_Relationship.concept_id_2,
+                        )
                         .where(
                             Concept_Relationship.concept_id_1.in_(non_standard_ids),
-                            Concept_Relationship.relationship_id.in_(self.IDENTITY_RELATIONSHIP_IDS),
+                            Concept_Relationship.relationship_id.in_(
+                                self.IDENTITY_RELATIONSHIP_IDS
+                            ),
                             Concept_Relationship.is_valid_expr(),
                             Concept.is_standard_expr(),
                         )
@@ -720,7 +819,9 @@ class VocabService:
                     Concept.is_valid_expr().label("is_active"),
                 ).where(Concept.concept_id.in_(concept_ids))
 
-                source_rows = {int(r.concept_id): r for r in session.execute(source_stmt).all()}
+                source_rows = {
+                    int(r.concept_id): r for r in session.execute(source_stmt).all()
+                }
 
                 related: dict[int, list[MappedConcept]] = {}
                 if source_rows:
@@ -735,12 +836,19 @@ class VocabService:
                             Concept.domain_id,
                             Concept.concept_class_id,
                             Concept.is_standard_expr().label("standard_concept"),
-                            Concept.is_classification_expr().label("classification_concept"),
+                            Concept.is_classification_expr().label(
+                                "classification_concept"
+                            ),
                             Concept.is_valid_expr().label("is_active"),
                         )
-                        .join(Concept, Concept.concept_id == Concept_Relationship.concept_id_2)
+                        .join(
+                            Concept,
+                            Concept.concept_id == Concept_Relationship.concept_id_2,
+                        )
                         .where(
-                            Concept_Relationship.concept_id_1.in_(list(source_rows.keys())),
+                            Concept_Relationship.concept_id_1.in_(
+                                list(source_rows.keys())
+                            ),
                             Concept_Relationship.relationship_id.in_(relationship_ids),
                             Concept_Relationship.is_valid_expr(),
                         )
@@ -782,6 +890,7 @@ class VocabService:
 # ---------------------------------------------------------------------------
 # Serialisation helpers
 # ---------------------------------------------------------------------------
+
 
 def serialise_concept_match(match: ConceptMatch) -> dict:
     """Serialise a ConceptMatch to a JSON-safe dict for MCP tool responses."""
@@ -838,10 +947,11 @@ _WHITESPACE_RE = re.compile(r"\s+")
 def normalize_text_for_matching(
     text: str,
     *,
-    profile: str = "verbatim",
+    profile: str | NormalizationProfile = NormalizationProfile.VERBATIM,
     remove_stop_phrases: bool = True,
 ) -> tuple[str, list[str]]:
     """Normalize free text into a deterministic matching form."""
+    profile = NormalizationProfile(profile)
     steps: list[str] = ["strip", "lowercase", "collapse_whitespace"]
     normalised = _WHITESPACE_RE.sub(" ", text.strip().lower())
 
@@ -862,19 +972,9 @@ def normalize_text_for_matching(
     return normalised, steps
 
 
-def _normalized_sql_expr(column, *, normalization_profile: str, remove_stop_phrases: bool):
-    expr = func.lower(column)
-    if remove_stop_phrases:
-        expr = func.regexp_replace(expr, r'\m(?:nos|nec|nfs|unspecified|unknown|other|w/?o|w/)\M', " ", "g")
-    expr = func.regexp_replace(expr, r"[^a-z0-9]+", " ", "g")
-    if normalization_profile == "drug_name":
-        expr = func.replace(expr, " extended release ", " ")
-        expr = func.replace(expr, " modified release ", " ")
-    expr = func.regexp_replace(expr, r"\s+", " ", "g")
-    return func.btrim(expr)
-
-
-def _row_to_match(row, match_source: str, matched_synonym: str | None, ts_rank: float | None) -> ConceptMatch:
+def _row_to_match(
+    row, match_source: str, matched_synonym: str | None, ts_rank: float | None
+) -> ConceptMatch:
     return ConceptMatch(
         concept=serialise_concept_view(row, detail="flags"),
         match_source=match_source,

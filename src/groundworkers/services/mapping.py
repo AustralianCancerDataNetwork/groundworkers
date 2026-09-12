@@ -5,6 +5,7 @@ from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.sql import NormalizationProfile
 from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
 from groundworkers.services.vocab import (
@@ -45,9 +46,11 @@ class MappingService:
         vocabulary_id: str | None = None,
         standard_only: bool = False,
         include_synonyms: bool = False,
-        normalization_profile: str = "verbatim",
+        normalization_profile: str
+        | NormalizationProfile = NormalizationProfile.VERBATIM,
         remove_stop_phrases: bool = True,
         limit: int = 20,
+        allow_unindexed_scan: bool = False,
     ) -> dict[str, Any]:
         stripped = query.strip()
         if not stripped:
@@ -58,7 +61,9 @@ class MappingService:
             remove_stop_phrases=remove_stop_phrases,
         )
         if not normalized_query:
-            raise ValueError("query must contain searchable content after normalization")
+            raise ValueError(
+                "query must contain searchable content after normalization"
+            )
 
         results = self._vocab.search_normalized(
             normalized_query,
@@ -69,6 +74,7 @@ class MappingService:
             normalization_profile=normalization_profile,
             remove_stop_phrases=remove_stop_phrases,
             limit=limit,
+            allow_unindexed_scan=allow_unindexed_scan,
         )
         serialised = []
         for match in results:
@@ -82,7 +88,9 @@ class MappingService:
             row["matched_text"] = matched_text
             row["matched_text_normalized"] = matched_text_normalized
             row["match_mode"] = (
-                "synonym_exact_normalized" if match.match_source == "synonym" else "label_exact_normalized"
+                "synonym_exact_normalized"
+                if match.match_source == "synonym"
+                else "label_exact_normalized"
             )
             serialised.append(row)
         return {
@@ -92,6 +100,52 @@ class MappingService:
             "normalization_steps": normalization_steps,
             "results": serialised,
         }
+
+    def _normalized_channel(
+        self,
+        query: str,
+        *,
+        domain: str | None,
+        vocabulary_id: str | None,
+        standard_only: bool,
+        active_only: bool,
+        parent_ids: list[int] | None,
+        limit: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """The bundle's normalized channel, dropped when it would scan the table.
+
+        A bundle surveys what each channel can offer, so an unaffordable
+        normalized query is omitted the way an absent full-text sidecar is.
+        Letting the underlying guard raise would fail the whole bundle over one
+        optional channel.
+        """
+        available = bool(vocabulary_id or parent_ids)
+        if not available:
+            return (
+                {"available": False, "results": [], "retrieval_notes": []},
+                "normalized channel omitted: it would scan the whole concept table "
+                "without a vocabulary_id or parent_ids filter",
+            )
+        results = self._vocab.search_normalized(
+            query,
+            domain=domain or None,
+            vocabulary_id=vocabulary_id or None,
+            standard_only=standard_only,
+            active_only=active_only,
+            include_synonyms=False,
+            parent_ids=parent_ids,
+            limit=limit,
+        )
+        return (
+            {
+                "available": True,
+                "results": [serialise_concept_match(r) for r in results],
+                "retrieval_notes": [
+                    "deterministic normalized equality over concept labels"
+                ],
+            },
+            None,
+        )
 
     def concept_candidate_bundle(
         self,
@@ -112,7 +166,9 @@ class MappingService:
         per_channel_limit: int = 10,
         overall_limit: int = 30,
         model_name: str | None = None,
-        _embedding_result: dict[str, Any] | GroundworkersError | object = _SYNC_EMBEDDING,
+        _embedding_result: dict[str, Any]
+        | GroundworkersError
+        | object = _SYNC_EMBEDDING,
     ) -> dict[str, Any]:
         stripped = query.strip()
         if not stripped:
@@ -144,25 +200,24 @@ class MappingService:
         channels["exact"] = {
             "available": True,
             "results": [serialise_concept_match(r) for r in exact_results],
-            "retrieval_notes": ["case-insensitive exact match over concept_name and optional synonyms"],
+            "retrieval_notes": [
+                "case-insensitive exact match over concept_name and optional synonyms"
+            ],
         }
 
         if include_normalized:
-            normalized_results = self._vocab.search_normalized(
+            channel, warning = self._normalized_channel(
                 query,
-                domain=domain or None,
-                vocabulary_id=vocabulary_id or None,
+                domain=domain,
+                vocabulary_id=vocabulary_id,
                 standard_only=standard_only,
                 active_only=active_only,
-                include_synonyms=False,
                 parent_ids=parent_ids,
                 limit=per_channel_limit,
             )
-            channels["normalized"] = {
-                "available": True,
-                "results": [serialise_concept_match(r) for r in normalized_results],
-                "retrieval_notes": ["deterministic normalized equality over concept labels"],
-            }
+            channels["normalized"] = channel
+            if warning:
+                warnings.append(warning)
 
         if include_fulltext:
             fts_results, fts_available = self._vocab.search_fulltext(
@@ -178,15 +233,25 @@ class MappingService:
             channels["fulltext"] = {
                 "available": fts_available,
                 "results": [serialise_concept_match(r) for r in fts_results],
-                "retrieval_notes": ["ranked PostgreSQL full-text retrieval"] if fts_available else [],
+                "retrieval_notes": ["ranked PostgreSQL full-text retrieval"]
+                if fts_available
+                else [],
             }
             if not fts_available:
-                warnings.append("full-text sidecar columns unavailable; fulltext channel omitted")
+                warnings.append(
+                    "full-text sidecar columns unavailable; fulltext channel omitted"
+                )
 
         if include_embedding:
             if self._emb is None:
-                channels["embedding"] = {"available": False, "results": [], "retrieval_notes": []}
-                warnings.append("embedding adapter not configured; embedding channel omitted")
+                channels["embedding"] = {
+                    "available": False,
+                    "results": [],
+                    "retrieval_notes": [],
+                }
+                warnings.append(
+                    "embedding adapter not configured; embedding channel omitted"
+                )
             else:
                 try:
                     if _embedding_result is _SYNC_EMBEDDING:
@@ -206,14 +271,20 @@ class MappingService:
                         embedding_result = _embedding_result
                     emb_notes = ["semantic retrieval from omop-emb"]
                     if parent_ids:
-                        emb_notes.append("parent_ids hierarchy filter was not applied at the embedding level")
+                        emb_notes.append(
+                            "parent_ids hierarchy filter was not applied at the embedding level"
+                        )
                     channels["embedding"] = {
                         "available": True,
                         "results": embedding_result.get("results", []),
                         "retrieval_notes": emb_notes,
                     }
                 except GroundworkersError as exc:
-                    channels["embedding"] = {"available": False, "results": [], "retrieval_notes": []}
+                    channels["embedding"] = {
+                        "available": False,
+                        "results": [],
+                        "retrieval_notes": [],
+                    }
                     warnings.append(f"embedding channel unavailable: {exc.message}")
 
         candidate_union = self._build_candidate_union(channels, overall_limit)
@@ -221,18 +292,31 @@ class MappingService:
 
         standardized_candidates: list[dict[str, Any]] = []
         if include_standard_mappings and candidate_union:
-            concept_ids = [row["concept_id"] for row in candidate_union if not row.get("standard_concept")]
+            concept_ids = [
+                row["concept_id"]
+                for row in candidate_union
+                if not row.get("standard_concept")
+            ]
             if concept_ids:
                 mappings = self._vocab.navigate_to_standard(concept_ids)
-                standardized_candidates = [serialise_standard_mapping(m) for m in mappings]
-                mapping_index = {m["source_concept_id"]: m["standard_concepts"] for m in standardized_candidates}
+                standardized_candidates = [
+                    serialise_standard_mapping(m) for m in mappings
+                ]
+                mapping_index = {
+                    m["source_concept_id"]: m["standard_concepts"]
+                    for m in standardized_candidates
+                }
                 for row in candidate_union:
-                    row["mapped_standard_concepts"] = mapping_index.get(row["concept_id"], [])
+                    row["mapped_standard_concepts"] = mapping_index.get(
+                        row["concept_id"], []
+                    )
 
         if include_hierarchy_context and self._graph is not None:
             for row in candidate_union[: min(5, len(candidate_union))]:
                 try:
-                    row["ancestor_preview"] = self._graph.get_ancestors(row["concept_id"], 2)[:3]
+                    row["ancestor_preview"] = self._graph.get_ancestors(
+                        row["concept_id"], 2
+                    )[:3]
                 except Exception:
                     row["ancestor_preview"] = []
         elif include_hierarchy_context:
@@ -332,13 +416,17 @@ class MappingService:
         _grounded_result: dict[str, Any] | object = _SYNC_GROUNDING,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+            )
         if (query is None) == (concept_id is None):
             raise ValueError("exactly one of query or concept_id must be provided")
 
         if query is not None:
             if self._grounding is None:
-                raise GroundworkersError("BACKEND_UNAVAIL", "grounding service is not configured")
+                raise GroundworkersError(
+                    "BACKEND_UNAVAIL", "grounding service is not configured"
+                )
             if _grounded_result is _SYNC_GROUNDING:
                 grounded = self._grounding.ground(
                     query.strip(),
@@ -364,8 +452,12 @@ class MappingService:
             seed = results[0]
             seed_concept = self._graph.get_concept(seed["concept_id"])
             if seed_concept is None:
-                raise GroundworkersError("NOT_FOUND", f"Concept {seed['concept_id']} was not found")
-            seed_is_standard = seed_concept is not None and seed_concept.get("standard_concept")
+                raise GroundworkersError(
+                    "NOT_FOUND", f"Concept {seed['concept_id']} was not found"
+                )
+            seed_is_standard = seed_concept is not None and seed_concept.get(
+                "standard_concept"
+            )
             selection_reason = (
                 "exact_standard_match"
                 if seed.get("match_kind") == "EXACT" and seed_is_standard
@@ -375,8 +467,14 @@ class MappingService:
             assert concept_id is not None
             seed_concept = self._graph.get_concept(concept_id)
             if seed_concept is None:
-                raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
-            seed = {"concept_id": concept_id, "concept_name": seed_concept["concept_name"], "match_kind": "DIRECT"}
+                raise GroundworkersError(
+                    "NOT_FOUND", f"Concept {concept_id} was not found"
+                )
+            seed = {
+                "concept_id": concept_id,
+                "concept_name": seed_concept["concept_name"],
+                "match_kind": "DIRECT",
+            }
             selection_reason = "direct_concept_input"
 
         warnings: list[str] = []
@@ -387,7 +485,7 @@ class MappingService:
             ancestors = self._graph.get_ancestors(seed_concept["concept_id"], max_depth)
             standard_ancestors = [a for a in ancestors if a.get("standard_concept")]
             selected_parent = standard_ancestors[0] if standard_ancestors else None
-            alternatives = standard_ancestors[1: min(5, len(standard_ancestors))]
+            alternatives = standard_ancestors[1 : min(5, len(standard_ancestors))]
 
             if selected_parent is None:
                 # No standard ancestor. Before giving up, follow "Maps to": a
@@ -409,7 +507,10 @@ class MappingService:
                     )
 
         path_payload = []
-        if selected_parent and selected_parent["concept_id"] != seed_concept["concept_id"]:
+        if (
+            selected_parent
+            and selected_parent["concept_id"] != seed_concept["concept_id"]
+        ):
             path_info = self._graph.find_path(
                 seed_concept["concept_id"],
                 selected_parent["concept_id"],
@@ -484,7 +585,9 @@ class MappingService:
         model_name: str | None = None,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+            )
         if concept_id <= 0:
             raise ValueError("concept_id must be a positive integer")
         concept = self._graph.get_concept(concept_id)
@@ -498,11 +601,17 @@ class MappingService:
                 concept["concept_code"],
             )
         if include_ancestors:
-            result["ancestors"] = self._graph.get_ancestors(concept_id, max(1, min(ancestor_limit, 10)))[:ancestor_limit]
+            result["ancestors"] = self._graph.get_ancestors(
+                concept_id, max(1, min(ancestor_limit, 10))
+            )[:ancestor_limit]
         if include_descendants:
-            result["descendants"] = self._graph.get_descendants(concept_id, max(1, min(descendant_limit, 10)))[:descendant_limit]
+            result["descendants"] = self._graph.get_descendants(
+                concept_id, max(1, min(descendant_limit, 10))
+            )[:descendant_limit]
         if include_relationship_summary:
-            result["relationship_summary"] = self._summarise_edges(self._graph.get_edges(concept_id))
+            result["relationship_summary"] = self._summarise_edges(
+                self._graph.get_edges(concept_id)
+            )
         if include_neighbors:
             neighbors = self._graph.get_neighbors(
                 concept_id=concept_id,
@@ -515,7 +624,9 @@ class MappingService:
         if include_embedding_neighbors:
             if self._emb is None:
                 result["embedding_neighbors"] = []
-                result.setdefault("warnings", []).append("embedding adapter not configured")
+                result.setdefault("warnings", []).append(
+                    "embedding adapter not configured"
+                )
             else:
                 result["embedding_neighbors"] = self._emb.get_neighbours(
                     concept_id=concept_id,
@@ -530,20 +641,28 @@ class MappingService:
         concept_code: str,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+            )
         if not vocabulary_id.strip():
             raise ValueError("vocabulary_id must be a non-empty string")
         if not concept_code.strip():
             raise ValueError("concept_code must be a non-empty string")
         source_list = self._graph.get_concept_by_code(vocabulary_id, concept_code)
         if not source_list:
-            raise GroundworkersError("NOT_FOUND", f"Concept {vocabulary_id}:{concept_code} was not found")
+            raise GroundworkersError(
+                "NOT_FOUND", f"Concept {vocabulary_id}:{concept_code} was not found"
+            )
         source = source_list[0]
         mappings = self._vocab.navigate_to_value([source["concept_id"]])
         mapping = mappings[0] if mappings else None
         return {
             "source_concept": source,
-            "maps_to_value": serialise_related_concept_mapping(mapping)["related_concepts"] if mapping else [],
+            "maps_to_value": serialise_related_concept_mapping(mapping)[
+                "related_concepts"
+            ]
+            if mapping
+            else [],
         }
 
     def concept_resolve_mapping_expression(
@@ -555,9 +674,17 @@ class MappingService:
         resolve_to_standard: bool = True,
     ) -> dict[str, Any]:
         if self._graph is None:
-            raise GroundworkersError("BACKEND_UNAVAIL", "omop_graph backend is not configured")
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+            )
         if not items:
-            return {"expression_items": [], "resolved_concept_ids": [], "resolved_concepts": [], "excluded_concepts": [], "counts": {"resolved": 0, "excluded": 0}}
+            return {
+                "expression_items": [],
+                "resolved_concept_ids": [],
+                "resolved_concepts": [],
+                "excluded_concepts": [],
+                "counts": {"resolved": 0, "excluded": 0},
+            }
         resolved: dict[int, dict[str, Any]] = {}
         excluded: dict[int, dict[str, Any]] = {}
         try:
@@ -568,7 +695,9 @@ class MappingService:
                     continue
                 concepts_to_apply = [concept]
                 if resolve_to_standard and not concept.get("standard_concept"):
-                    mapped = self._graph.map_to_standard(concept["vocabulary_id"], concept["concept_code"])
+                    mapped = self._graph.map_to_standard(
+                        concept["vocabulary_id"], concept["concept_code"]
+                    )
                     mapped_standards = mapped.get("standard_concepts", [])
                     if mapped_standards:
                         concepts_to_apply = mapped_standards
@@ -576,10 +705,16 @@ class MappingService:
                 for base in concepts_to_apply:
                     expanded.append(base)
                     if item.get("include_descendants"):
-                        expanded.extend(self._graph.get_descendants(base["concept_id"], 2))
+                        expanded.extend(
+                            self._graph.get_descendants(base["concept_id"], 2)
+                        )
                 target = excluded if item.get("exclude") else resolved
                 for entry in expanded:
-                    if domain and entry.get("domain_id") and str(entry["domain_id"]).lower() != domain.lower():
+                    if (
+                        domain
+                        and entry.get("domain_id")
+                        and str(entry["domain_id"]).lower() != domain.lower()
+                    ):
                         continue
                     target[int(entry["concept_id"])] = entry
             if deduplicate:
@@ -628,14 +763,22 @@ class MappingService:
             ref = reference_index.pop(key, None)
             predicted_ids = self._extract_predicted_ids(pred, top_k=top_k)
             if ref is None:
-                extra_prediction_cases.append({"source_key": key, "predicted_concept_ids": predicted_ids})
+                extra_prediction_cases.append(
+                    {"source_key": key, "predicted_concept_ids": predicted_ids}
+                )
                 continue
             reference_id = int(ref["reference_standard_concept_id"])
-            domain_name = str(ref.get("domain_id") or pred.get("domain_id") or "UNKNOWN")
+            domain_name = str(
+                ref.get("domain_id") or pred.get("domain_id") or "UNKNOWN"
+            )
             bucket = by_domain_counts.setdefault(domain_name, Counter())
             if reference_id in predicted_ids:
                 agreement_cases.append(
-                    {"source_key": key, "reference_standard_concept_id": reference_id, "predicted_concept_ids": predicted_ids}
+                    {
+                        "source_key": key,
+                        "reference_standard_concept_id": reference_id,
+                        "predicted_concept_ids": predicted_ids,
+                    }
                 )
                 bucket["agreement"] += 1
             else:
@@ -651,7 +794,9 @@ class MappingService:
         missing_reference_cases = [
             {
                 "source_key": key,
-                "reference_standard_concept_id": int(row["reference_standard_concept_id"]),
+                "reference_standard_concept_id": int(
+                    row["reference_standard_concept_id"]
+                ),
                 "domain_id": row.get("domain_id"),
             }
             for key, row in reference_index.items()
@@ -659,8 +804,12 @@ class MappingService:
 
         total_compared = len(agreement_cases) + len(disagreement_cases)
         summary_metrics = {
-            "accuracy": round(len(agreement_cases) / total_compared, 6) if total_compared else 0.0,
-            "coverage": round(total_compared / len(reference_mappings), 6) if reference_mappings else 0.0,
+            "accuracy": round(len(agreement_cases) / total_compared, 6)
+            if total_compared
+            else 0.0,
+            "coverage": round(total_compared / len(reference_mappings), 6)
+            if reference_mappings
+            else 0.0,
             "agreement_count": len(agreement_cases),
             "disagreement_count": len(disagreement_cases),
             "missing_reference_count": len(missing_reference_cases),
@@ -689,10 +838,11 @@ class MappingService:
     def _backfill_candidate_metadata(
         self, candidate_union: list[dict[str, Any]], warnings: list[str]
     ) -> None:
-        """Fill identity metadata for candidates surfaced only via embedding.
-        """
+        """Fill identity metadata for candidates surfaced only via embedding."""
         incomplete_ids = [
-            row["concept_id"] for row in candidate_union if row.get("vocabulary_id") is None
+            row["concept_id"]
+            for row in candidate_union
+            if row.get("vocabulary_id") is None
         ]
         if not incomplete_ids:
             return
@@ -719,7 +869,9 @@ class MappingService:
                 row["standard_concept"] = view.get("standard_concept")
 
     @staticmethod
-    def _build_candidate_union(channels: dict[str, dict[str, Any]], overall_limit: int) -> list[dict[str, Any]]:
+    def _build_candidate_union(
+        channels: dict[str, dict[str, Any]], overall_limit: int
+    ) -> list[dict[str, Any]]:
         union: dict[int, dict[str, Any]] = {}
         channel_order = ("exact", "normalized", "fulltext", "embedding")
         for channel_name in channel_order:
@@ -737,7 +889,9 @@ class MappingService:
                         "vocabulary_id": item.get("vocabulary_id"),
                         "domain_id": item.get("domain_id"),
                         "concept_class_id": item.get("concept_class_id"),
-                        "standard_concept": item.get("standard_concept", item.get("is_standard")),
+                        "standard_concept": item.get(
+                            "standard_concept", item.get("is_standard")
+                        ),
                         "retrieved_by": [],
                     },
                 )

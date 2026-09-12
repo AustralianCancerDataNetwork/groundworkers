@@ -111,6 +111,9 @@ def resolve_database_targets(
     cdm = resolver.resolve_database(groundworkers.cdm_db)
     if not isinstance(cdm, ResolvedCDMDatabase):
         return ()
+    cdm_schema = cdm.schema_name or (
+        "main" if cdm.connection.url.startswith("sqlite") else "public"
+    )
     embedding_target: DatabaseTarget | None = None
     expected_embedding_model_name: str | None = None
     embedding_safe_url: str | None = None
@@ -146,7 +149,7 @@ def resolve_database_targets(
             database_entry_name=cdm.name,
             connection_name=cdm.connection.name,
             safe_url=cdm.connection.safe_url,
-            cdm_schema=cdm.schema_name or "main",
+            cdm_schema=cdm_schema,
             vocabulary_schema=cdm.vocab_schema,
             connection_url=cdm.connection.url,
             role="cdm",
@@ -157,7 +160,7 @@ def resolve_database_targets(
             database_entry_name=cdm.name,
             connection_name=cdm.connection.name,
             safe_url=cdm.connection.safe_url,
-            cdm_schema=cdm.schema_name or "main",
+            cdm_schema=cdm_schema,
             vocabulary_schema=cdm.vocab_schema,
             connection_url=cdm.connection.url,
             role="graph",
@@ -168,7 +171,7 @@ def resolve_database_targets(
             database_entry_name=cdm.name,
             connection_name=cdm.connection.name,
             safe_url=cdm.connection.safe_url,
-            cdm_schema=cdm.schema_name or "main",
+            cdm_schema=cdm_schema,
             vocabulary_schema=cdm.vocab_schema,
             connection_url=cdm.connection.url,
             role="groundworkers",
@@ -478,9 +481,7 @@ def _groundworkers_embedding_model_diagnostics(
                         "Groundworkers grounding model could not be checked because the omop-emb model registry table is missing.",
                     ),
                 )
-            rows = _embedding_registry_rows(
-                connection, schema=target.embedding_schema
-            )
+            rows = _embedding_registry_rows(connection, schema=target.embedding_schema)
     except Exception as exc:
         # Broad except: reported as a redacted warning.
         failure = classify_connection_error(exc)
@@ -903,10 +904,7 @@ def _column_has_null_values(
     column = quote_identifier(connection, column_name)
     return bool(
         connection.execute(
-            text(
-                f"SELECT EXISTS (SELECT 1 FROM {qualified} "
-                f"WHERE {column} IS NULL)"
-            )
+            text(f"SELECT EXISTS (SELECT 1 FROM {qualified} WHERE {column} IS NULL)")
         ).scalar()
     )
 

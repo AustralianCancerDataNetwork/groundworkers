@@ -18,6 +18,37 @@ from groundworkers.application.setup.models import (
 )
 from groundworkers.tui.presenters.base import SetupPresenterBase
 
+_INDEX_DIAGNOSTICS = (
+    (
+        "performance.graph.fulltext",
+        "Graph",
+        "Full-text indexes",
+        "database.graph",
+        (
+            "fulltext_sidecar_missing",
+            "fulltext_indexes_missing",
+            "fulltext_sidecar_unpopulated",
+        ),
+        "fulltext_indexes_present",
+    ),
+    (
+        "performance.graph.functional",
+        "Graph",
+        "Functional text indexes",
+        "database.graph",
+        ("functional_indexes_missing",),
+        "functional_indexes_present",
+    ),
+    (
+        "performance.groundworkers.trigram",
+        "Groundworkers",
+        "Trigram indexes",
+        "database.groundworkers",
+        ("trigram_indexes_missing", "trigram_indexes_unchecked"),
+        "trigram_indexes_present",
+    ),
+)
+
 
 class PerformancePresenter(SetupPresenterBase):
     """Present index readiness without mixing it into database setup."""
@@ -87,7 +118,8 @@ class PerformancePresenter(SetupPresenterBase):
             ),
             message=(
                 "Graph indexes are prepared from Graph Setup. Groundworkers trigram "
-                "and embedding indexes can be prepared here when their backends support it."
+                "and embedding indexes can be prepared here when their backends "
+                "support it."
             ),
         )
 
@@ -99,37 +131,38 @@ class PerformancePresenter(SetupPresenterBase):
         embedding_coverage: EmbeddingCoverageReport | None,
     ) -> tuple[tuple[tuple[str, str, str, str], SemanticStatus], ...]:
         by_key = {result.target_key: result for result in connections}
-        graph = by_key.get("database.graph")
-        groundworkers = by_key.get("database.groundworkers")
-        graph_fulltext = _diagnostic_outcome(
-            graph,
-            (
-                "fulltext_sidecar_missing",
-                "fulltext_indexes_missing",
-                "fulltext_sidecar_unpopulated",
-            ),
-            present_code="fulltext_indexes_present",
-        )
-        graph_functional = _diagnostic_outcome(
-            graph,
-            ("functional_indexes_missing",),
-            present_code="functional_indexes_present",
-        )
-        trigram = _diagnostic_outcome(
-            groundworkers,
-            ("trigram_indexes_missing", "trigram_indexes_unchecked"),
-            present_code="trigram_indexes_present",
+        index_rows = tuple(
+            _status_row(
+                key,
+                area,
+                index,
+                _diagnostic_outcome(
+                    by_key.get(target_key),
+                    missing_codes,
+                    present_code=present_code,
+                ),
+            )
+            for key, area, index, target_key, missing_codes, present_code in _INDEX_DIAGNOSTICS
         )
         embedding = _embedding_index_outcome(
             embedding_configuration,
             embedding_coverage,
         )
         return (
-            (("performance.graph.fulltext", "Graph", "Full-text indexes", graph_fulltext[0]), graph_fulltext[1]),
-            (("performance.graph.functional", "Graph", "Functional text indexes", graph_functional[0]), graph_functional[1]),
-            (("performance.groundworkers.trigram", "Groundworkers", "Trigram indexes", trigram[0]), trigram[1]),
-            (("performance.embeddings.index", "Embeddings", "Vector index", embedding[0]), embedding[1]),
+            *index_rows,
+            _status_row(
+                "performance.embeddings.index", "Embeddings", "Vector index", embedding
+            ),
         )
+
+
+def _status_row(
+    key: str,
+    area: str,
+    index: str,
+    outcome: tuple[str, SemanticStatus],
+) -> tuple[tuple[str, str, str, str], SemanticStatus]:
+    return ((key, area, index, outcome[0]), outcome[1])
 
 
 def _diagnostic_outcome(
@@ -143,7 +176,10 @@ def _diagnostic_outcome(
     if not result.connected:
         return "Connection failed", SemanticStatus.ERROR
     codes = {diagnostic.code: diagnostic for diagnostic in result.diagnostics}
-    if any(code in codes and codes[code].severity is DiagnosticSeverity.WARNING for code in missing_codes):
+    if any(
+        code in codes and codes[code].severity is DiagnosticSeverity.WARNING
+        for code in missing_codes
+    ):
         return "Missing", SemanticStatus.WARNING
     if present_code in codes:
         return "Ready", SemanticStatus.OK

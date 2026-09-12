@@ -48,10 +48,28 @@ vocab.search_normalized(
     vocabulary_id: str | None = None,
     standard_only: bool = False,
     limit: int = 20,
+    allow_unindexed_scan: bool = False,
 ) -> list[ConceptMatch]
 ```
 
 Normalized search: lowercases and strips punctuation from both the query and concept names before matching. Catches common surface-form differences (abbreviations, spacing, case) that exact search misses without the false-positive risk of full-text search.
+
+#### Why this one needs a selective filter
+
+Comparison is on a *computed* expression, so an ordinary index on `concept_name` cannot serve it. Without a selective filter the planner scans every concept. Measured against a 1.7M-concept CDM:
+
+| Call | Time |
+| --- | --- |
+| unconstrained | 40s |
+| `domain='Drug'` | 25s |
+| `vocabulary_id='MedDRA'` | 0.4s |
+
+So the call is **refused** unless one of the following holds:
+
+- `vocabulary_id` or `parent_ids` is given. Note that `domain` does **not** count — it looks like a narrowing filter but the largest domains hold millions of concepts, which is why `domain='Drug'` still took 25s.
+- `allow_unindexed_scan=True`, which accepts the scan deliberately.
+
+It raises rather than warning because the unindexed query does not fail — it succeeds slowly, so a warning gets absorbed into a caller that merely looks sluggish.
 
 ### `search_fulltext`
 

@@ -99,10 +99,7 @@ class DatabasePresenter(SetupPresenterBase):
                 ),
             )
 
-        result_by_key = {
-            item.target_key: _database_result(item)
-            for item in results
-        }
+        result_by_key = {item.target_key: _database_result(item) for item in results}
         rows = [
             _target_row(target, result_by_key.get(target.key)) for target in targets
         ]
@@ -171,7 +168,9 @@ def _database_result(result: ConnectionResult) -> ConnectionResult:
     )
 
 
-def _database_results(results: Sequence[ConnectionResult]) -> tuple[ConnectionResult, ...]:
+def _database_results(
+    results: Sequence[ConnectionResult],
+) -> tuple[ConnectionResult, ...]:
     return tuple(_database_result(result) for result in results)
 
 

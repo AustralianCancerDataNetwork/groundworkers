@@ -62,4 +62,7 @@ def test_performance_commands_run_trigram_before_embedding_index() -> None:
     assert commands[0].argv[-1] == "trigram"
     assert commands[1].argv[1:3] == ("maintenance", "rebuild-index")
     assert "--index-type" in commands[1].argv
-    assert all(command.environment == (("OA_CONFIG_PATH", "/tmp/config.toml"),) for command in commands)
+    assert all(
+        command.environment == (("OA_CONFIG_PATH", "/tmp/config.toml"),)
+        for command in commands
+    )

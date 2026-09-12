@@ -103,8 +103,14 @@ class PerformanceMaintenanceWizardController:
     def apply(self) -> WizardResult:
         try:
             commands = build_performance_commands(
-                tuple(remediation for remediation in PerformanceRemediation if remediation in self._selected),
-                embedding_model=(self._coverage.index.model_name if self._coverage else None),
+                tuple(
+                    remediation
+                    for remediation in PerformanceRemediation
+                    if remediation in self._selected
+                ),
+                embedding_model=(
+                    self._coverage.index.model_name if self._coverage else None
+                ),
                 config_path=self._session.configuration.path,
             )
             if not commands:
@@ -171,11 +177,15 @@ class PerformanceMaintenanceWizardController:
             title="Confirm",
             review=WizardReview(
                 changes=tuple(
-                    ReviewChange(field=_LABELS[item], before="available", after="will run")
+                    ReviewChange(
+                        field=_LABELS[item], before="available", after="will run"
+                    )
                     for item in PerformanceRemediation
                     if item in self._selected
                 ),
-                effects=("Each index build runs as a background command with its own log.",),
+                effects=(
+                    "Each index build runs as a background command with its own log.",
+                ),
                 warnings=(
                     "Index builds can be slow and temporarily use substantial database resources.",
                 ),
@@ -192,14 +202,18 @@ class PerformanceMaintenanceWizardController:
             step=step,
             step_index=self._step_index,
             step_count=len(steps),
-            values={} if isinstance(step, ReviewStep) else {
+            values={}
+            if isinstance(step, ReviewStep)
+            else {
                 key: remediation in self._selected
                 for remediation, key in _FIELD_BY_REMEDIATION.items()
             },
             issues=issues,
             can_back=self._step_index > 0,
             can_next=not isinstance(step, ReviewStep),
-            can_apply=isinstance(step, ReviewStep) and step.review.ready_to_apply and not issues,
+            can_apply=isinstance(step, ReviewStep)
+            and step.review.ready_to_apply
+            and not issues,
             expected_revision=self._session.configuration.revision,
         )
 
@@ -210,12 +224,21 @@ class PerformanceMaintenanceWizardController:
             else:
                 self._selected.discard(remediation)
         if not self._selected:
-            return (ValidationIssue("Select at least one index to prepare.", "create_trigram_indexes"),)
+            return (
+                ValidationIssue(
+                    "Select at least one index to prepare.", "create_trigram_indexes"
+                ),
+            )
         return ()
 
 
 def _as_bool(value: object) -> bool:
-    return (isinstance(value, bool) and value) or str(value).strip().lower() in {"true", "yes", "1", "on"}
+    return (isinstance(value, bool) and value) or str(value).strip().lower() in {
+        "true",
+        "yes",
+        "1",
+        "on",
+    }
 
 
 __all__ = ["PerformanceMaintenanceWizardController"]
