@@ -1188,6 +1188,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="search_normalized">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-this-one-needs-a-selective-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this one needs a selective filter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1263,10 +1280,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#standardmapping" class="md-nav__link">
+  <a href="#conceptmappingresult" class="md-nav__link">
     <span class="md-ellipsis">
       
-        StandardMapping
+        ConceptMappingResult
       
     </span>
   </a>
@@ -2022,6 +2039,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="search_normalized">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-this-one-needs-a-selective-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why this one needs a selective filter
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -2097,10 +2131,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#standardmapping" class="md-nav__link">
+  <a href="#conceptmappingresult" class="md-nav__link">
     <span class="md-ellipsis">
       
-        StandardMapping
+        ConceptMappingResult
       
     </span>
   </a>
@@ -2248,9 +2282,40 @@
     <span class="n">vocabulary_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">standard_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span>
+    <span class="n">allow_unindexed_scan</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ConceptMatch</span><span class="p">]</span>
 </code></pre></div>
 <p>Normalized search: lowercases and strips punctuation from both the query and concept names before matching. Catches common surface-form differences (abbreviations, spacing, case) that exact search misses without the false-positive risk of full-text search.</p>
+<h4 id="why-this-one-needs-a-selective-filter">Why this one needs a selective filter</h4>
+<p>Comparison is on a <em>computed</em> expression, so an ordinary index on <code>concept_name</code> cannot serve it. Without a selective filter the planner scans every concept. Measured against a 1.7M-concept CDM:</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>unconstrained</td>
+<td>40s</td>
+</tr>
+<tr>
+<td><code>domain='Drug'</code></td>
+<td>25s</td>
+</tr>
+<tr>
+<td><code>vocabulary_id='MedDRA'</code></td>
+<td>0.4s</td>
+</tr>
+</tbody>
+</table>
+<p>So the call is <strong>refused</strong> unless one of the following holds:</p>
+<ul>
+<li><code>vocabulary_id</code> or <code>parent_ids</code> is given. Note that <code>domain</code> does <strong>not</strong> count — it looks like a narrowing filter but the largest domains hold millions of concepts, which is why <code>domain='Drug'</code> still took 25s.</li>
+<li><code>allow_unindexed_scan=True</code>, which accepts the scan deliberately.</li>
+</ul>
+<p>It raises rather than warning because the unindexed query does not fail — it succeeds slowly, so a warning gets absorbed into a caller that merely looks sluggish.</p>
 <h3 id="search_fulltext"><code>search_fulltext</code></h3>
 <div class="highlight"><pre><span></span><code><span class="n">vocab</span><span class="o">.</span><span class="n">search_fulltext</span><span class="p">(</span>
     <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -2269,22 +2334,22 @@
 <h3 id="navigate_to_standard"><code>navigate_to_standard</code></h3>
 <div class="highlight"><pre><span></span><code><span class="n">vocab</span><span class="o">.</span><span class="n">navigate_to_standard</span><span class="p">(</span>
     <span class="n">concept_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">StandardMapping</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ConceptMappingResult</span><span class="p">]</span>
 </code></pre></div>
 <p>Batch navigation: given a list of concept IDs (which may be non-standard), returns their standard OMOP equivalents by following <code>"Maps to"</code> relationship edges. Two queries total regardless of input list size.</p>
-<p>Concepts that are already standard are returned as self-mappings (<code>relationship_id="self"</code>). Concepts with no <code>"Maps to"</code> edge return an empty <code>standard_concepts</code> list. Concept IDs not found in the vocabulary are silently omitted.</p>
+<p>Concepts that are already standard are returned as self-mappings (<code>relationship_id="self"</code>). Concepts with no <code>"Maps to"</code> edge have an empty <code>targets</code> list. Concept IDs not found in the vocabulary are silently omitted.</p>
 <h3 id="navigate_to_value"><code>navigate_to_value</code></h3>
 <div class="highlight"><pre><span></span><code><span class="n">vocab</span><span class="o">.</span><span class="n">navigate_to_value</span><span class="p">(</span>
     <span class="n">concept_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RelatedConceptMapping</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ConceptMappingResult</span><span class="p">]</span>
 </code></pre></div>
-<p>Same batch navigation pattern as <code>navigate_to_standard</code>, but follows <code>"Maps to value"</code> relationship edges. Used for value-domain mapping in OMOP measurement and observation workflows.</p>
+<p>Same batch navigation pattern as <code>navigate_to_standard</code>, but follows <code>"Maps to value"</code> relationship edges. Used for value-domain mapping in OMOP measurement and observation workflows. Results use the same <code>ConceptMappingResult</code> shape, with targets in <code>targets</code>.</p>
 <h3 id="navigate_to_unit"><code>navigate_to_unit</code></h3>
 <div class="highlight"><pre><span></span><code><span class="n">vocab</span><span class="o">.</span><span class="n">navigate_to_unit</span><span class="p">(</span>
     <span class="n">concept_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RelatedConceptMapping</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">ConceptMappingResult</span><span class="p">]</span>
 </code></pre></div>
-<p>Batch navigation following <code>"Maps to unit"</code> relationship edges.</p>
+<p>Batch navigation following <code>"Maps to unit"</code> relationship edges. Results use the same <code>ConceptMappingResult</code> shape, with targets in <code>targets</code>.</p>
 <h2 id="return-types">Return types</h2>
 <h3 id="conceptmatch"><code>ConceptMatch</code></h3>
 <div class="highlight"><pre><span></span><code><span class="nd">@dataclass</span>
@@ -2301,29 +2366,28 @@
     <span class="n">matched_synonym</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
     <span class="n">ts_rank</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>  <span class="c1"># only set by search_fulltext</span>
 </code></pre></div>
-<h3 id="standardmapping"><code>StandardMapping</code></h3>
+<h3 id="conceptmappingresult"><code>ConceptMappingResult</code></h3>
 <div class="highlight"><pre><span></span><code><span class="nd">@dataclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">StandardMapping</span><span class="p">:</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConceptMappingResult</span><span class="p">:</span>
     <span class="n">source_concept_id</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">source_concept_name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">source_standard_concept</span><span class="p">:</span> <span class="nb">bool</span>
-    <span class="n">standard_concepts</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">MappedConcept</span><span class="p">]</span>
+    <span class="n">source_classification_concept</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">targets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">MappedConcept</span><span class="p">]</span>
 </code></pre></div>
 <h3 id="mappedconcept"><code>MappedConcept</code></h3>
 <div class="highlight"><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">MappedConcept</span><span class="p">:</span>
-    <span class="n">concept_id</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">concept_name</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">vocabulary_id</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">domain_id</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">concept_class_id</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">relationship_id</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># &quot;Maps to&quot;, &quot;Maps to value&quot;, &quot;Maps to unit&quot;, or &quot;self&quot;</span>
+    <span class="n">concept</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>  <span class="c1"># concept payload, including identity and quality fields</span>
+    <span class="n">relationship_id</span><span class="p">:</span> <span class="nb">str</span>     <span class="c1"># &quot;Maps to&quot;, &quot;Maps to value&quot;, &quot;Maps to unit&quot;, or &quot;self&quot;</span>
 </code></pre></div>
+<p>The direct Python API uses <code>targets</code> for all three navigation methods. MCP serialization names that list <code>standard_concepts</code> for <code>navigate_to_standard</code> and <code>related_concepts</code> for value and unit navigation.</p>
 <h2 id="serialization-helpers">Serialization helpers</h2>
 <p><code>VocabService</code> provides <code>serialise_*</code> helpers that convert the typed return objects to plain dicts suitable for MCP tool responses:</p>
 <ul>
 <li><code>serialise_concept_match(match: ConceptMatch) -&gt; dict</code></li>
-<li><code>serialise_standard_mapping(mapping: StandardMapping) -&gt; dict</code></li>
+<li><code>serialise_standard_mapping(mapping: ConceptMappingResult) -&gt; dict</code></li>
+<li><code>serialise_related_concept_mapping(mapping: ConceptMappingResult) -&gt; dict</code></li>
 </ul>
 <p>The search MCP tools in <code>search_tools.py</code> use these helpers to convert service results into the wire format. Direct Python consumers can use the dataclasses directly without serializing.</p>
 <h2 id="error-handling">Error handling</h2>

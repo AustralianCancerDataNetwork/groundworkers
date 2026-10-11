@@ -3789,7 +3789,7 @@ first, then merge the aligned results by their own item identifiers.</p>
 
 
 <h4 id="groundworkers.adapters.omop_emb.OmopEmbAdapter.get_neighbours" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">get_neighbours</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">model_name</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">get_neighbours</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
 
 </h4>
 
@@ -3797,6 +3797,9 @@ first, then merge the aligned results by their own item identifiers.</p>
     <div class="doc doc-contents ">
 
         <p>Return stored-vector neighbours without calling the model provider.</p>
+<p>The pgvector HNSW index is partial on <code>is_standard AND is_valid</code>. This
+method defaults to that indexed set. Pass <code>standard_only=False</code> to include
+non-standard neighbours, at the cost of a full scan.</p>
 
 
     </div>

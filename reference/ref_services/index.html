@@ -1711,6 +1711,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#groundworkers.app.build_mapping_context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_mapping_context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.app.load_plugin_readiness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1904,6 +1915,17 @@
     <span class="md-ellipsis">
       
         search_normalized
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_normalized_with_plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_normalized_with_plan
       
     </span>
   </a>
@@ -2193,6 +2215,17 @@
     <span class="md-ellipsis">
       
         async_concept_nearest_standard_ancestor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.MappingService.concept_shared_standard_ancestor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_shared_standard_ancestor
       
     </span>
   </a>
@@ -3319,6 +3352,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#groundworkers.app.build_mapping_context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_mapping_context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.app.load_plugin_readiness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3512,6 +3556,17 @@
     <span class="md-ellipsis">
       
         search_normalized
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.search_normalized_with_plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_normalized_with_plan
       
     </span>
   </a>
@@ -3801,6 +3856,17 @@
     <span class="md-ellipsis">
       
         async_concept_nearest_standard_ancestor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.MappingService.concept_shared_standard_ancestor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_shared_standard_ancestor
       
     </span>
   </a>
@@ -4885,6 +4951,24 @@
 <div class="doc doc-object doc-function">
 
 
+<h3 id="groundworkers.app.build_mapping_context" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">build_mapping_context</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">adapters</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">services</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build the mapping capabilities shared by hosted and standalone plugins.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="groundworkers.app.load_plugin_readiness" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">load_plugin_readiness</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">plugin</span><span class="p">)</span></code>
 
@@ -5221,8 +5305,8 @@ Raises ValueError for invalid arguments.</p>
     <div class="doc doc-contents ">
 
         <p>Return standard equivalents for a list of concept_ids via "Maps to" relationship edges.</p>
-<p>For concept_ids that are already standard: standard_concepts = [self].
-For concept_ids with no outbound "Maps to" relationship: standard_concepts = [].
+<p>For concept_ids that are already standard: targets contains a self-mapping.
+With no outbound "Maps to" relationship: targets is empty.
 concept_ids not found in the vocabulary are silently omitted.</p>
 
 
@@ -5337,7 +5421,25 @@ present; otherwise synonym results are silently omitted.</p>
 
 
 <h4 id="groundworkers.services.vocab.VocabService.search_normalized" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">search_normalized</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalization_profile</span><span class="o">=</span><span class="s1">&#39;verbatim&#39;</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">search_normalized</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalization_profile</span><span class="o">=</span><span class="n">NormalizationProfile</span><span class="o">.</span><span class="n">VERBATIM</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">allow_unindexed_scan</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Run normalized equality search, preserving the list return contract.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.vocab.VocabService.search_normalized_with_plan" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">search_normalized_with_plan</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalization_profile</span><span class="o">=</span><span class="n">NormalizationProfile</span><span class="o">.</span><span class="n">VERBATIM</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">allow_unindexed_scan</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
 </h4>
 
@@ -5347,6 +5449,9 @@ present; otherwise synonym results are silently omitted.</p>
         <p>Deterministic near-verbatim search after text normalization.</p>
 <p>Both the query and candidate text are normalized before comparison.
 Distinct from full-text search: deterministic equality, not ranked retrieval.</p>
+<p>Filters are optional when the normalized-key index exists. Without it,
+pass a domain, vocabulary_id, or parent_ids to allow a bounded-time scan.
+Pass <code>allow_unindexed_scan=True</code> to explicitly allow an unscoped scan.</p>
 
 
     </div>
@@ -5366,7 +5471,7 @@ Distinct from full-text search: deterministic equality, not ranked retrieval.</p
 
 
 <h3 id="groundworkers.services.vocab.normalize_text_for_matching" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">normalize_text_for_matching</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">profile</span><span class="o">=</span><span class="s1">&#39;verbatim&#39;</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">normalize_text_for_matching</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">profile</span><span class="o">=</span><span class="n">NormalizationProfile</span><span class="o">.</span><span class="n">VERBATIM</span><span class="p">,</span> <span class="n">remove_stop_phrases</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
 
 </h3>
 
@@ -5896,6 +6001,24 @@ optional ancestry constraints, tier ordering, and response explanation.</p>
     <div class="doc doc-contents ">
 
         <p>MCP-facing ancestor lookup with async grounding for text queries.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.mapping.MappingService.concept_shared_standard_ancestor" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">concept_shared_standard_ancestor</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return a unique nearest common standard ancestor, when one exists.</p>
 
 
     </div>
