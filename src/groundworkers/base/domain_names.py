@@ -11,6 +11,28 @@ from sqlalchemy.engine import Engine
 logger = logging.getLogger(__name__)
 
 
+def _is_missing_domain_table(exc: Exception) -> bool:
+    """Recognize database errors caused specifically by the absent domain table."""
+    pending: list[object] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if "no such table" in str(current).lower():
+            return True
+        if getattr(current, "sqlstate", None) == "42P01" or getattr(
+            current, "pgcode", None
+        ) == "42P01":
+            return True
+        for attr in ("orig", "__cause__", "__context__"):
+            nested = getattr(current, attr, None)
+            if nested is not None:
+                pending.append(nested)
+    return False
+
+
 class DomainNameResolver:
     """Resolve a loosely-typed domain to its canonical ``domain_id``.
 
@@ -45,10 +67,19 @@ class DomainNameResolver:
                     rows = conn.execute(
                         select(Domain.domain_id, Domain.domain_name)
                     ).all()
-        except Exception:
+        except Exception as exc:
             logger.warning("Could not read the domain table; domain names unresolved.", exc_info=True)
-            self._by_lowered = {}
-            return self._by_lowered
+            if self._engine is not None and _is_missing_domain_table(exc):
+                raise RuntimeError(
+                    "Engine mode cannot route vocabulary queries. If this deployment "
+                    "keeps the vocabulary on its own database, pass "
+                    "cdm_session_factory (PluginContext.cdm_session_factory) "
+                    "to DomainNameResolver."
+                ) from exc
+            if self._engine is not None:
+                raise
+            # Leave the cache empty so transient outages are retried next time.
+            return mapping
 
         for domain_id, domain_name in rows:
             if not domain_id:

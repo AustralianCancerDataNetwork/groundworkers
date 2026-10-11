@@ -4,14 +4,17 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from oa_configurator import CDMDatabaseConfig, ConnectionConfig, Resolver
 from omop_alchemy.config import create_cdm_engines
 from omop_alchemy.cross_database import cdm_sessionmaker
 from omop_emb import MetricType
 from omop_graph import KnowledgeGraph
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 
 from groundworkers.adapters.omop_graph import OmopGraphAdapter
+from groundworkers.base.domain_names import DomainNameResolver
 from tests.support.stack_config import build_cdm_stack
 
 
@@ -29,7 +32,7 @@ def test_async_query_encoding_uses_native_model_api_repeatedly():
 
     backend = AsyncOnlyBackend()
     adapter = OmopGraphAdapter(
-        create_engine("sqlite:///:memory:"),
+        _engine_with_graph_tables(),
         model_backend_factory=lambda: backend,  # type: ignore[arg-type,return-value]
     )
 
@@ -47,7 +50,7 @@ def test_async_query_encoding_uses_native_model_api_repeatedly():
 
 
 def test_embedding_resolver_requires_complete_configuration():
-    engine = create_engine("sqlite:///:memory:")
+    engine = _engine_with_graph_tables()
 
     assert OmopGraphAdapter(engine).embedding_resolver_active is False
     assert (
@@ -86,7 +89,7 @@ def test_knowledge_graph_receives_complete_read_only_embedding_configuration(
         "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
     )
     adapter = OmopGraphAdapter(
-        create_engine("sqlite:///:memory:"),
+        _engine_with_graph_tables(),
         embedding_backend_factory=lambda: embedding_backend,  # type: ignore[arg-type,return-value]
         resolved_embedding_model=resolved_model,  # type: ignore[arg-type]
         model_backend_factory=lambda: object(),  # type: ignore[arg-type,return-value]
@@ -126,7 +129,7 @@ def test_invalid_embedding_configuration_falls_back_to_lexical_graph(monkeypatch
         raise RuntimeError("store unavailable")
 
     adapter = OmopGraphAdapter(
-        create_engine("sqlite:///:memory:"),
+        _engine_with_graph_tables(),
         embedding_backend_factory=fail_backend,
         resolved_embedding_model=SimpleNamespace(model="demo-model"),  # type: ignore[arg-type]
     )
@@ -150,7 +153,7 @@ def test_cdm_only_configuration_builds_a_lexical_graph(monkeypatch):
     monkeypatch.setattr(
         "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
     )
-    adapter = OmopGraphAdapter(create_engine("sqlite:///:memory:"))
+    adapter = OmopGraphAdapter(_engine_with_graph_tables())
 
     assert isinstance(adapter._get_kg(), FakeKnowledgeGraph)
     assert captured["emb_config"] is None
@@ -175,7 +178,7 @@ def test_graph_rejecting_the_embedding_configuration_keeps_lexical_grounding(mon
         "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
     )
     adapter = OmopGraphAdapter(
-        create_engine("sqlite:///:memory:"),
+        _engine_with_graph_tables(),
         embedding_backend_factory=lambda: object(),  # type: ignore[arg-type,return-value]
         resolved_embedding_model=SimpleNamespace(model="demo-model"),  # type: ignore[arg-type]
     )
@@ -211,7 +214,7 @@ def test_backend_failure_without_embedding_configuration_still_raises(monkeypatc
     monkeypatch.setattr(
         "groundworkers.adapters.omop_graph.KnowledgeGraph", FakeKnowledgeGraph
     )
-    adapter = OmopGraphAdapter(create_engine("sqlite:///:memory:"))
+    adapter = OmopGraphAdapter(_engine_with_graph_tables())
 
     available, detail = adapter.probe()
     assert available is False
@@ -223,8 +226,10 @@ def test_real_knowledge_graph_constructs_with_sqlite_adapter():
     engine = create_engine(
         "sqlite:///:memory:"
     ).execution_options(schema_translate_map={"primary": None, "vocab": None, "results": None})
+    from omop_alchemy.cdm.model.vocabulary import Concept
     from omop_graph.extensions.omop_alchemy import RelationshipMapping
 
+    Concept.__table__.create(engine)
     RelationshipMapping.__table__.create(engine)
     with engine.begin() as connection:
         connection.execute(
@@ -281,6 +286,11 @@ def test_real_knowledge_graph_constructs_with_split_sqlite_databases(
     )
 
     try:
+        available, detail = OmopGraphAdapter(primary_engine).probe()
+        assert available is False
+        assert detail is not None and "vocabulary on its own database" in detail
+        with pytest.raises(RuntimeError, match="vocabulary on its own database"):
+            DomainNameResolver(primary_engine).known_domains()
         graph = OmopGraphAdapter(session_factory)._get_kg()
         assert isinstance(graph, KnowledgeGraph)
     finally:
@@ -313,3 +323,23 @@ def test_wrap_graph_error_does_not_special_case_parentless_not_implemented():
     assert wrapped.message == (
         "omop-graph operation failed with NotImplementedError."
     )
+
+
+def test_wrap_graph_error_classifies_primary_database_outage_before_setup_text():
+    outage = OperationalError("select", {}, ConnectionError("server unavailable"))
+    wrapped = OmopGraphAdapter._wrap_graph_error(outage, default_code="QUERY_ERROR")
+
+    assert wrapped.code == "BACKEND_UNAVAIL"
+    assert "database is unavailable" in wrapped.message
+
+
+def _engine_with_graph_tables():
+    from omop_alchemy.cdm.model.vocabulary import Concept
+    from omop_graph.extensions.omop_alchemy import RelationshipMapping
+
+    engine = create_engine("sqlite:///:memory:").execution_options(
+        schema_translate_map={"primary": None, "vocab": None, "results": None}
+    )
+    Concept.__table__.create(engine)
+    RelationshipMapping.__table__.create(engine)
+    return engine

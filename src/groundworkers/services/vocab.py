@@ -173,8 +173,8 @@ class VocabService:
                 schema,
                 exc_info=True,
             )
-            self._fts_name_sidecar = False
-            self._fts_synonym_sidecar = False
+            self._fts_name_sidecar = None
+            self._fts_synonym_sidecar = None
 
     @property
     def fts_available(self) -> bool:
@@ -569,8 +569,17 @@ class VocabService:
                     table,
                     column_name,
                 )
-        except Exception:
-            found = False
+        except Exception as exc:
+            logger.warning(
+                "Could not check normalized-name index %s.%s; search availability is unknown.",
+                table,
+                column_name,
+                exc_info=True,
+            )
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                f"Could not check the normalized-name index for {table}.{column_name} ({type(exc).__name__}).",
+            ) from exc
         with _NORMALIZED_INDEX_CACHE_LOCK:
             _NORMALIZED_INDEX_CACHE[key] = (found, now)
         return found

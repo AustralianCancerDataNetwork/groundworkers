@@ -1,6 +1,6 @@
 # Embedding Tools
 
-Five tools expose the embedding index. All require `omop_emb` to be enabled in the config.
+Five tools expose the embedding index. They require `embedding_model_name` and `vector_store_name` in `[tools.groundworkers]`.
 
 ## `embedding_index_status`
 
@@ -23,11 +23,15 @@ Returns the status of the embedding backend and all registered models. Takes no 
 }
 ```
 
-When the backend is unavailable or no models are registered, `"available"` is `false` and `"models"` is an empty array. This tool never returns an error dict — it degrades gracefully.
+When the backend is unavailable or no models are registered, `"available"` is `false` and `"models"` is an empty array. This tool never returns an error dict — it degrades gracefully. A legacy registry, misplaced registry, or missing model table is reported in `detail` with a specific explanation.
+
+Groundworkers opens the store through omop-emb's read-only reader for status and query tools. A pre-3.0 store reports `LEGACY_REGISTRY`. The migration script is tracked in oa-configurator issue #40; once it ships, Groundworkers will show omop-emb's migration command. Groundworkers does not migrate the store.
 
 ## `embedding_neighbours`
 
 Returns the nearest embedding-space neighbours for one OMOP concept by looking up its existing vector in the index.
+
+By default `standard_only` and `active_only` are both `true`, matching the partial HNSW index predicate. Set either to `false` to widen the result set.
 
 ```json
 {"concept_id": 4119419, "limit": 10, "model_name": "qwen3-embedding:0.6b"}
@@ -66,9 +70,10 @@ Encodes a text query on the fly and returns the nearest concepts by vector simil
 
 All parameters except `query` are optional.
 
-!!! warning "Requires `api_base` configuration"
+!!! warning "Requires a configured embedding model"
     `embedding_search` must encode the query string using a live embedding model.
-    This requires `omop_emb.api_base` (and `api_key`) to be configured.  Without it
+    Configure `embedding_model_name` in `[tools.groundworkers]` and give its
+    `[models.*]` entry a provider in `[providers.*]`. Without a live model client,
     the tool returns `BACKEND_UNAVAIL`.
 
 ## `embedding_search_batch`
@@ -110,4 +115,4 @@ Encodes a text string into one query embedding vector.
 }
 ```
 
-Like `embedding_search`, this requires `omop_emb.api_base` and `omop_emb.api_key` to be configured.
+Like `embedding_search`, this requires a configured `embedding_model_name` and a live provider client.

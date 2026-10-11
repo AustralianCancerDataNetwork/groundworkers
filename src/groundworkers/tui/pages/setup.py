@@ -8,6 +8,7 @@ from groundskeeping.configurator import (
     ConfigWizardController,
     ConfigWorkflowSpec,
     MutationOperation,
+    UnavailableMutationService,
     resolve_operation,
 )
 from groundskeeping.contracts import (
@@ -579,12 +580,11 @@ class SetupPage(GroundworkersPage):
             model_discoverer=discover_provider_models,
             on_applied=self._session.refresh_configuration,
         )
-        context.open_wizard(
-            ConfigWizardController(
-                workflow(resolve_operation(service, target)),
-                service,
-            )
-        )
+        try:
+            operation = resolve_operation(service, target)
+            context.open_wizard(ConfigWizardController(workflow(operation), service))
+        except UnavailableMutationService as exc:
+            context.notify(str(exc), severity="warning")
 
     def _start_connection_checks(self, context: PageContext) -> None:
         targets = resolve_database_targets(self._session.configuration)

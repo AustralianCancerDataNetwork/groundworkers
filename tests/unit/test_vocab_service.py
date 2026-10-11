@@ -9,6 +9,7 @@ from omop_alchemy.cdm.model.vocabulary import (
     Concept_Ancestor,
     Concept_Relationship,
     Concept_Synonym,
+    Domain,
 )
 from sqlalchemy import column as sa_column
 from sqlalchemy import create_engine, event
@@ -41,10 +42,19 @@ def _service(tmp_path) -> VocabService:
         Concept_Synonym.__table__,
         Concept_Relationship.__table__,
         Concept_Ancestor.__table__,
+        Domain.__table__,
     ):
         table.create(engine)
 
     with engine.begin() as connection:
+        connection.execute(
+            Domain.__table__.insert(),
+            {
+                "domain_id": "Condition",
+                "domain_name": "Condition",
+                "domain_concept_id": 19,
+            },
+        )
         connection.execute(
             Concept.__table__.insert(),
             (

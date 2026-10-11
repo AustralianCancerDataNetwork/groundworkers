@@ -400,7 +400,7 @@ def test_reader_uses_registry_provider_metric_and_faiss_cache(monkeypatch):
         "model": "demo-model",
         "backend": "store",
         "metric_type": MetricType.COSINE,
-        "omop_cdm_engine": None,
+        "cdm_session_factory": None,
         "provider_type": "openai",
         "faiss_cache_dir": "faiss-cache",
     }
@@ -433,6 +433,25 @@ def test_reader_is_cached_until_adapter_close(monkeypatch):
 
     assert third is not first
     assert len(created) == 2
+
+
+def test_legacy_registry_is_reported_as_a_specific_tool_error() -> None:
+    from omop_emb.utils.errors import LegacyRegistryError
+
+    def fail():
+        raise LegacyRegistryError("legacy registry")
+
+    adapter = OmopEmbAdapter(
+        backend_factory=fail,
+        backend_type="pgvector",
+    )
+    status = adapter.index_status()
+
+    assert status["available"] is False
+    assert "predates omop-emb 3.0" in status["detail"]
+    with pytest.raises(GroundworkersError) as caught:
+        adapter._get_backend()
+    assert caught.value.code == "LEGACY_REGISTRY"
 
 
 def test_resolve_model_name_uses_registry_record(monkeypatch):

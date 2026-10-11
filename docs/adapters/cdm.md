@@ -15,7 +15,7 @@
 | Component | How |
 |---|---|
 | `VocabService` | Takes a `CDMAdapter` as its only constructor argument. Uses the session factory to open per-call sessions for vocabulary table queries. |
-| `OmopGraphAdapter` | Shares the same engine (no separate connection pool) so omop-graph and vocabulary queries use the same connection pool. |
+| `OmopGraphAdapter` | Uses the routed session factory so vocabulary and primary-role graph tables reach their configured databases. |
 
 The adapter is created once per CDM database at application startup and wired through `build_application()`. It is not per-request.
 
@@ -46,6 +46,6 @@ app.services.vocab  # backed by app.adapters.cdm
 
 ## Lifecycle
 
-`build_app_config()` creates role engines through `create_cdm_engines(..., register_claims=False)`. On PostgreSQL this resolves schema claims by opening connections during startup, so an unreachable CDM prevents application startup with a configuration error that points operators to endpoints, credentials, schemas, and access. `CDMAdapter.is_available()` also performs a lightweight Core query (`SELECT 1`).
+`build_app_config()` creates role engines through `create_cdm_engines(..., register_claims=False)`. Startup fails fast when either database role is unreachable and prints the scrubbed reason with a database recovery hint. `CDMAdapter.is_available()` also performs a lightweight Core query (`SELECT 1`).
 
 `close()` disposes both role engines. Call it explicitly in teardown (for example in a test fixture `yield`/`finally` block) when you need to ensure connections are returned promptly. Process-level startup and shutdown wiring belongs in the application or transport layer, not in the adapter itself.

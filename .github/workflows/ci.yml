@@ -35,14 +35,8 @@ jobs:
           --password postgres \
           --database-name test_db \
           --test-only false
-        uv run omop-config databases add test_cdm_db \
-          --kind cdm \
-          --connection pg_test \
-          --schema-name public
-        uv run omop-config databases add test_vector_db \
-          --kind generic \
-          --connection pg_test \
-          --schema-name public
+        uv run omop-config databases add cdm test_cdm_db --connection pg_test --cdm-schema public
+        uv run omop-config databases add generic test_vector_db --connection pg_test --schema-name embeddings
         uv run omop-config vector-stores add test_embeddings \
           --backend-type pgvector \
           --database test_vector_db

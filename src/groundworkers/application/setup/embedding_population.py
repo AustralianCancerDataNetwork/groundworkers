@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from groundskeeping.contracts import Command, CommandPlan, CommandStep
-from oa_configurator import ResolvedCDMDatabase, Resolver, Role, safe_endpoint
+from oa_configurator import ResolvedCDMDatabase, Resolver, safe_endpoint
 from omop_alchemy.config import create_cdm_engines
+from omop_alchemy.cross_database import cdm_sessionmaker
 from omop_llm import canonical_model_name
 from sqlalchemy.engine import Engine
 
@@ -28,6 +29,7 @@ from groundworkers.application.setup.models import (
     EmbeddingIndexSnapshot,
     EmbeddingPopulationRequest,
 )
+from groundworkers.base.errors import embedding_store_error
 from groundworkers.base.results import enum_value
 from groundworkers.config import GroundworkersConfig
 
@@ -67,15 +69,15 @@ def load_embedding_coverage_report(
         vector_store = resolver.resolve_vector_store(
             groundworkers.vector_store_name
         )
-        store = inspect_resolved_vector_store(vector_store)
-        cdm_engine, _ = _cdm_engine_and_schema(snapshot)
+        store = open_vector_store_reader(vector_store)
+        cdm_session_factory, cdm_engines = _cdm_session_factory_and_engines(snapshot)
         try:
             canonical_model = _canonical_model_name(
                 resolved_model.model,
                 provider_kind=resolved_model.provider.provider,
             )
             plan = plan_population(
-                cdm_engine,
+                cdm_session_factory,
                 store,
                 model_name=canonical_model,
                 scope=_population_scope(
@@ -84,7 +86,8 @@ def load_embedding_coverage_report(
                 ),
             )
         finally:
-            cdm_engine.dispose()
+            for engine in cdm_engines:
+                engine.dispose()
         index = _embedding_index_snapshot(
             store=store,
             canonical_model=canonical_model,
@@ -140,6 +143,9 @@ def _coverage_blocker(exc: Exception) -> str:
     keep the class-name-only form. URLs are scrubbed from whatever is shown, so
     a message that does carry one cannot leak a credential either way.
     """
+    store_error = embedding_store_error(exc)
+    if store_error is not None:
+        return store_error.message
     if isinstance(exc, ValueError):
         detail = _scrub_urls(str(exc).strip())
         if detail:
@@ -233,7 +239,9 @@ def replace_coverage_metadata(coverage: CoverageSnapshot, *, plan) -> CoverageSn
     )
 
 
-def _cdm_engine_and_schema(snapshot: ConfigurationSnapshot) -> tuple[Engine, str]:
+def _cdm_session_factory_and_engines(
+    snapshot: ConfigurationSnapshot,
+) -> tuple[object, tuple[Engine, ...]]:
     assert snapshot.stack is not None
     resolver = Resolver(snapshot.stack)
     groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
@@ -243,9 +251,11 @@ def _cdm_engine_and_schema(snapshot: ConfigurationSnapshot) -> tuple[Engine, str
     primary_engine, vocab_engine = create_cdm_engines(
         database, register_claims=False
     )
-    if vocab_engine is not primary_engine:
-        vocab_engine.dispose()
-    return primary_engine, database.schema_for_role(Role.PRIMARY) or "main"
+    session_factory = cdm_sessionmaker(
+        database, primary=primary_engine, vocab=vocab_engine
+    )
+    engines = (primary_engine,) if vocab_engine is primary_engine else (primary_engine, vocab_engine)
+    return session_factory, engines
 
 
 def _embedding_index_snapshot(
@@ -253,7 +263,7 @@ def _embedding_index_snapshot(
     store,
     canonical_model: str,
 ) -> EmbeddingIndexSnapshot:
-    record = store.model(canonical_model)
+    record = store.get_registered_model(model_name=canonical_model)
     if record is None:
         return EmbeddingIndexSnapshot(model_name=canonical_model, registered=False)
     physical_indexes = store.physical_indexes(canonical_model)
@@ -272,21 +282,21 @@ def _canonical_model_name(model_name: str, *, provider_kind: str) -> str:
     return canonical_model_name(provider_kind, model_name)
 
 
-def inspect_resolved_vector_store(resolved):
-    """Load the optional read-only omop-emb contract at use time."""
+def open_vector_store_reader(resolved):
+    """Load the optional read-only omop-emb store at use time."""
 
-    from omop_emb.backends import inspect_resolved_vector_store as inspect_store
+    from omop_emb.backends import open_vector_store_reader as open_reader
 
-    return inspect_store(resolved)
+    return open_reader(resolved)
 
 
-def plan_population(cdm_engine, store, *, model_name: str, scope):
+def plan_population(cdm_session_factory, store, *, model_name: str, scope):
     """Load the optional identity-planning contract at use time."""
 
     population = cast(Any, import_module("omop_emb.population"))
 
     return population.plan_population(
-        cdm_engine,
+        cdm_session_factory,
         store,
         model_name=model_name,
         scope=scope,

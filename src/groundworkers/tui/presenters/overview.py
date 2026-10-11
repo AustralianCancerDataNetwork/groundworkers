@@ -55,11 +55,12 @@ class OverviewPresenter(SetupPresenterBase):
         embedding_reconciliation: ModelReconciliation | None = None,
     ) -> SurfaceView:
         if not snapshot.usable:
+            issues = " ".join(issue.message for issue in snapshot.issues)
             return EmptyView(
-                title="Start Groundworkers",
+                title=("Repair Groundworkers configuration" if issues else "Start Groundworkers"),
                 message=(
-                    f"Configuration destination: {snapshot.path}. "
-                    "Choose a location, then configure the required CDM connection."
+                    f"Configuration: {snapshot.path}. "
+                    + (f"Issues: {issues}" if issues else "Choose a location, then configure the required CDM connection.")
                 ),
                 status=SemanticStatus.WARNING,
                 actions=(

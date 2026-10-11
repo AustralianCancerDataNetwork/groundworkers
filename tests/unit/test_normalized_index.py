@@ -143,7 +143,7 @@ def test_normalized_index_ddl_uses_light_tables_and_preserves_orm_metadata(
     @contextmanager
     def fake_postgres_cdm(_snapshot, *, purpose):
         assert purpose == "Normalized-name indexes"
-        yield connection, "cdm", '"cdm".'
+        yield connection, "cdm"
 
     monkeypatch.setattr(performance_maintenance, "_postgres_cdm", fake_postgres_cdm)
     monkeypatch.setattr(
@@ -226,7 +226,7 @@ def test_trigram_indexes_compile_as_gin_expression_indexes(monkeypatch) -> None:
     @contextmanager
     def fake_postgres_cdm(_snapshot, *, purpose):
         assert purpose == "Trigram indexes"
-        yield connection, "vocab", ""
+        yield connection, "vocab"
 
     monkeypatch.setattr(performance_maintenance, "_postgres_cdm", fake_postgres_cdm)
     performance_maintenance.populate_trigram_indexes(object())
@@ -286,7 +286,7 @@ def test_performance_cdm_context_connects_to_vocab_engine(monkeypatch) -> None:
 
     with performance_maintenance._postgres_cdm(
         snapshot, purpose="Normalized-name indexes"
-    ) as (connection, _schema, _prefix):
+    ) as (connection, _schema):
         assert connection is vocab.connection
 
     assert primary.opened is False

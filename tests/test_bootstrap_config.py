@@ -15,8 +15,13 @@ from oa_configurator import (
 from oa_configurator.io import save_stack_config
 from sqlalchemy import create_engine
 
-from groundworkers.bootstrap import build_app_config_from_stack
+from groundworkers.bootstrap import (
+    DatabaseUnavailableError,
+    build_app_config,
+    build_app_config_from_stack,
+)
 from groundworkers.config import GroundworkersConfig
+from groundworkers.server import _configuration_failure
 from tests.support.stack_config import (
     add_chat_model,
     build_cdm_stack,
@@ -86,6 +91,46 @@ def test_malformed_config_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Malformed TOML"):
         load_stack_config(config_path)
+
+
+def test_startup_failure_includes_scrubbed_legacy_config_reason(tmp_path: Path) -> None:
+    path = tmp_path / "legacy.toml"
+    path.write_text(
+        '[connections.main]\ndialect = "sqlite"\ndatabase_name = ":memory:"\n'
+        '[databases.cdm_db]\nkind = "cdm"\nconnection = "main"\n'
+        'schema_name = "public"\npassword = "review-secret"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError) as raised:
+        build_app_config(config_path=path)
+    message = _configuration_failure(raised.value, config_path=str(path))
+
+    assert "1.x" in message or "schema_name" in message or "upgrade" in message
+    assert "review-secret" not in message
+
+
+def test_startup_failure_identifies_closed_database_without_credentials(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "closed-port.toml"
+    path.write_text(
+        '[connections.main]\ndialect = "postgresql+psycopg"\n'
+        'host = "127.0.0.1"\nport = 1\nuser = "review"\n'
+        'password = "review-secret"\ndatabase_name = "closed"\n'
+        '[databases.cdm_db]\nkind = "cdm"\nconnection = "main"\n'
+        '[tools.groundworkers]\ncdm_db = "cdm_db"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DatabaseUnavailableError) as raised:
+        build_app_config(config_path=path)
+    message = _configuration_failure(raised.value, config_path=str(path))
+
+    assert "Check the configured CDM database endpoint" in message
+    assert "both role databases" not in message
+    assert message.count("(") == message.count(")")
+    assert "review-secret" not in message
 
 
 def test_config_validation_error_does_not_echo_rejected_secret(
@@ -177,7 +222,7 @@ def test_cdm_engine_initialization_error_includes_safe_cause(monkeypatch) -> Non
         build_app_config_from_stack(stack)
 
     message = str(raised.value)
-    assert "Check the endpoints and credentials" in message
+    assert "Check the configured CDM database endpoint" in message
     assert "RuntimeError: schema registry rejected" in message
     assert "fixture-password" not in message
     assert "***" in message

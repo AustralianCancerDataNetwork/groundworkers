@@ -1,4 +1,4 @@
-"""Load and persist the authoritative oa-configurator 1.x stack."""
+"""Load and persist the authoritative oa-configurator 2.0 stack."""
 
 from __future__ import annotations
 

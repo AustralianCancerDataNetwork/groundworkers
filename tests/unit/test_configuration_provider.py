@@ -40,6 +40,7 @@ from groundworkers.application.setup.configuration_provider import (
 )
 from groundworkers.config import GroundworkersConfig
 from tests.support import build_cdm_stack
+from tests.support.stack_config import build_embedding_stack
 
 CDM_SUBMISSIONS = (
     (
@@ -304,6 +305,31 @@ def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe
     assert canary not in repr(result)
     assert canary not in caplog.text
     assert canary in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("discovered", "flagged"),
+    ((("stored-model", "other-model"), False), (("other-model",), True)),
+)
+def test_model_update_preserves_stored_choice_and_flags_missing_inventory(
+    tmp_path: Path, discovered: tuple[str, ...], flagged: bool
+) -> None:
+    path = tmp_path / "config.toml"
+    save_stack_config(build_embedding_stack(model_name="stored-model"), path)
+    controller = ConfigWizardController(
+        model_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(
+            path, model_discoverer=lambda *_args: discovered
+        ),
+    )
+    controller.start()
+    controller.submit({})
+    model = controller.submit({"model_source": "new"}).snapshot
+    choice = next(field for field in model.step.fields if field.key == "model_choice")
+
+    assert choice.default == "stored-model"
+    assert any(option.value == "stored-model" for option in choice.choices)
+    assert ("not reported" in (choice.help or "")) is flagged
 
 
 def test_stale_and_mismatched_apply_intents_are_consumed_and_safe(

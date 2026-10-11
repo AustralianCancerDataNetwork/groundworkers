@@ -13,6 +13,7 @@ from groundworkers.services.source_planning.models import (
 )
 from groundworkers.services.source_planning.warnings import PlanningWarning
 from groundworkers.transports.rest import create_rest_app
+from groundworkers.transports.rest.api import _status_code_for_error
 from tests.support.stack_config import build_cdm_stack
 
 
@@ -251,3 +252,17 @@ def test_groundworkers_error_code_maps_to_http_status() -> None:
         "code": "FORMAT_UNRECOGNISED",
         "message": "unrecognised source format",
     }
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    (
+        ("LEGACY_REGISTRY", 503),
+        ("MISPLACED_REGISTRY", 503),
+        ("MISSING_STORAGE_TABLE", 503),
+        ("MODEL_REGISTRATION_CONFLICT", 409),
+        ("READ_ONLY_STORE", 409),
+    ),
+)
+def test_embedding_store_error_codes_map_to_conflict_or_unavailable(code, status):
+    assert _status_code_for_error(code) == status

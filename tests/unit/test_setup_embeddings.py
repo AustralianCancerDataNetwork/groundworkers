@@ -75,9 +75,9 @@ class FakeStoreBackend:
     def get_registered_models(self):
         return tuple(self.records)
 
-    def has_any_embeddings(self, *, model_name, metric_type, _model_record):
-        assert model_name == _model_record.model_name
-        assert metric_type is not None
+    def has_any_embeddings(self, *, model_name):
+        if self.records:
+            assert model_name == self.records[0].model_name
         return self.populated
 
 
@@ -469,12 +469,12 @@ def test_coverage_resolves_public_backend_and_canonical_model(
 
     store = ReadOnlyStore()
     monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population.inspect_resolved_vector_store",
+        "groundworkers.application.setup.embedding_population.open_vector_store_reader",
         lambda resolved: captured.setdefault("store", resolved) and store,
     )
     monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population._cdm_engine_and_schema",
-        lambda _snapshot: (DisposableEngine(), "main"),
+        "groundworkers.application.setup.embedding_population._cdm_session_factory_and_engines",
+        lambda _snapshot: (lambda: None, (DisposableEngine(),)),
     )
     monkeypatch.setattr(
         "groundworkers.application.setup.embedding_population.plan_population",
@@ -533,7 +533,7 @@ def test_coverage_failure_does_not_expose_backend_secret(
         raise RuntimeError("database-password")
 
     monkeypatch.setattr(
-        "groundworkers.application.setup.embedding_population.inspect_resolved_vector_store",
+        "groundworkers.application.setup.embedding_population.open_vector_store_reader",
         fail,
     )
 

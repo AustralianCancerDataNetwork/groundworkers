@@ -292,17 +292,29 @@ class GraphService:
         outbound: bool,
     ) -> list[dict[str, Any]]:
         cr = Concept_Relationship
-        rm = _RELATIONSHIP_MAPPING
         seed_col = cr.concept_id_1 if outbound else cr.concept_id_2
         other_col = cr.concept_id_2 if outbound else cr.concept_id_1
-
-        # predicate_kind / predicate_subkind are Postgres enum columns, so cast to
-        # text for comparison and to return plain strings.
-        subkind_text = cast(rm.c.predicate_subkind, Text)
+        rm = RelationshipMapping.__table__
+        mapping_rows = session.execute(
+            select(
+                rm.c.relationship_id,
+                cast(rm.c.predicate_subkind, Text).label("predicate_subkind"),
+            ).where(cast(rm.c.predicate_kind, Text) == predicate_kind),
+            bind_arguments={"mapper": RelationshipMapping},
+        ).all()
+        subkind_by_relationship = {
+            row.relationship_id: row.predicate_subkind for row in mapping_rows
+        }
+        relationship_ids = [
+            relationship_id
+            for relationship_id, subkind in subkind_by_relationship.items()
+            if not predicate_subkinds or subkind in predicate_subkinds
+        ]
+        if not relationship_ids:
+            return []
         stmt = (
             select(
                 cr.relationship_id,
-                subkind_text.label("predicate_subkind"),
                 Concept.concept_id,
                 Concept.concept_name,
                 Concept.vocabulary_id,
@@ -312,15 +324,15 @@ class GraphService:
                 cr.invalid_reason,
             )
             .select_from(cr)
-            .join(rm, rm.c.relationship_id == cr.relationship_id)
             .join(Concept, Concept.concept_id == other_col)
-            .where(seed_col == concept_id, cast(rm.c.predicate_kind, Text) == predicate_kind)
+            .where(
+                seed_col == concept_id,
+                cr.relationship_id.in_(relationship_ids),
+            )
         )
-        if predicate_subkinds:
-            stmt = stmt.where(subkind_text.in_(list(predicate_subkinds)))
         if active_only:
             stmt = stmt.where(cr.is_valid_expr())
-        stmt = stmt.order_by(subkind_text, Concept.concept_name).limit(limit)
+        stmt = stmt.order_by(Concept.concept_name).limit(limit)
 
         id_key = "target_concept_id" if outbound else "source_concept_id"
         name_key = "target_concept_name" if outbound else "source_concept_name"
@@ -329,7 +341,7 @@ class GraphService:
             edges.append(
                 {
                     "relationship_id": row.relationship_id,
-                    "predicate_subkind": row.predicate_subkind,
+                    "predicate_subkind": subkind_by_relationship[row.relationship_id],
                     id_key: int(row.concept_id),
                     name_key: row.concept_name,
                     "vocabulary_id": row.vocabulary_id,

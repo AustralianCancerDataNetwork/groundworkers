@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from groundskeeping.configurator import ConfigWizardController, MutationOperation
-from oa_configurator import load_stack_config
+from oa_configurator import ConnectionConfig, load_stack_config
 from oa_configurator.io import save_stack_config
 
 from groundworkers.application.setup.configuration import load_configuration
@@ -137,6 +137,49 @@ def test_cdm_store_location_round_trips_when_the_wizard_reopens(
         field for field in snapshot.step.fields if field.key == "store_location"
     )
     assert location.default == STORE_LOCATION_CDM
+
+
+@pytest.mark.parametrize("same_connection", [False, True])
+def test_separate_store_location_round_trips_on_either_connection(
+    tmp_path: Path, same_connection: bool
+) -> None:
+    path = tmp_path / "config.toml"
+    stack = build_cdm_stack(
+        cdm_schema="clinical", vocab_schema="vocabulary"
+    )
+    if not same_connection:
+        stack.connections["vectors"] = ConnectionConfig(
+            dialect="postgresql+psycopg",
+            host="vectors.example.test",
+            port=5432,
+            user="groundworkers",
+            database_name="vectors",
+        )
+    save_stack_config(stack, path)
+    database_name = "cdm_db_vectors" if same_connection else "separate_vectors"
+    connection_name = "cdm_main" if same_connection else "vectors"
+
+    assert _drive(
+        path,
+        location=STORE_LOCATION_SEPARATE,
+        backend_type="pgvector",
+        store_database_name=database_name,
+        store_connection_name=connection_name,
+        store_schema_name="vectors",
+    ).apply().status.value == "applied"
+
+    reopened = ConfigWizardController(
+        vector_store_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(config_path=path),
+    )
+    location = next(
+        field for field in reopened.start().step.fields if field.key == "store_location"
+    )
+    assert location.default == STORE_LOCATION_SEPARATE
+    saved = load_stack_config(path)
+    store_database = saved.databases[database_name]
+    assert store_database.connection == connection_name
+    assert store_database.schema_name == "vectors"
 
 
 def test_the_cdm_location_needs_no_database_answers(tmp_path: Path) -> None:

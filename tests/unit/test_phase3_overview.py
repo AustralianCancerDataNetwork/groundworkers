@@ -26,7 +26,7 @@ def test_missing_configuration_landing_is_a_cdm_recovery_action(tmp_path: Path) 
     )
 
     assert isinstance(view, EmptyView)
-    assert view.title == "Start Groundworkers"
+    assert view.title == "Repair Groundworkers configuration"
     assert view.actions[0].key == "database.configure"
 
 

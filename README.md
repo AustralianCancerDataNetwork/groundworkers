@@ -19,6 +19,7 @@ Start with the [documentation home](docs/index.md), or choose a path directly:
 - [Initial local setup](docs/from-scratch.md) walks through a fresh CDM-backed deployment.
 - [Integrations](docs/usage/integrations.md) shows MCP, REST, and Python calls.
 - [Configuration](docs/usage/configuration.md) explains shared-stack references and optional capabilities.
+- [Upgrading from 0.6](docs/usage/upgrading-from-0.6.md) lists the 0.7 configuration and runtime changes.
 - [Tools overview](docs/tools/overview.md) maps jobs to the discoverable MCP surface.
 
 ## Quick start

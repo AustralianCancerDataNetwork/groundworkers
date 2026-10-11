@@ -9,6 +9,7 @@ collects, and builds the command line.
 from __future__ import annotations
 
 import shutil
+import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib import resources
@@ -212,4 +213,5 @@ def start_graph_remediation_run(
 
 
 def _executable(name: str) -> str:
-    return shutil.which(name) or name
+    beside_python = Path(sys.executable).with_name(name)
+    return str(beside_python) if beside_python.is_file() else (shutil.which(name) or name)

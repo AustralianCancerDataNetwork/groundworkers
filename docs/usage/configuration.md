@@ -86,6 +86,11 @@ structured_output = true
 backend_type = "pgvector"
 database = "vector_db"
 
+[databases.vector_db]
+kind = "generic"
+connection = "cdm_main"
+schema_name = "groundworkers"
+
 [tools.groundworkers]
 cdm_db = "cdm_db"
 embedding_model_name = "embedding_model"
@@ -169,7 +174,7 @@ REST is selected explicitly with `--transport rest`; it is not started alongside
 | `rest_port` | `int` | `8080` |
 | `rest_base_path` | `str` | `/v1` |
 
-`base_path` is validated to begin with `/`.
+`rest_base_path` is validated to begin with `/`.
 
 ### `llm_model_name` and chat
 
@@ -201,9 +206,9 @@ Groundworkers-owned grounding policy. omop-graph's traversal limits are per-call
 | `grounding_min_fulltext_overlap` | `float` | `0.0` |
 | `grounding_max_depth` | `int` (1-10) | `5` |
 
-`min_fulltext_overlap` must be between `0.0` and `1.0`. It is the minimum proportion of query tokens that must appear in a matched concept name for a full-text hit to be accepted; below the threshold grounding falls through to the next tier.
+`grounding_min_fulltext_overlap` must be between `0.0` and `1.0`. It is the minimum proportion of query tokens that must appear in a matched concept name for a full-text hit to be accepted; below the threshold grounding falls through to the next tier.
 
-`max_depth` bounds the hierarchy distance between a grounding candidate and a required parent concept, or the identity-hop count when grounding runs without `parent_ids`.
+`grounding_max_depth` bounds the hierarchy distance between a grounding candidate and a required parent concept, or the identity-hop count when grounding runs without `parent_ids`.
 
 ### Concept flag contract
 
@@ -289,6 +294,10 @@ Both references are required. With only one configured, status reports an action
 
 The store must be populated before the embedding tier can return anything. Population is explicit (see the Embeddings setup section) and never starts at query time. The server holds the graph read-only (`write=False`), so Groundworkers encodes query text for the embedding tier but never writes vectors.
 
+Groundworkers opens vector stores with omop-emb's read-only reader for MCP tools, status, coverage, and setup diagnostics. Explicit store initialization uses omop-emb's writer. A database supports one vector store per model: reuse the existing store or choose another database when registering a model that is already present. On PostgreSQL, the wizard stores vectors in the dedicated `groundworkers` schema. omop-emb also creates `omop_emb_registry`, and oa-configurator may create `oa_configurator_provenance`. SQLite uses its database file without a schema.
+
+If the store predates omop-emb 3.0, Groundworkers reports `LEGACY_REGISTRY`. The migration script is tracked in oa-configurator issue #40; once it ships, Groundworkers will show omop-emb's migration command. Groundworkers does not migrate legacy stores.
+
 ### With `groundworkers.llm_model_name` configured
 
 You additionally get:
@@ -342,4 +351,4 @@ mapping = app.services.mapping
 
 Service attributes are `None` only when their prerequisites are not available in the resolved runtime.
 
-`config.describe()` returns a redacted summary keyed by `database`, `model`, and `vector_store`. Passwords and API keys are masked; safe URLs never carry credentials.
+`config.describe()` returns a redacted summary keyed by `database`, `model`, `llm_model`, `vector_store`, `stack`, `groundworkers`, and `app_name`. CDM schema keys are `cdm_schema` and `vocab_schema`; generic/vector-store databases continue to use `schema_name`. Passwords and API keys are masked; safe URLs never carry credentials.

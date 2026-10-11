@@ -1,23 +1,16 @@
 import os
 
 import pytest
-from sqlalchemy import text
+from oa_configurator import Role, physical_schema_of
+from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Relationship
+from sqlalchemy import exists, func, select
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import aliased
 
 from groundworkers.app import build_adapters
 from groundworkers.bootstrap import build_app_config
 from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
-
-
-def _vocab_schema(adapter) -> str:
-    """Return the schema selected by the resolved SQLAlchemy engine."""
-
-    schema_map = adapter.engine.get_execution_options().get("schema_translate_map", {})
-    return str(
-        schema_map.get(None)
-        or adapter.engine.dialect.default_schema_name
-        or "public"
-    )
 
 
 def _load_graph_adapter():
@@ -48,41 +41,47 @@ def _load_graph_adapter():
         pytest.skip("omop_graph adapter was not built")
     if not adapter.is_available():
         pytest.skip("omop_graph backend is not available in this environment")
+    adapter._integration_vocab_engine = config.cdm_vocab_engine
     return adapter
 
 
 def _find_nonstandard_condition_term(adapter) -> str:
-    schema = _vocab_schema(adapter)
-    stmt = text(
-        f"""
-        SELECT c.concept_name
-        FROM {schema}.concept AS c
-        JOIN {schema}.concept_relationship AS cr
-          ON cr.concept_id_1 = c.concept_id
-         AND lower(cr.relationship_id) = 'maps to'
-         AND cr.invalid_reason IS NULL
-        JOIN {schema}.concept AS s
-          ON s.concept_id = cr.concept_id_2
-         AND s.standard_concept = 'S'
-         AND s.domain_id = 'Condition'
-         AND s.invalid_reason IS NULL
-        WHERE c.domain_id = 'Condition'
-          AND c.standard_concept IS NULL
-          AND c.invalid_reason IS NULL
-          AND NOT EXISTS (
-              SELECT 1
-              FROM {schema}.concept AS c2
-              WHERE lower(c2.concept_name) = lower(c.concept_name)
-                AND c2.domain_id = 'Condition'
-                AND c2.standard_concept IN ('S', 'C')
-                AND c2.invalid_reason IS NULL
-          )
-        ORDER BY c.concept_id
-        LIMIT 1
-        """
+    standard = aliased(Concept)
+    same_name = aliased(Concept)
+    stmt = (
+        select(Concept.concept_name)
+        .join(
+            Concept_Relationship,
+            (Concept_Relationship.concept_id_1 == Concept.concept_id)
+            & (func.lower(Concept_Relationship.relationship_id) == "maps to")
+            & Concept_Relationship.invalid_reason.is_(None),
+        )
+        .join(
+            standard,
+            (standard.concept_id == Concept_Relationship.concept_id_2)
+            & (standard.standard_concept == "S")
+            & (standard.domain_id == "Condition")
+            & standard.invalid_reason.is_(None),
+        )
+        .where(
+            Concept.domain_id == "Condition",
+            Concept.standard_concept.is_(None),
+            Concept.invalid_reason.is_(None),
+            ~exists(
+                select(1).where(
+                    func.lower(same_name.concept_name)
+                    == func.lower(Concept.concept_name),
+                    same_name.domain_id == "Condition",
+                    same_name.standard_concept.in_(("S", "C")),
+                    same_name.invalid_reason.is_(None),
+                )
+            ),
+        )
+        .order_by(Concept.concept_id)
+        .limit(1)
     )
-    with adapter.engine.connect() as conn:
-        row = conn.execute(stmt).first()
+    with adapter._cdm_session_factory() as session:
+        row = session.execute(stmt).first()
     if row is None:
         pytest.skip(
             "no uniquely named non-standard Condition concept with a standard mapping was found"
@@ -93,23 +92,25 @@ def _find_nonstandard_condition_term(adapter) -> str:
 def _skip_if_parent_lookup_is_unindexed(adapter) -> None:
     """Skip hierarchy smoke checks when the live vocabulary DB is not shaped for them."""
 
-    schema = _vocab_schema(adapter)
-    stmt = text(
-        """
-        SELECT indexdef
-        FROM pg_indexes
-        WHERE schemaname = :schema
-          AND tablename = 'concept_ancestor'
-        """
-    )
     try:
-        with adapter.engine.connect() as conn:
-            rows = conn.execute(stmt, {"schema": schema}).scalars().all()
+        schema = physical_schema_of(
+            adapter._integration_vocab_engine, schema_tag=Role.VOCAB
+        )
+        indexes = sa_inspect(adapter._integration_vocab_engine).get_indexes(
+            "concept_ancestor", schema=schema
+        )
     except Exception as exc:
         # Broad except: integration environment preflight.
         pytest.skip(f"could not inspect concept_ancestor indexes: {exc}")
 
-    if not any("(descendant_concept_id" in indexdef.lower() for indexdef in rows):
+    if not any(
+        "descendant_concept_id" in (index.get("column_names") or [])
+        or any(
+            "descendant_concept_id" in str(expression).lower()
+            for expression in (index.get("expressions") or ())
+        )
+        for index in indexes
+    ):
         pytest.skip(
             "concept_ancestor lacks a descendant-leading index; "
             "parent hierarchy lookup is an environment smoke test, not an application regression test"
@@ -256,17 +257,13 @@ def test_standard_flags_distinguish_s_from_c():
     """The strict flag contract distinguishes raw OMOP ``S`` and ``C`` rows."""
     adapter = _load_graph_adapter()
 
-    schema = _vocab_schema(adapter)
-    stmt = text(
-        f"""
-        SELECT standard_concept, MIN(concept_id) AS concept_id
-        FROM {schema}.concept
-        WHERE standard_concept IN ('S', 'C')
-        GROUP BY standard_concept
-        """
+    stmt = (
+        select(Concept.standard_concept, func.min(Concept.concept_id))
+        .where(Concept.standard_concept.in_(("S", "C")))
+        .group_by(Concept.standard_concept)
     )
-    with adapter.engine.connect() as conn:
-        sampled = {row[0]: int(row[1]) for row in conn.execute(stmt).all()}
+    with adapter._cdm_session_factory() as session:
+        sampled = {row[0]: int(row[1]) for row in session.execute(stmt).all()}
     if set(sampled) != {"S", "C"}:
         pytest.skip("vocabulary does not contain both 'S' and 'C' concepts")
 
@@ -282,33 +279,31 @@ def test_classification_concept_is_not_standard():
     """A classification concept is never exposed as a standard mapping target."""
     adapter = _load_graph_adapter()
 
-    schema = _vocab_schema(adapter)
-    stmt = text(
-        f"""
-        SELECT concept_name
-        FROM {schema}.concept
-        WHERE standard_concept = 'C'
-          AND domain_id = 'Drug'
-          AND invalid_reason IS NULL
-          AND NOT EXISTS (
-              SELECT 1
-              FROM {schema}.concept AS other
-              WHERE lower(other.concept_name) = lower(concept.concept_name)
-                AND other.standard_concept = 'S'
-          )
-        ORDER BY concept_id
-        LIMIT 1
-        """
+    other = aliased(Concept)
+    stmt = (
+        select(Concept.concept_name)
+        .where(
+            Concept.standard_concept == "C",
+            Concept.domain_id == "Drug",
+            Concept.invalid_reason.is_(None),
+            ~exists(
+                select(1).where(
+                    func.lower(other.concept_name) == func.lower(Concept.concept_name),
+                    other.standard_concept == "S",
+                )
+            ),
+        )
+        .order_by(Concept.concept_id)
+        .limit(1)
     )
-    with adapter.engine.connect() as conn:
-        row = conn.execute(stmt).first()
+    with adapter._cdm_session_factory() as session:
+        row = session.execute(stmt).first()
     if row is None:
         pytest.skip("no uniquely named classification Drug concept was found")
 
-    with adapter.engine.connect() as conn:
-        concept_id = conn.execute(
-            text(f"SELECT concept_id FROM {schema}.concept WHERE concept_name = :name"),
-            {"name": row[0]},
+    with adapter._cdm_session_factory() as session:
+        concept_id = session.execute(
+            select(Concept.concept_id).where(Concept.concept_name == row[0])
         ).scalar_one()
     classification = adapter.get_concept(int(concept_id))
 

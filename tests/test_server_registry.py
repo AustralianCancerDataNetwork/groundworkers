@@ -28,7 +28,7 @@ def _stack_with_cdm():
 
 
 def test_cdm_only_stack_serves_graph_tools_without_embedding_tools():
-    """A CDM-only 1.x stack gets vocabulary, graph, and lexical grounding.
+    """A CDM-only stack gets vocabulary, graph, and lexical grounding.
 
     Graph availability follows the resolved CDM database. It is not gated on an
     [tools.omop_graph] section: omop-graph 2.x made that config internal, so
@@ -113,7 +113,7 @@ def test_embedding_store_is_resolved_lazily_and_shared(monkeypatch, tmp_path: Pa
         return backend
 
     monkeypatch.setattr(
-        "omop_emb.backends.resolve_backend_from_resolved_vector_store", resolve
+        "omop_emb.backends.open_vector_store_reader", resolve
     )
 
     adapters = build_adapters(config)

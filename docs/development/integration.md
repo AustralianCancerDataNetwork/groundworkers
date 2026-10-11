@@ -130,6 +130,6 @@ operation = (
 controller = ConfigWizardController(cdm_setup_workflow(operation), service)
 ```
 
-The same shape covers `MODEL_SETUP_TARGET` / `model_setup_workflow` and `LLM_SETUP_TARGET` / `llm_setup_workflow`. The provider decides create-versus-update from the current file, owns revision checking and redaction, and returns `conflicted` rather than clobbering another writer. `model_discoverer` is the injected seam for live model inventory; supply your own to avoid network calls in tests.
+The same shape covers `MODEL_SETUP_TARGET` / `model_setup_workflow`, `LLM_SETUP_TARGET` / `llm_setup_workflow`, and `VECTOR_STORE_SETUP_TARGET` / `vector_store_setup_workflow`. The provider decides create-versus-update from the current file, owns revision checking and redaction, and returns `conflicted` rather than clobbering another writer. `model_discoverer` is the injected seam for live model inventory; supply your own to avoid network calls in tests.
 
 This requires the `tui` extra for Groundskeeping, but not Textual — the provider and controller are host-agnostic.

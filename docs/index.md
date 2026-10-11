@@ -69,6 +69,7 @@ The output includes the active tools, prompts, resources, plugins, redacted conf
 - [Initial local setup](from-scratch.md) for a fresh local deployment
 - [Integrations](usage/integrations.md) for MCP, REST, and direct Python usage
 - [Configuration](usage/configuration.md) for the shared-stack config model and runtime combinations
+- [Upgrading from 0.6](usage/upgrading-from-0.6.md) for the 0.7 configuration and plugin changes
 - [Tools overview](tools/overview.md) for the discoverable MCP surface
 
 ## Relationship to groundcrew

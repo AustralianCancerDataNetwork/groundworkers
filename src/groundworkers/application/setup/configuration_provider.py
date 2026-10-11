@@ -48,6 +48,7 @@ from oa_configurator import (  # type: ignore[import-untyped]
     StackConfig,
     is_sensitive,
     plan_configure,
+    supports_schemas,
 )
 from omop_llm import canonical_model_name, supported_providers
 from pydantic import BaseModel, ValidationError
@@ -67,6 +68,7 @@ from groundworkers.application.setup.models import (
     EmbeddingStoreSnapshot,
     EmbeddingStoreState,
 )
+from groundworkers.base.errors import scrub_error_message
 from groundworkers.config import GroundworkersConfig
 
 CDM_SETUP_TARGET: Final = ConfigTarget(
@@ -110,12 +112,13 @@ MODEL_SOURCE_REGISTERED: Final = "registered"
 MODEL_SOURCE_NEW: Final = "new"
 
 # Where the vectors are stored. `cdm` derives the store's database from the CDM
-# entry -- same connection, same schema -- so the ordinary case needs no answers
+# entry -- same connection and dedicated schema -- so the ordinary case needs no answers
 # at all; `separate` opens the step that asks for them. oa-configurator requires
 # a vector store to name a *generic* database entry and a CDM entry is a distinct
 # kind, so `cdm` still writes an entry; it just derives every field of it.
 STORE_LOCATION_CDM: Final = "cdm"
 STORE_LOCATION_SEPARATE: Final = "separate"
+GROUNDWORKERS_SCHEMA: Final = "groundworkers"
 # Suffix for the derived entry. The name is a config-level label only: the
 # connection and schema underneath it are the CDM's own.
 CDM_VECTOR_DATABASE_SUFFIX: Final = "_vectors"
@@ -315,14 +318,17 @@ class GroundworkersConfigMutationService:
                 # choice with what the store actually holds.
                 future_fields = (self._model_source_field(session),)
             else:
+                choices, default, choice_help = _model_choice_options(
+                    session.fields, "model_choice", models
+                )
                 future_fields = (
                     FieldSpec(
                         key=choice_key,
                         label="Model",
                         kind=FieldKind.CHOICE,
-                        choices=tuple(ChoiceOption(name, name) for name in models),
-                        default=models[0],
-                        help="Models reported by the accepted provider endpoint.",
+                        choices=choices,
+                        default=default,
+                        help=choice_help,
                     ),
                 )
         elif session.target == VECTOR_STORE_SETUP_TARGET and step_key == "location":
@@ -397,16 +403,19 @@ class GroundworkersConfigMutationService:
         names = (
             session.registered_models if use_registered else session.provider_models
         )
+        choices, default, choice_help = _model_choice_options(
+            session.fields, "model_choice", names
+        )
         return FieldSpec(
             key="model_choice",
             label="Model",
             kind=FieldKind.CHOICE,
-            choices=tuple(ChoiceOption(name, name) for name in names),
-            default=names[0] if names else None,
+            choices=choices,
+            default=default,
             help=(
                 "Registered in the embedding store, so vectors already exist."
                 if use_registered
-                else "Reported by the provider. Populate embeddings after saving."
+                else choice_help
             ),
         )
 
@@ -415,14 +424,16 @@ class GroundworkersConfigMutationService:
         self._invalidate_plan(session)
         try:
             candidate = self._candidate(session)
-        except (ConfigurationError, ValidationError, ValueError, TypeError):
+        except (ConfigurationError, ValidationError, ValueError, TypeError) as exc:
+            validation_detail = scrub_error_message(" ".join(str(exc).splitlines()))
             return ConfigPlan(
                 target=session.target,
                 operation=session.operation,
                 diff=ConfigDiff(session.target, ()),
                 issues=(
                     ValidationIssue(
-                        "The proposed configuration is incomplete or invalid."
+                        validation_detail
+                        or "The proposed configuration is incomplete or invalid."
                     ),
                 ),
                 expected_revision=session.expected_revision,
@@ -865,7 +876,7 @@ def vector_store_setup_workflow(
 
     Location is asked first and defaults to the CDM database, because that is
     what the rest of the tier already assumes: the embedding adapter enriches
-    from ``cdm_engine`` and coverage counts the CDM's own concepts. Somewhere
+    from the routed CDM session factory and coverage counts the CDM's own concepts. Somewhere
     else is a real option, but it is the opt-in, and answering it is the only
     reason the database step exists.
     """
@@ -997,22 +1008,40 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "cdm_schema",
             "CDM schema",
             required=False,
+            disabled=not _supports_schema_dialect(dialect),
+            help=(
+                "SQLite has no schemas; this value is ignored."
+                if not _supports_schema_dialect(dialect)
+                else None
+            ),
             default=(
                 getattr(database, "cdm_schema", None)
                 if database is not None
-                else ("public" if dialect != "sqlite" else None)
+                else ("public" if _supports_schema_dialect(dialect) else None)
             ),
         ),
         FieldSpec(
             "vocab_schema",
             "Vocabulary schema",
             required=False,
+            disabled=not _supports_schema_dialect(dialect),
+            help=(
+                "SQLite has no schemas; this value is ignored."
+                if not _supports_schema_dialect(dialect)
+                else None
+            ),
             default=getattr(database, "vocab_schema", None),
         ),
         FieldSpec(
             "results_schema",
             "Results schema",
             required=False,
+            disabled=not _supports_schema_dialect(dialect),
+            help=(
+                "SQLite has no schemas; this value is ignored."
+                if not _supports_schema_dialect(dialect)
+                else None
+            ),
             default=getattr(database, "results_schema", None),
         ),
     )
@@ -1131,8 +1160,10 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     )
     store_connection = stack.connections.get(store_connection_name)
     store_schema = getattr(database, "schema_name", None)
-    if store_schema is None and getattr(store_connection, "dialect", None) != "sqlite":
-        store_schema = "groundworkers"
+    if store_schema is None and _supports_schema_dialect(
+        getattr(store_connection, "dialect", None)
+    ):
+        store_schema = GROUNDWORKERS_SCHEMA
     return (
         location,
         FieldSpec(
@@ -1168,8 +1199,17 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "store_schema_name",
             "Schema",
             required=False,
+            disabled=not _supports_schema_dialect(
+                getattr(store_connection, "dialect", None)
+            ),
+            help=(
+                "SQLite has no schemas; this value is ignored."
+                if not _supports_schema_dialect(
+                    getattr(store_connection, "dialect", None)
+                )
+                else "Blank uses the connection's own default schema."
+            ),
             default=store_schema,
-            help="Blank uses the connection's own default schema.",
         ),
         FieldSpec(
             "faiss_cache_dir",
@@ -1218,7 +1258,7 @@ def _store_location_field(
         )
     stored = (
         STORE_LOCATION_CDM
-        if database is not None and _matches_cdm(database, cdm)
+        if database is not None and _matches_cdm(database, cdm, stack)
         else STORE_LOCATION_SEPARATE
         if database is not None
         else STORE_LOCATION_CDM
@@ -1242,8 +1282,18 @@ def _store_location_field(
     )
 
 
-def _matches_cdm(database: object, cdm: CDMDatabaseConfig) -> bool:
-    return getattr(database, "connection", None) == cdm.connection
+def _matches_cdm(
+    database: object, cdm: CDMDatabaseConfig, stack: StackConfig
+) -> bool:
+    if getattr(database, "connection", None) != cdm.connection:
+        return False
+    connection = stack.connections.get(cdm.connection)
+    schema = (
+        GROUNDWORKERS_SCHEMA
+        if _supports_schema_dialect(getattr(connection, "dialect", None))
+        else None
+    )
+    return getattr(database, "schema_name", None) == schema
 
 
 def _backend_type_field(
@@ -1390,7 +1440,7 @@ def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
         "name": str(answers["cdm_db_name"]),
         "connection": connection,
     }
-    if str(answers["dialect"]) != "sqlite":
+    if _supports_schema_dialect(str(answers["dialect"])):
         schema = answers.get("cdm_schema")
         if schema not in (None, ""):
             database["cdm_schema"] = schema
@@ -1445,8 +1495,8 @@ def _store_database(
             "connection": cdm.connection,
         }
         cdm_connection = stack.connections.get(cdm.connection)
-        if getattr(cdm_connection, "dialect", None) != "sqlite":
-            database["schema_name"] = "groundworkers"
+        if _supports_schema_dialect(getattr(cdm_connection, "dialect", None)):
+            database["schema_name"] = GROUNDWORKERS_SCHEMA
         return database
     database = {
         "name": str(answers["store_database_name"]),
@@ -1455,7 +1505,9 @@ def _store_database(
     }
     schema = answers.get("store_schema_name")
     connection = stack.connections.get(str(answers["store_connection_name"]))
-    if schema not in (None, "") and getattr(connection, "dialect", None) != "sqlite":
+    if schema not in (None, "") and _supports_schema_dialect(
+        getattr(connection, "dialect", None)
+    ):
         database["schema_name"] = schema
     return database
 
@@ -1956,6 +2008,31 @@ def _prefix_text(value: object) -> str | None:
         return None
     text = str(value)
     return text or None
+
+
+def _supports_schema_dialect(dialect: object) -> bool:
+    if not isinstance(dialect, str):
+        return False
+    try:
+        return supports_schemas(dialect.split("+", maxsplit=1)[0])
+    except ValueError:
+        return False
+
+
+def _model_choice_options(
+    fields: tuple[FieldSpec, ...], key: str, discovered: Sequence[str]
+) -> tuple[tuple[ChoiceOption, ...], str | None, str]:
+    stored = next((field.default for field in fields if field.key == key), None)
+    stored = stored if isinstance(stored, str) else None
+    options = tuple(ChoiceOption(name, name) for name in discovered)
+    if stored and stored not in discovered:
+        options = (ChoiceOption(stored, f"{stored} (stored; not discovered)"), *options)
+        return options, stored, (
+            f"Stored model {stored!r} was not reported by the provider. It remains selected; verify it before changing."
+        )
+    return options, stored or (discovered[0] if discovered else None), (
+        "Models reported by the accepted provider endpoint. Populate embeddings after saving to use a newly selected model."
+    )
 
 
 def _optional_text(value: object) -> str | None:

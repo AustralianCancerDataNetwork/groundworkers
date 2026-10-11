@@ -129,8 +129,8 @@ def start_performance_run(
 @contextmanager
 def _postgres_cdm(
     snapshot: ConfigurationSnapshot, *, purpose: str
-) -> Iterator[tuple[Connection, str | None, str]]:
-    """Yield a transaction on the PostgreSQL CDM, its schema, and a table prefix."""
+) -> Iterator[tuple[Connection, str | None]]:
+    """Yield a transaction on the PostgreSQL vocabulary role and its schema."""
 
     if snapshot.stack is None:
         raise ValueError("A usable stack configuration is required.")
@@ -146,7 +146,7 @@ def _postgres_cdm(
             raise ValueError(f"{purpose} require a PostgreSQL CDM database.")
         schema = database.schema_for_role(Role.VOCAB)
         with vocab_engine.begin() as connection:
-            yield connection, schema, ""
+            yield connection, schema
     finally:
         primary_engine.dispose()
         if vocab_engine is not primary_engine:
@@ -156,7 +156,7 @@ def _postgres_cdm(
 def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
     """Create the optional PostgreSQL trigram indexes Groundworkers can use."""
 
-    with _postgres_cdm(snapshot, purpose="Trigram indexes") as (connection, _schema, _):
+    with _postgres_cdm(snapshot, purpose="Trigram indexes") as (connection, _schema):
         connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         for table, column, index_name in (
             ("concept", "concept_name", "idx_concept_lower_name_trgm"),
@@ -193,7 +193,6 @@ def populate_normalized_indexes(snapshot: ConfigurationSnapshot) -> None:
     with _postgres_cdm(snapshot, purpose="Normalized-name indexes") as (
         connection,
         schema,
-        _prefix,
     ):
         for table, column, _label, index_name in GROUNDWORKERS_NORMALIZED_INDEX_TARGETS:
             model_table = model_tables[table]

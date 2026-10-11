@@ -54,13 +54,13 @@ setup has been run.
         )
 
     try:
-        from omop_emb.backends import inspect_resolved_vector_store
+        from omop_emb.backends import open_vector_store_reader
 
-        store = inspect_resolved_vector_store(resolved)
-        records = store.registered_models()
+        store = open_vector_store_reader(resolved)
+        records = store.get_registered_models()
         models_list = []
         for record in records:
-            embeddings = store.stored_embeddings(record.model_name)
+            count = store.get_embedding_count(model_name=record.model_name)
             models_list.append(
                 RegisteredEmbeddingModel(
                     model_name=record.model_name,
@@ -68,8 +68,8 @@ setup has been run.
                     dimensions=int(record.dimensions),
                     metric=(record.metric_type.value if record.metric_type is not None else None),
                     index_type=record.index_type.value,
-                    has_embeddings=bool(embeddings),
-                    concept_count=len(embeddings),
+                    has_embeddings=bool(count),
+                    concept_count=count,
                 )
             )
         models = tuple(models_list)
