@@ -16,6 +16,7 @@ def register_mapping_tools(
         query: str,
         domain: str | None = None,
         vocabulary_id: str | None = None,
+        parent_ids: list[int] | None = None,
         standard_only: bool = False,
         include_synonyms: bool = False,
         normalization_profile: NormalizationProfile = NormalizationProfile.VERBATIM,
@@ -29,10 +30,10 @@ def register_mapping_tools(
         making this more robust to punctuation and whitespace variation than
         concept_search_exact while remaining fully deterministic (no ranking).
 
-        Comparison is on a computed expression, so this tool needs a vocabulary_id
-        filter; otherwise it scans every concept and the call is refused. A domain
-        filter is not selective enough to qualify. Set allow_unindexed_scan to
-        accept the scan deliberately.
+        Filters are optional when the normalized-name index exists. Without it,
+        pass domain, vocabulary_id, or parent_ids for a time-limited scoped scan.
+        A domain is useful when known. Set allow_unindexed_scan=True to accept an
+        unscoped scan deliberately.
         """
         safe_limit = max(1, min(limit, 50))
         try:
@@ -40,6 +41,7 @@ def register_mapping_tools(
                 query,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
+                parent_ids=parent_ids,
                 standard_only=standard_only,
                 include_synonyms=include_synonyms,
                 normalization_profile=normalization_profile,

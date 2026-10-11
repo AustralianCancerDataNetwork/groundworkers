@@ -5,15 +5,23 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
 
+import sqlalchemy as sa
 from groundskeeping.contracts import Command, CommandPlan, CommandStep
 from oa_configurator import Resolver
+from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Synonym
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from groundworkers.application.setup.configuration import load_configuration
+from groundworkers.application.setup.databases import (
+    GROUNDWORKERS_NORMALIZED_INDEX_TARGETS,
+    normalized_index_matches,
+)
 from groundworkers.application.setup.maintenance_runs import (
     MaintenanceRun,
     MaintenanceRunner,
@@ -21,12 +29,22 @@ from groundworkers.application.setup.maintenance_runs import (
 from groundworkers.application.setup.models import (
     ConfigurationSnapshot,
 )
-from groundworkers.base.sql import quote_identifier
+from groundworkers.base.sql import (
+    normalization_key_expression,
+    quote_identifier,
+)
 from groundworkers.config import GroundworkersConfig
+
+_MODULE_NAME = (
+    __spec__.name
+    if __spec__ is not None
+    else "groundworkers.application.setup.performance_maintenance"
+)
 
 
 class PerformanceRemediation(StrEnum):
     TRIGRAM_INDEXES = "trigram_indexes"
+    NORMALIZED_INDEXES = "normalized_indexes"
     EMBEDDING_INDEX = "embedding_index"
 
 
@@ -45,18 +63,17 @@ def build_performance_commands(
     )
     commands: list[Command] = []
     selected = set(actions)
-    if PerformanceRemediation.TRIGRAM_INDEXES in selected:
-        commands.append(
-            Command(
-                argv=(
-                    sys.executable,
-                    "-m",
-                    "groundworkers.application.setup.performance_maintenance",
-                    "trigram",
-                ),
-                environment=environment,
+    for remediation, action in (
+        (PerformanceRemediation.TRIGRAM_INDEXES, "trigram"),
+        (PerformanceRemediation.NORMALIZED_INDEXES, "normalized"),
+    ):
+        if remediation in selected:
+            commands.append(
+                Command(
+                    argv=(sys.executable, "-m", _MODULE_NAME, action),
+                    environment=environment,
+                )
             )
-        )
     if PerformanceRemediation.EMBEDDING_INDEX in selected:
         if not embedding_model:
             raise ValueError(
@@ -103,8 +120,11 @@ def start_performance_run(
     )
 
 
-def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
-    """Create the optional PostgreSQL trigram indexes Groundworkers can use."""
+@contextmanager
+def _postgres_cdm(
+    snapshot: ConfigurationSnapshot, *, purpose: str
+) -> Iterator[tuple[Connection, str | None, str]]:
+    """Yield a transaction on the PostgreSQL CDM, its schema, and a table prefix."""
 
     if snapshot.stack is None:
         raise ValueError("A usable stack configuration is required.")
@@ -113,39 +133,96 @@ def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
     engine = database.create_engine()
     try:
         if engine.dialect.name != "postgresql":
-            raise ValueError("Trigram indexes require a PostgreSQL CDM database.")
+            raise ValueError(f"{purpose} require a PostgreSQL CDM database.")
         schema = getattr(database, "schema_name", None)
         prefix = f"{quote_identifier(engine, schema)}." if schema else ""
         with engine.begin() as connection:
-            connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-            for table, column, index_name in (
-                ("concept", "concept_name", "idx_concept_lower_name_trgm"),
-                (
-                    "concept_synonym",
-                    "concept_synonym_name",
-                    "idx_concept_synonym_lower_name_trgm",
-                ),
-            ):
-                connection.execute(
-                    text(
-                        f"CREATE INDEX IF NOT EXISTS {quote_identifier(connection, index_name)} "
-                        f"ON {prefix}{quote_identifier(connection, table)} USING gin "
-                        f"(lower({quote_identifier(connection, column)}) gin_trgm_ops)"
-                    )
-                )
+            yield connection, schema, prefix
     finally:
         engine.dispose()
 
 
+def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
+    """Create the optional PostgreSQL trigram indexes Groundworkers can use."""
+
+    with _postgres_cdm(snapshot, purpose="Trigram indexes") as (connection, _, prefix):
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        for table, column, index_name in (
+            ("concept", "concept_name", "idx_concept_lower_name_trgm"),
+            (
+                "concept_synonym",
+                "concept_synonym_name",
+                "idx_concept_synonym_lower_name_trgm",
+            ),
+        ):
+            connection.execute(
+                text(
+                    f"CREATE INDEX IF NOT EXISTS {quote_identifier(connection, index_name)} "
+                    f"ON {prefix}{quote_identifier(connection, table)} USING gin "
+                    f"(lower({quote_identifier(connection, column)}) gin_trgm_ops)"
+                )
+            )
+
+
+def populate_normalized_indexes(snapshot: ConfigurationSnapshot) -> None:
+    """Create the expression indexes that serve ``search_normalized``.
+
+    The indexed expression is rendered from the query's own builder, so the
+    index matches on any PostgreSQL setup regardless of plan caching. An index
+    of the same name built from an older expression is replaced, not kept.
+    """
+
+    model_tables = {"concept": Concept, "concept_synonym": Concept_Synonym}
+    with _postgres_cdm(snapshot, purpose="Normalized-name indexes") as (
+        connection,
+        schema,
+        prefix,
+    ):
+        for table, column, _label, index_name in GROUNDWORKERS_NORMALIZED_INDEX_TARGETS:
+            model_table = model_tables[table]
+            light_table = sa.Table(
+                table,
+                sa.MetaData(),
+                sa.Column(column, sa.String),
+                schema=model_table.__table__.schema,
+            )
+            old_name = (
+                "idx_concept_name_normalized"
+                if table == "concept"
+                else "idx_concept_synonym_name_normalized"
+            )
+            connection.execute(
+                sa.schema.DropIndex(
+                    sa.Index(old_name, light_table.c[column]),
+                    if_exists=True,
+                )
+            )
+            if normalized_index_matches(connection, schema, table, column):
+                continue
+            index = sa.Index(
+                index_name,
+                normalization_key_expression(light_table.c[column]),
+            )
+            connection.execute(
+                sa.schema.DropIndex(index, if_exists=True)
+            )
+            connection.execute(sa.schema.CreateIndex(index))
+            qualified = f"{prefix}{quote_identifier(connection, table)}"
+            connection.exec_driver_sql(f"ANALYZE {qualified}")
+
+
 def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("trigram",))
+    parser.add_argument("action", choices=("trigram", "normalized"))
     parser.add_argument("--config", type=Path)
     args = parser.parse_args(argv)
     snapshot = load_configuration(config_path=args.config)
     if not snapshot.usable:
         raise SystemExit("The selected stack configuration is not usable.")
-    populate_trigram_indexes(snapshot)
+    if args.action == "normalized":
+        populate_normalized_indexes(snapshot)
+    else:
+        populate_trigram_indexes(snapshot)
     return 0
 
 
@@ -156,6 +233,7 @@ if __name__ == "__main__":
 __all__ = [
     "PerformanceRemediation",
     "build_performance_commands",
+    "populate_normalized_indexes",
     "populate_trigram_indexes",
     "start_performance_run",
 ]

@@ -167,29 +167,33 @@ def test_search_tools_expose_the_characterized_vocab_service(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_normalized_search_is_refused_when_it_would_scan_the_whole_table(
+def test_normalized_search_is_refused_when_unscoped_and_unindexed(
     tmp_path,
 ) -> None:
-    """No index and no selective filter is a table scan, so it is refused.
-
-    The unindexed query succeeds slowly rather than failing, so returning
-    results here would hide the cost instead of reporting it.
-    """
+    """No index and no scope requires the caller to choose a remedy."""
     service = _service(tmp_path)
 
     with pytest.raises(GroundworkersError) as excinfo:
         service.search_normalized("diabetes mellitus")
 
-    assert "vocabulary_id or parent_ids" in excinfo.value.message
-    assert "allow_unindexed_scan" in excinfo.value.message
+    assert "Setup → Performance → normalised-name indexes" in excinfo.value.message
+    assert "domain, vocabulary_id, or parent_ids" in excinfo.value.message
 
 
-def test_a_domain_filter_alone_does_not_satisfy_the_guard(tmp_path) -> None:
-    """domain looks selective and is not: measured at 25s against a real CDM."""
+def test_empty_parent_ids_do_not_count_as_a_scope(tmp_path) -> None:
     service = _service(tmp_path)
 
-    with pytest.raises(GroundworkersError):
-        service.search_normalized("diabetes mellitus", domain="Condition")
+    with pytest.raises(GroundworkersError) as excinfo:
+        service.search_normalized("diabetes mellitus", parent_ids=[])
+
+    assert excinfo.value.code == "INVALID_INPUT"
+
+
+def test_a_domain_filter_allows_a_scoped_scan(tmp_path) -> None:
+    service = _service(tmp_path)
+
+    results = service.search_normalized("diabetes mellitus", domain="Condition")
+    assert [item.concept_id for item in results] == [1, 2]
 
 
 @pytest.mark.parametrize(
@@ -197,9 +201,10 @@ def test_a_domain_filter_alone_does_not_satisfy_the_guard(tmp_path) -> None:
     [
         {"vocabulary_id": "ICD10CM"},
         {"parent_ids": [1]},
+        {"domain": "Condition"},
         {"allow_unindexed_scan": True},
     ],
-    ids=["vocabulary_id", "parent_ids", "explicit_opt_in"],
+    ids=["vocabulary_id", "parent_ids", "domain", "explicit_opt_in"],
 )
 def test_normalized_search_runs_when_bounded_or_explicitly_allowed(
     tmp_path, kwargs
@@ -208,6 +213,108 @@ def test_normalized_search_runs_when_bounded_or_explicitly_allowed(
 
     # Any of these makes the call affordable or accepts the cost deliberately.
     assert isinstance(service.search_normalized("diabetes mellitus", **kwargs), list)
+
+
+def test_normalized_search_plan_uses_index_without_filters(tmp_path, monkeypatch) -> None:
+    service = _service(tmp_path)
+    monkeypatch.setattr(service._cdm.engine.dialect, "name", "postgresql")
+    monkeypatch.setattr(service, "_has_normalized_index", lambda *_args: True)
+
+    assert service._normalized_search_plan(
+        domain=None,
+        vocabulary_id=None,
+        parent_ids=None,
+        include_synonyms=False,
+        allow_unindexed_scan=False,
+    ) == "indexed"
+
+
+def test_normalized_search_runs_unfiltered_when_index_is_available(
+    tmp_path, monkeypatch
+) -> None:
+    service = _service(tmp_path)
+    monkeypatch.setattr(
+        service,
+        "_normalized_search_plan",
+        lambda **_kwargs: "indexed",
+    )
+
+    results, plan = service.search_normalized_with_plan("diabetes mellitus")
+
+    assert plan == "indexed"
+    assert [item.concept_id for item in results] == [1, 2]
+
+
+def test_normalized_search_translates_postgres_statement_timeout(tmp_path, monkeypatch) -> None:
+    service = _service(tmp_path)
+
+    class QueryCanceled(RuntimeError):
+        sqlstate = "57014"
+
+    class FakeSession:
+        calls = 0
+        bind_arguments = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, _statement, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                type(self).bind_arguments = kwargs.get("bind_arguments")
+                return None  # SET LOCAL statement_timeout
+            raise QueryCanceled("canceling statement due to statement timeout")
+
+    monkeypatch.setattr(service._cdm.engine.dialect, "name", "postgresql")
+    monkeypatch.setattr(service, "_has_normalized_index", lambda *_args: True)
+    monkeypatch.setattr(service._cdm, "session", FakeSession)
+
+    with pytest.raises(GroundworkersError) as excinfo:
+        service.search_normalized("diabetes", domain="Condition")
+
+    assert excinfo.value.code == "QUERY_TIMEOUT"
+    assert "normalised-name indexes" in excinfo.value.message
+    assert "domain, vocabulary_id, or parent_ids" in excinfo.value.message
+    assert "15 second time limit" in excinfo.value.message
+    assert FakeSession.bind_arguments == {"mapper": Concept}
+
+
+def test_explicit_unindexed_scan_skips_postgres_statement_timeout(
+    tmp_path, monkeypatch
+) -> None:
+    service = _service(tmp_path)
+    statements = []
+
+    class FakeResult:
+        def all(self):
+            return []
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def execute(self, statement):
+            statements.append(statement)
+            return FakeResult()
+
+    monkeypatch.setattr(service._cdm.engine.dialect, "name", "postgresql")
+    monkeypatch.setattr(service, "_has_normalized_index", lambda *_args: False)
+    monkeypatch.setattr(service._cdm, "session", FakeSession)
+
+    results, plan = service.search_normalized_with_plan(
+        "diabetes", allow_unindexed_scan=True
+    )
+
+    assert plan == "unindexed_scan"
+    assert results == []
+    assert len(statements) == 1
+    assert "SET LOCAL statement_timeout" not in str(statements[0])
 
 
 def test_unknown_normalization_profile_is_rejected_by_python_and_sql() -> None:

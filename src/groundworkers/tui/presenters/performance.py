@@ -47,6 +47,14 @@ _INDEX_DIAGNOSTICS = (
         ("trigram_indexes_missing", "trigram_indexes_unchecked"),
         "trigram_indexes_present",
     ),
+    (
+        "performance.groundworkers.normalized",
+        "Groundworkers",
+        "Normalized-name indexes",
+        "database.groundworkers",
+        ("normalized_indexes_missing",),
+        "normalized_indexes_present",
+    ),
 )
 
 
@@ -117,9 +125,9 @@ class PerformancePresenter(SetupPresenterBase):
                 ),
             ),
             message=(
-                "Graph indexes are prepared from Graph Setup. Groundworkers trigram "
-                "and embedding indexes can be prepared here when their backends "
-                "support it."
+                "Graph indexes are prepared from Graph Setup. Groundworkers trigram, "
+                "normalized-name and embedding indexes can be prepared here when "
+                "their backends support it."
             ),
         )
 

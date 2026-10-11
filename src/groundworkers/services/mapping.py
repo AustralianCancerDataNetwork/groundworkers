@@ -22,6 +22,88 @@ _SYNC_EMBEDDING = object()
 _SYNC_GROUNDING = object()
 
 
+def _shared_ancestor_failure(concept_ids: list[int], reason: str) -> dict[str, Any]:
+    return {
+        "found": False,
+        "concept_ids": concept_ids,
+        "selected_ancestor": None,
+        "selection_reason": reason,
+    }
+
+
+def _standard_ancestors_for(
+    graph: GraphService, concept_id: int, max_depth: int
+) -> tuple[str | None, dict[int, dict[str, Any]]]:
+    concept = graph.get_concept(concept_id)
+    if concept is None:
+        raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
+
+    domain = concept.get("domain_id")
+    ancestors = (
+        {concept_id: {**concept, "depth": 0}}
+        if concept.get("standard_concept")
+        else {}
+    )
+    ancestors.update(
+        {
+            int(row["concept_id"]): row
+            for row in graph.get_ancestors(concept_id, max_depth)
+            if row.get("standard_concept") and row.get("domain_id") == domain
+        }
+    )
+    return domain, ancestors
+
+
+def _shared_standard_ancestor(
+    graph: GraphService | None, concept_ids: list[int], max_depth: int
+) -> dict[str, Any]:
+    """Return the unique nearest same-domain standard ancestor, if any.
+
+    Concepts themselves count at depth zero. When equally near ancestors tie,
+    leave selection unresolved rather than depending on graph row ordering.
+    """
+
+    if graph is None:
+        raise GroundworkersError(
+            "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+        )
+    ids = list(dict.fromkeys(concept_ids))
+    if len(ids) < 2:
+        return _shared_ancestor_failure(ids, "fewer_than_two_concepts")
+
+    ancestry = [
+        _standard_ancestors_for(graph, concept_id, max_depth) for concept_id in ids
+    ]
+    domains = {domain for domain, _ in ancestry}
+    if None in domains or len(domains) != 1:
+        return _shared_ancestor_failure(ids, "incompatible_domains")
+
+    maps = [ancestors for _, ancestors in ancestry]
+    shared_ids = set.intersection(*(set(ancestors) for ancestors in maps))
+    if not shared_ids:
+        return _shared_ancestor_failure(ids, "no_shared_standard_ancestor")
+
+    ranked = sorted(
+        (
+            max(ancestors[ancestor_id]["depth"] for ancestors in maps),
+            ancestor_id,
+        )
+        for ancestor_id in shared_ids
+    )
+    nearest_depth, nearest_id = ranked[0]
+    if len(ranked) > 1 and ranked[1][0] == nearest_depth:
+        return _shared_ancestor_failure(ids, "multiple_nearest_shared_ancestors")
+
+    selected = dict(maps[0][nearest_id])
+    selected["depth"] = nearest_depth
+    return {
+        "found": True,
+        "concept_ids": ids,
+        "selected_ancestor": selected,
+        "selection_reason": "nearest_shared_standard_ancestor",
+    }
+
+
 class MappingService:
     """Direct Python API for mapping-oriented vocabulary workflows."""
 
@@ -44,6 +126,7 @@ class MappingService:
         *,
         domain: str | None = None,
         vocabulary_id: str | None = None,
+        parent_ids: list[int] | None = None,
         standard_only: bool = False,
         include_synonyms: bool = False,
         normalization_profile: str
@@ -55,6 +138,8 @@ class MappingService:
         stripped = query.strip()
         if not stripped:
             raise ValueError("query must be a non-empty string")
+        if parent_ids is not None and any(parent_id <= 0 for parent_id in parent_ids):
+            raise ValueError("all parent_ids must be positive integers")
         normalized_query, normalization_steps = normalize_text_for_matching(
             query,
             profile=normalization_profile,
@@ -65,10 +150,11 @@ class MappingService:
                 "query must contain searchable content after normalization"
             )
 
-        results = self._vocab.search_normalized(
+        results, plan = self._vocab.search_normalized_with_plan(
             normalized_query,
             domain=domain or None,
             vocabulary_id=vocabulary_id or None,
+            parent_ids=parent_ids,
             standard_only=standard_only,
             include_synonyms=include_synonyms,
             normalization_profile=normalization_profile,
@@ -98,6 +184,7 @@ class MappingService:
             "normalized_query": normalized_query,
             "normalization_profile": normalization_profile,
             "normalization_steps": normalization_steps,
+            "plan": plan,
             "results": serialised,
         }
 
@@ -111,34 +198,33 @@ class MappingService:
         active_only: bool,
         parent_ids: list[int] | None,
         limit: int,
-    ) -> tuple[dict[str, Any], str | None]:
-        """The bundle's normalized channel, dropped when it would scan the table.
-
-        A bundle surveys what each channel can offer, so an unaffordable
-        normalized query is omitted the way an absent full-text sidecar is.
-        Letting the underlying guard raise would fail the whole bundle over one
-        optional channel.
-        """
-        available = bool(vocabulary_id or parent_ids)
-        if not available:
-            return (
-                {"available": False, "results": [], "retrieval_notes": []},
-                "normalized channel omitted: it would scan the whole concept table "
-                "without a vocabulary_id or parent_ids filter",
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Run normalized search using the same index/scope policy as direct calls."""
+        try:
+            results, plan = self._vocab.search_normalized_with_plan(
+                query,
+                domain=domain or None,
+                vocabulary_id=vocabulary_id or None,
+                standard_only=standard_only,
+                active_only=active_only,
+                include_synonyms=False,
+                parent_ids=parent_ids,
+                limit=limit,
             )
-        results = self._vocab.search_normalized(
-            query,
-            domain=domain or None,
-            vocabulary_id=vocabulary_id or None,
-            standard_only=standard_only,
-            active_only=active_only,
-            include_synonyms=False,
-            parent_ids=parent_ids,
-            limit=limit,
-        )
+        except GroundworkersError as exc:
+            note = str(exc)
+            if exc.code not in {"INVALID_INPUT", "QUERY_TIMEOUT"}:
+                raise
+            if exc.code == "INVALID_INPUT":
+                return None, f"normalized channel omitted: {note}"
+            return (
+                {"available": False, "results": [], "retrieval_notes": [note]},
+                f"normalized channel timed out: {note}",
+            )
         return (
             {
                 "available": True,
+                "plan": plan,
                 "results": [serialise_concept_match(r) for r in results],
                 "retrieval_notes": [
                     "deterministic normalized equality over concept labels"
@@ -215,7 +301,8 @@ class MappingService:
                 parent_ids=parent_ids,
                 limit=per_channel_limit,
             )
-            channels["normalized"] = channel
+            if channel is not None:
+                channels["normalized"] = channel
             if warning:
                 warnings.append(warning)
 
@@ -530,6 +617,12 @@ class MappingService:
             "alternative_parents": alternatives,
             "warnings": warnings,
         }
+
+    def concept_shared_standard_ancestor(
+        self, concept_ids: list[int], *, max_depth: int = 5
+    ) -> dict[str, Any]:
+        """Return a unique nearest common standard ancestor, when one exists."""
+        return _shared_standard_ancestor(self._graph, concept_ids, max_depth)
 
     async def async_concept_nearest_standard_ancestor(
         self,

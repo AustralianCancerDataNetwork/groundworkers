@@ -64,6 +64,7 @@ def test_concept_search_normalized_clamps_limit_and_calls_service():
                 "query": " Diabetes ",
                 "domain": None,
                 "vocabulary_id": None,
+                "parent_ids": None,
                 "standard_only": False,
                 "include_synonyms": False,
                 "normalization_profile": "verbatim",
@@ -73,6 +74,15 @@ def test_concept_search_normalized_clamps_limit_and_calls_service():
             },
         )
     ]
+
+
+def test_concept_search_normalized_forwards_parent_scope():
+    service = StubMappingService()
+    server = build_server(service)
+
+    server.call("concept_search_normalized", query="Diabetes", parent_ids=[101])
+
+    assert service.calls[0][1]["parent_ids"] == [101]
 
 
 def test_concept_candidate_bundle_rejects_invalid_input_from_service():

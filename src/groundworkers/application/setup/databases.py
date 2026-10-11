@@ -35,7 +35,10 @@ from groundworkers.application.setup.models import (
     DiagnosticSeverity,
     ResourceDiagnostic,
 )
-from groundworkers.base.sql import quote_identifier
+from groundworkers.base.sql import (
+    normalization_key_expression_sql,
+    quote_identifier,
+)
 from groundworkers.config import GroundworkersConfig
 
 CDM_TABLES = (
@@ -86,6 +89,23 @@ GROUNDWORKERS_TRIGRAM_INDEX_TARGETS = (
         "concept_synonym_name",
         "concept_synonym.lower(concept_synonym_name) trigram",
         ("idx_concept_synonym_lower_name_trgm",),
+    ),
+)
+# (table, column, label, index name). The indexed K expression is not restated
+# here: it is rendered from base.sql.normalization_key_expression, the same
+# builder search_normalized queries with, so it cannot drift.
+GROUNDWORKERS_NORMALIZED_INDEX_TARGETS = (
+    (
+        "concept",
+        "concept_name",
+        "concept normalized name",
+        "idx_concept_name_normkey",
+    ),
+    (
+        "concept_synonym",
+        "concept_synonym_name",
+        "concept_synonym normalized name",
+        "idx_concept_synonym_name_normkey",
     ),
 )
 # Taken from omop-emb rather than restated: these describe tables omop-emb owns
@@ -440,6 +460,11 @@ def _groundworkers_diagnostics(
                 )
             )
 
+    if connection.dialect.name == "postgresql":
+        diagnostics.extend(
+            _normalized_index_diagnostics(connection, schema, existing_tables)
+        )
+
     diagnostics.extend(
         _groundworkers_embedding_model_diagnostics(
             target,
@@ -780,6 +805,83 @@ def _functional_lower_index_exists(
     return any(index.get("name") in aliases for index in indexes)
 
 
+def _normalized_index_diagnostics(
+    connection: Connection,
+    schema: str | None,
+    existing_tables: set[str],
+) -> tuple[ResourceDiagnostic, ...]:
+    targets = tuple(
+        target
+        for target in GROUNDWORKERS_NORMALIZED_INDEX_TARGETS
+        if target[0] in existing_tables
+    )
+    if not targets:
+        return ()
+    statuses = tuple(
+        (label, normalized_index_status(connection, schema, table, column))
+        for table, column, label, _name in targets
+    )
+    unchecked = tuple(label for label, present in statuses if present is None)
+    if unchecked:
+        return (
+            _info(
+                "normalized_indexes_unchecked",
+                "Normalized-name indexes unchecked because PostgreSQL index listings "
+                f"could not be read: {', '.join(unchecked)}.",
+            ),
+        )
+    missing = tuple(label for label, present in statuses if not present)
+    if missing:
+        return (
+            _warning(
+                "normalized_indexes_missing",
+                "Optional normalized-name indexes are missing or out of date: "
+                f"{', '.join(missing)}. Groundworkers can still run, but unbounded "
+                "normalized searches scan the whole vocabulary table.",
+            ),
+        )
+    return (
+        _info(
+            "normalized_indexes_present",
+            "Optional normalized-name indexes are present: "
+            f"{', '.join(label for _table, _column, label, _name in targets)}.",
+        ),
+    )
+
+
+def normalized_index_matches(
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    """True when an index on *table_name* covers the shared K expression."""
+    return normalized_index_status(connection, schema, table_name, column_name) is True
+
+
+def normalized_index_status(
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+    column_name: str,
+) -> bool | None:
+    """Return True/False for the K index, or None when listing failed."""
+    definitions = _postgres_index_definitions(connection, schema, table_name)
+    if definitions is None:
+        return None
+    expected = _squash_index_sql(
+        normalization_key_expression_sql(connection, column_name)
+    )
+    return any(expected in _squash_index_sql(indexdef) for indexdef in definitions)
+
+
+def _squash_index_sql(sql: str) -> str:
+    # pg_get_indexdef adds ::text casts and parentheses the compiled expression
+    # lacks; drop both, plus whitespace and identifier quotes, on both sides.
+    squashed = sql.lower().replace("::text", "")
+    return "".join(ch for ch in squashed if ch not in ' \t\n"()')
+
+
 def _trigram_lower_index_exists(
     connection: Connection,
     inspector: Any,
@@ -812,6 +914,21 @@ def _postgres_lower_index_exists(
     *,
     required_fragment: str | None = None,
 ) -> bool:
+    return any(
+        _index_defines_lower_expression(
+            indexdef,
+            column_name,
+            required_fragment=required_fragment,
+        )
+        for indexdef in (_postgres_index_definitions(connection, schema, table_name) or ())
+    )
+
+
+def _postgres_index_definitions(
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+) -> tuple[str, ...] | None:
     try:
         rows = connection.execute(
             text(
@@ -825,16 +942,9 @@ def _postgres_lower_index_exists(
             {"schema": schema or "public", "table_name": table_name},
         )
     except Exception:
-        # Broad except: fall back to reflected index names.
-        return False
-    return any(
-        _index_defines_lower_expression(
-            str(row[0]),
-            column_name,
-            required_fragment=required_fragment,
-        )
-        for row in rows
-    )
+        # Broad except: callers fall back to reflected names or report absence.
+        return None
+    return tuple(str(row[0]) for row in rows)
 
 
 def _index_defines_lower_expression(

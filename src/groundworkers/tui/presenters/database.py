@@ -151,6 +151,8 @@ _PERFORMANCE_DIAGNOSTIC_CODES = frozenset(
         "trigram_indexes_missing",
         "trigram_indexes_present",
         "trigram_indexes_unchecked",
+        "normalized_indexes_missing",
+        "normalized_indexes_present",
     }
 )
 

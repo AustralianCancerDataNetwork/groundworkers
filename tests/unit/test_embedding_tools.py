@@ -25,11 +25,24 @@ class StubEmbAdapter:
             ],
         }
 
-    def get_neighbours(self, concept_id: int, limit: int, model_name: str | None) -> dict:
+    def get_neighbours(
+        self,
+        concept_id: int,
+        limit: int,
+        model_name: str | None,
+        standard_only: bool = False,
+        active_only: bool = True,
+    ) -> dict:
         self.calls.append(
             (
                 "get_neighbours",
-                {"concept_id": concept_id, "limit": limit, "model_name": model_name},
+                {
+                    "concept_id": concept_id,
+                    "limit": limit,
+                    "model_name": model_name,
+                    "standard_only": standard_only,
+                    "active_only": active_only,
+                },
             )
         )
         return {
@@ -114,13 +127,48 @@ def test_embedding_neighbours_calls_adapter_with_clamped_limit():
 
     assert result["query_concept_id"] == 123
     assert adapter.calls == [
-        ("get_neighbours", {"concept_id": 123, "limit": 50, "model_name": None})
+        (
+            "get_neighbours",
+            {
+                "concept_id": 123,
+                "limit": 50,
+                "model_name": None,
+                "standard_only": True,
+                "active_only": True,
+            },
+        )
     ]
+
+
+def test_embedding_neighbours_forwards_concept_filters():
+    """standard_only/active_only must reach the adapter: the vector index is partial
+    on is_standard AND is_valid, so dropping them silently costs a full scan."""
+    adapter = StubEmbAdapter()
+    server = build_server(adapter)
+
+    server.call(
+        "embedding_neighbours",
+        concept_id=123,
+        limit=5,
+        model_name=None,
+        standard_only=True,
+        active_only=True,
+    )
+
+    assert adapter.calls[0][1]["standard_only"] is True
+    assert adapter.calls[0][1]["active_only"] is True
 
 
 def test_embedding_neighbours_returns_error_dict_for_cava_error():
     class NotFoundAdapter(StubEmbAdapter):
-        def get_neighbours(self, concept_id: int, limit: int, model_name: str | None) -> dict:
+        def get_neighbours(
+            self,
+            concept_id: int,
+            limit: int,
+            model_name: str | None,
+            standard_only: bool = False,
+            active_only: bool = True,
+        ) -> dict:
             raise GroundworkersError("NOT_FOUND", "missing concept")
 
     server = build_server(NotFoundAdapter())

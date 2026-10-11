@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,9 +26,15 @@ from groundworkers.base.sql import (
     NormalizationProfile,
     effective_schema,
     normalization_expression,
+    normalization_key_expression,
+    normalized_key,
 )
 
 logger = logging.getLogger(__name__)
+NORMALIZED_SEARCH_TIMEOUT_MS = 15_000
+_NORMALIZED_INDEX_CACHE: dict[tuple[object, str, str], tuple[bool, float]] = {}
+_NORMALIZED_INDEX_CACHE_LOCK = threading.Lock()
+_NORMALIZED_INDEX_NEGATIVE_TTL = 60.0
 
 # Keep this service focused on vocabulary queries. Reuse an omop-graph primitive
 # when it already provides the required operation; higher-level policy belongs in
@@ -97,25 +105,6 @@ class ConceptMappingResult:
     source_standard_concept: bool
     source_classification_concept: bool
     targets: list[MappedConcept] = field(default_factory=list)
-
-
-#: Retained so existing type annotations and imports keep working; both
-#: navigations now return the same shape.
-StandardMapping = ConceptMappingResult
-RelatedConceptMapping = ConceptMappingResult
-
-
-def _require_bounded_normalized_query(
-    vocabulary_id: str | None,
-    parent_ids: list[int] | None,
-) -> None:
-    if not (vocabulary_id or parent_ids):
-        raise GroundworkersError(
-            "INVALID_INPUT",
-            "search_normalized would scan the whole concept table. Pass "
-            "vocabulary_id or parent_ids (domain alone is not selective enough), "
-            "or pass allow_unindexed_scan=True to accept the scan.",
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -347,21 +336,52 @@ class VocabService:
         standard_only: bool = False,
         active_only: bool = False,
         include_synonyms: bool = False,
+        normalization_profile: str | NormalizationProfile = NormalizationProfile.VERBATIM,
+        parent_ids: list[int] | None = None,
+        remove_stop_phrases: bool = True,
+        limit: int = 20,
+        allow_unindexed_scan: bool = False,
+    ) -> list[ConceptMatch]:
+        """Run normalized equality search, preserving the list return contract."""
+        results, _plan = self.search_normalized_with_plan(
+            query,
+            domain=domain,
+            vocabulary_id=vocabulary_id,
+            standard_only=standard_only,
+            active_only=active_only,
+            include_synonyms=include_synonyms,
+            normalization_profile=normalization_profile,
+            parent_ids=parent_ids,
+            remove_stop_phrases=remove_stop_phrases,
+            limit=limit,
+            allow_unindexed_scan=allow_unindexed_scan,
+        )
+        return results
+
+    def search_normalized_with_plan(
+        self,
+        query: str,
+        *,
+        domain: str | None = None,
+        vocabulary_id: str | None = None,
+        standard_only: bool = False,
+        active_only: bool = False,
+        include_synonyms: bool = False,
         normalization_profile: str
         | NormalizationProfile = NormalizationProfile.VERBATIM,
         parent_ids: list[int] | None = None,
         remove_stop_phrases: bool = True,
         limit: int = 20,
         allow_unindexed_scan: bool = False,
-    ) -> list[ConceptMatch]:
+    ) -> tuple[list[ConceptMatch], str]:
         """Deterministic near-verbatim search after text normalization.
 
         Both the query and candidate text are normalized before comparison.
         Distinct from full-text search: deterministic equality, not ranked retrieval.
 
-        Requires ``vocabulary_id`` or ``parent_ids`` because ``domain`` alone is
-        not selective enough to avoid a whole-table scan. Pass
-        ``allow_unindexed_scan=True`` to accept that scan explicitly.
+        Filters are optional when the normalized-key index exists. Without it,
+        pass a domain, vocabulary_id, or parent_ids to allow a bounded-time scan.
+        Pass ``allow_unindexed_scan=True`` to explicitly allow an unscoped scan.
         """
         normalized_query, _steps = normalize_text_for_matching(
             query,
@@ -371,8 +391,14 @@ class VocabService:
         if not normalized_query:
             raise ValueError("query must be a non-empty string after normalization")
 
-        if not allow_unindexed_scan:
-            _require_bounded_normalized_query(vocabulary_id, parent_ids)
+        plan = self._normalized_search_plan(
+            domain=domain,
+            vocabulary_id=vocabulary_id,
+            parent_ids=parent_ids,
+            include_synonyms=include_synonyms,
+            allow_unindexed_scan=allow_unindexed_scan,
+        )
+        key = normalized_key(normalized_query)
 
         results: list[ConceptMatch] = []
         seen_ids: set[int] = set()
@@ -383,8 +409,23 @@ class VocabService:
                 profile=normalization_profile,
                 remove_stop_phrases=remove_stop_phrases,
             )
+            name_key_expr = normalization_key_expression(Concept.concept_name)
 
             with self._cdm.session() as session:
+                if (
+                    self._cdm.engine.dialect.name == "postgresql"
+                    and plan != "unindexed_scan"
+                ):
+                    session.execute(
+                        select(
+                            func.set_config(
+                                "statement_timeout",
+                                str(NORMALIZED_SEARCH_TIMEOUT_MS),
+                                True,
+                            )
+                        ),
+                        bind_arguments={"mapper": Concept},
+                    )
                 name_stmt = self._apply_concept_filters(
                     select(
                         Concept.concept_id,
@@ -398,7 +439,7 @@ class VocabService:
                             "classification_concept"
                         ),
                         Concept.is_valid_expr().label("is_active"),
-                    ).where(name_expr == normalized_query),
+                    ).where(name_key_expr == key, name_expr == normalized_query),
                     domain=domain,
                     vocabulary_id=vocabulary_id,
                     standard_only=standard_only,
@@ -417,6 +458,9 @@ class VocabService:
                             Concept_Synonym.concept_synonym_name,
                             profile=normalization_profile,
                             remove_stop_phrases=remove_stop_phrases,
+                        )
+                        syn_key_expr = normalization_key_expression(
+                            Concept_Synonym.concept_synonym_name
                         )
                         syn_stmt = self._apply_concept_filters(
                             select(
@@ -437,7 +481,7 @@ class VocabService:
                                 Concept_Synonym,
                                 Concept_Synonym.concept_id == Concept.concept_id,
                             )
-                            .where(syn_expr == normalized_query),
+                            .where(syn_key_expr == key, syn_expr == normalized_query),
                             domain=domain,
                             vocabulary_id=vocabulary_id,
                             standard_only=standard_only,
@@ -460,11 +504,86 @@ class VocabService:
         except GroundworkersError:
             raise
         except Exception as exc:
+            if self._is_query_canceled(exc):
+                raise GroundworkersError(
+                    "QUERY_TIMEOUT",
+                    f"Normalized search exceeded its "
+                    f"{NORMALIZED_SEARCH_TIMEOUT_MS // 1000} second time limit. Add a domain, "
+                    "vocabulary_id, or parent_ids filter, or build indexes via Setup → "
+                    "Performance → normalised-name indexes.",
+                ) from exc
             raise GroundworkersError(
                 "QUERY_ERROR", f"search_normalized failed with {type(exc).__name__}."
             ) from exc
 
-        return results
+        return results, plan
+
+    def _normalized_search_plan(
+        self,
+        *,
+        domain: str | None,
+        vocabulary_id: str | None,
+        parent_ids: list[int] | None,
+        include_synonyms: bool,
+        allow_unindexed_scan: bool,
+    ) -> str:
+        engine = self._cdm.engine
+        indexed = engine.dialect.name == "postgresql" and self._has_normalized_index(
+            "concept", "concept_name"
+        )
+        if indexed and include_synonyms:
+            indexed = self._has_normalized_index(
+                "concept_synonym", "concept_synonym_name"
+            )
+        if indexed:
+            return "indexed"
+        if domain or vocabulary_id or parent_ids:
+            return "scoped_scan"
+        if allow_unindexed_scan:
+            return "unindexed_scan"
+        raise GroundworkersError(
+            "INVALID_INPUT",
+            "Normalized search needs an index or a scope. Build indexes via Setup → "
+            "Performance → normalised-name indexes, or pass domain, vocabulary_id, "
+            "or parent_ids.",
+        )
+
+    def _has_normalized_index(self, table: str, column_name: str) -> bool:
+        engine = self._cdm.engine
+        key = (engine, table, column_name)
+        now = time.monotonic()
+        with _NORMALIZED_INDEX_CACHE_LOCK:
+            cached = _NORMALIZED_INDEX_CACHE.get(key)
+            if cached and (cached[0] or now - cached[1] < _NORMALIZED_INDEX_NEGATIVE_TTL):
+                return cached[0]
+        try:
+            from groundworkers.application.setup.databases import (
+                normalized_index_matches,
+            )
+
+            with engine.connect() as connection:
+                found = normalized_index_matches(
+                    connection,
+                    effective_schema(connection),
+                    table,
+                    column_name,
+                )
+        except Exception:
+            found = False
+        with _NORMALIZED_INDEX_CACHE_LOCK:
+            _NORMALIZED_INDEX_CACHE[key] = (found, now)
+        return found
+
+    @staticmethod
+    def _is_query_canceled(exc: Exception) -> bool:
+        current: Any = exc
+        while current is not None:
+            if getattr(current, "sqlstate", None) == "57014" or getattr(
+                current, "pgcode", None
+            ) == "57014":
+                return True
+            current = getattr(current, "orig", None) or getattr(current, "__cause__", None)
+        return False
 
     # ------------------------------------------------------------------
     # search_fulltext
@@ -617,11 +736,13 @@ class VocabService:
     # navigate_to_standard
     # ------------------------------------------------------------------
 
-    def navigate_to_standard(self, concept_ids: list[int]) -> list[StandardMapping]:
+    def navigate_to_standard(
+        self, concept_ids: list[int]
+    ) -> list[ConceptMappingResult]:
         """Return standard equivalents for a list of concept_ids via "Maps to" relationship edges.
 
-        For concept_ids that are already standard: standard_concepts = [self].
-        For concept_ids with no outbound "Maps to" relationship: standard_concepts = [].
+        For concept_ids that are already standard: targets contains a self-mapping.
+        With no outbound "Maps to" relationship: targets is empty.
         concept_ids not found in the vocabulary are silently omitted.
         """
         if not concept_ids:
@@ -697,7 +818,7 @@ class VocabService:
                 f"navigate_to_standard failed with {type(exc).__name__}.",
             ) from exc
 
-        results: list[StandardMapping] = []
+        results: list[ConceptMappingResult] = []
         for cid in concept_ids:
             src = source_rows.get(cid)
             if src is None:
@@ -724,11 +845,15 @@ class VocabService:
 
         return results
 
-    def navigate_to_value(self, concept_ids: list[int]) -> list[RelatedConceptMapping]:
+    def navigate_to_value(
+        self, concept_ids: list[int]
+    ) -> list[ConceptMappingResult]:
         """Return "Maps to value" related concepts for the given concept_ids."""
         return self._navigate_relationship(concept_ids, self.VALUE_RELATIONSHIP_IDS)
 
-    def navigate_to_unit(self, concept_ids: list[int]) -> list[RelatedConceptMapping]:
+    def navigate_to_unit(
+        self, concept_ids: list[int]
+    ) -> list[ConceptMappingResult]:
         """Return "Maps to unit" related concepts for the given concept_ids."""
         return self._navigate_relationship(concept_ids, self.UNIT_RELATIONSHIP_IDS)
 
@@ -801,7 +926,7 @@ class VocabService:
         self,
         concept_ids: list[int],
         relationship_ids: frozenset[str],
-    ) -> list[RelatedConceptMapping]:
+    ) -> list[ConceptMappingResult]:
         if not concept_ids:
             return []
 
@@ -870,7 +995,7 @@ class VocabService:
                 f"relationship navigation failed with {type(exc).__name__}.",
             ) from exc
 
-        results: list[RelatedConceptMapping] = []
+        results: list[ConceptMappingResult] = []
         for cid in concept_ids:
             src = source_rows.get(cid)
             if src is None:

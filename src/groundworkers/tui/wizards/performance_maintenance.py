@@ -28,12 +28,22 @@ from groundworkers.tui.state import SetupSession
 
 _FIELD_BY_REMEDIATION = {
     PerformanceRemediation.TRIGRAM_INDEXES: "create_trigram_indexes",
+    PerformanceRemediation.NORMALIZED_INDEXES: "create_normalized_indexes",
     PerformanceRemediation.EMBEDDING_INDEX: "create_embedding_index",
 }
 _LABELS = {
     PerformanceRemediation.TRIGRAM_INDEXES: "Create Groundworkers trigram indexes",
+    PerformanceRemediation.NORMALIZED_INDEXES: "Create Groundworkers normalized-name indexes",
     PerformanceRemediation.EMBEDDING_INDEX: "Build the embedding vector index",
 }
+# Both are plain PostgreSQL indexes on the CDM vocabulary tables, so they share
+# the setup page's "connected PostgreSQL CDM" availability check.
+_POSTGRES_REMEDIATIONS = frozenset(
+    {
+        PerformanceRemediation.TRIGRAM_INDEXES,
+        PerformanceRemediation.NORMALIZED_INDEXES,
+    }
+)
 
 
 class PerformanceMaintenanceWizardController:
@@ -65,7 +75,7 @@ class PerformanceMaintenanceWizardController:
         )
         self._selected: set[PerformanceRemediation] = set()
         if trigram_available:
-            self._selected.add(PerformanceRemediation.TRIGRAM_INDEXES)
+            self._selected.update(_POSTGRES_REMEDIATIONS)
         if self._embedding_available:
             self._selected.add(PerformanceRemediation.EMBEDDING_INDEX)
         self._step_index = 0
@@ -154,7 +164,7 @@ class PerformanceMaintenanceWizardController:
                     kind=FieldKind.BOOLEAN,
                     default=remediation in self._selected,
                     disabled=(
-                        remediation is PerformanceRemediation.TRIGRAM_INDEXES
+                        remediation in _POSTGRES_REMEDIATIONS
                         and not self._trigram_available
                     )
                     or (
@@ -163,7 +173,7 @@ class PerformanceMaintenanceWizardController:
                     ),
                     help=(
                         "Requires a PostgreSQL CDM database."
-                        if remediation is PerformanceRemediation.TRIGRAM_INDEXES
+                        if remediation in _POSTGRES_REMEDIATIONS
                         else "Requires a registered pgvector model."
                     ),
                 )

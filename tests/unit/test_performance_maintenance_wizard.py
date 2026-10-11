@@ -21,4 +21,5 @@ def test_postgres_trigram_action_is_available(tmp_path: Path) -> None:
     values = controller.start().values
 
     assert values["create_trigram_indexes"] is True
+    assert values["create_normalized_indexes"] is True
     assert values["create_embedding_index"] is False

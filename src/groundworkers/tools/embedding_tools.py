@@ -35,8 +35,18 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
             return exc.to_dict()
 
     @server.tool("embedding_neighbours")
-    def embedding_neighbours(concept_id: int, limit: int = 10, model_name: str | None = None) -> dict[str, Any]:
-        """Returns nearest embedding-space neighbours for one OMOP concept."""
+    def embedding_neighbours(
+        concept_id: int,
+        limit: int = 10,
+        model_name: str | None = None,
+        standard_only: bool = True,
+        active_only: bool = True,
+    ) -> dict[str, Any]:
+        """Returns nearest embedding-space neighbours for one OMOP concept.
+
+        The default uses the partial vector index on is_standard AND is_valid. Pass
+        standard_only=False to include non-standard neighbours, at the cost of a full scan.
+        """
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
         safe_limit = max(1, min(limit, 50))
@@ -47,6 +57,8 @@ def register_embedding_tools(server: GroundworkersMCPServer, emb_adapter: OmopEm
                 concept_id=concept_id,
                 limit=safe_limit,
                 model_name=model_name,
+                standard_only=standard_only,
+                active_only=active_only,
             )
         except GroundworkersError as exc:
             return exc.to_dict()

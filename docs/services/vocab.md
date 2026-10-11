@@ -97,32 +97,32 @@ Synonym FTS is included when the `concept_synonym_name_tsvector` sidecar is also
 ```python
 vocab.navigate_to_standard(
     concept_ids: list[int],
-) -> list[StandardMapping]
+) -> list[ConceptMappingResult]
 ```
 
 Batch navigation: given a list of concept IDs (which may be non-standard), returns their standard OMOP equivalents by following `"Maps to"` relationship edges. Two queries total regardless of input list size.
 
-Concepts that are already standard are returned as self-mappings (`relationship_id="self"`). Concepts with no `"Maps to"` edge return an empty `standard_concepts` list. Concept IDs not found in the vocabulary are silently omitted.
+Concepts that are already standard are returned as self-mappings (`relationship_id="self"`). Concepts with no `"Maps to"` edge have an empty `targets` list. Concept IDs not found in the vocabulary are silently omitted.
 
 ### `navigate_to_value`
 
 ```python
 vocab.navigate_to_value(
     concept_ids: list[int],
-) -> list[RelatedConceptMapping]
+) -> list[ConceptMappingResult]
 ```
 
-Same batch navigation pattern as `navigate_to_standard`, but follows `"Maps to value"` relationship edges. Used for value-domain mapping in OMOP measurement and observation workflows.
+Same batch navigation pattern as `navigate_to_standard`, but follows `"Maps to value"` relationship edges. Used for value-domain mapping in OMOP measurement and observation workflows. Results use the same `ConceptMappingResult` shape, with targets in `targets`.
 
 ### `navigate_to_unit`
 
 ```python
 vocab.navigate_to_unit(
     concept_ids: list[int],
-) -> list[RelatedConceptMapping]
+) -> list[ConceptMappingResult]
 ```
 
-Batch navigation following `"Maps to unit"` relationship edges.
+Batch navigation following `"Maps to unit"` relationship edges. Results use the same `ConceptMappingResult` shape, with targets in `targets`.
 
 ## Return types
 
@@ -144,15 +144,16 @@ class ConceptMatch:
     ts_rank: float | None  # only set by search_fulltext
 ```
 
-### `StandardMapping`
+### `ConceptMappingResult`
 
 ```python
 @dataclass
-class StandardMapping:
+class ConceptMappingResult:
     source_concept_id: int
     source_concept_name: str
     source_standard_concept: bool
-    standard_concepts: list[MappedConcept]
+    source_classification_concept: bool
+    targets: list[MappedConcept]
 ```
 
 ### `MappedConcept`
@@ -160,20 +161,19 @@ class StandardMapping:
 ```python
 @dataclass
 class MappedConcept:
-    concept_id: int
-    concept_name: str
-    vocabulary_id: str
-    domain_id: str
-    concept_class_id: str
-    relationship_id: str  # "Maps to", "Maps to value", "Maps to unit", or "self"
+    concept: dict[str, Any]  # concept payload, including identity and quality fields
+    relationship_id: str     # "Maps to", "Maps to value", "Maps to unit", or "self"
 ```
+
+The direct Python API uses `targets` for all three navigation methods. MCP serialization names that list `standard_concepts` for `navigate_to_standard` and `related_concepts` for value and unit navigation.
 
 ## Serialization helpers
 
 `VocabService` provides `serialise_*` helpers that convert the typed return objects to plain dicts suitable for MCP tool responses:
 
 - `serialise_concept_match(match: ConceptMatch) -> dict`
-- `serialise_standard_mapping(mapping: StandardMapping) -> dict`
+- `serialise_standard_mapping(mapping: ConceptMappingResult) -> dict`
+- `serialise_related_concept_mapping(mapping: ConceptMappingResult) -> dict`
 
 The search MCP tools in `search_tools.py` use these helpers to convert service results into the wire format. Direct Python consumers can use the dataclasses directly without serializing.
 

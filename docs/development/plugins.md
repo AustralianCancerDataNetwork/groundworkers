@@ -77,13 +77,7 @@ The concept-embedding row and the free-text-embedding row look similar but are n
 ### Assumptions this table is making
 
 - **Vocabulary only, so far.** Every example above reads OMOP *vocabulary* i.e. operations over concepts, concept relationships, concept embeddings, or the host's shared grounding cascade. Nothing about `context.cdm_engine` restricts a plugin to vocabulary tables specifically, however. These tables are available over the same CDM connection groundworkers itself uses, and a plugin *could* query clinical/person-level tables (`condition_occurrence`, `drug_exposure`, etc.) through it just as easily, subject to whatever environmental and procedural access controls actually govern that data.
-- **Shared mapping access.** `PluginContext.mapping_context` is an optional,
-  read-only capability façade over the host's mapping and grounding policy.
-  Use its operations when a plugin needs candidate bundles, text grounding, or
-  concept context; the underlying vocabulary, graph, and service objects are
-  deliberately not exposed. Do not construct a second `omop-graph` or
-  vocabulary adapter from `context.cdm_engine`. The field is `None` only when
-  the host did not compose services for the plugin context.
+- **Shared mapping access.** `PluginContext.mapping_context` is an optional,read-only capability façade over the host's mapping and grounding policy. Use its operations when a plugin needs candidate bundles, text grounding, or concept context. `concept_shared_standard_ancestor(concept_ids, max_depth=5)` returns the unique nearest shared standard ancestor when one exists; raise `max_depth` to widen the hierarchy search. The underlying vocabulary, graph, and service objects are deliberately not exposed. Do not construct a second `omop-graph` or vocabulary adapter from `context.cdm_engine`. The field is `None` only when the host did not compose services for the plugin context.
 
 ## Build and register a new plugin
 

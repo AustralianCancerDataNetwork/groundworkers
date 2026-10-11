@@ -18,6 +18,9 @@ class StubMappingService:
     def concept_mapping_context(self, concept_id: int, **kwargs):
         return {"concept_id": concept_id, "kwargs": kwargs}
 
+    def concept_shared_standard_ancestor(self, concept_ids: list[int], **kwargs):
+        return {"concept_ids": concept_ids, "kwargs": kwargs}
+
 
 class StubGroundingService:
     def ground(self, query: str, **kwargs):
@@ -35,6 +38,14 @@ def test_mapping_context_delegates_to_the_host_service():
     assert context.concept_mapping_context(201826, include_ancestors=False) == {
         "concept_id": 201826,
         "kwargs": {"include_ancestors": False},
+    }
+    assert context.concept_shared_standard_ancestor([1, 2]) == {
+        "concept_ids": [1, 2],
+        "kwargs": {"max_depth": 5},
+    }
+    assert context.concept_shared_standard_ancestor([1, 2], max_depth=8) == {
+        "concept_ids": [1, 2],
+        "kwargs": {"max_depth": 8},
     }
 
 
@@ -54,6 +65,8 @@ def test_mapping_context_reports_unconfigured_service():
     assert context.available is False
     with pytest.raises(RuntimeError, match="mapping service is not configured"):
         context.candidate_bundle("diabetes")
+    with pytest.raises(RuntimeError, match="mapping service is not configured"):
+        context.concept_shared_standard_ancestor([1, 2])
 
 
 def test_mapping_context_exposes_grounding_without_exposing_service_internals():

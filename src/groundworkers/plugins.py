@@ -202,28 +202,38 @@ class MappingContext:
 
         return self._grounding_service is not None
 
+    def _require_mapping_service(self) -> MappingService:
+        if self._mapping_service is None:
+            raise RuntimeError("Groundworkers mapping service is not configured")
+        return self._mapping_service
+
     def candidate_bundle(self, query: str, **kwargs: Any) -> dict[str, Any]:
         """Build a shared candidate/evidence bundle for *query*."""
 
-        if self._mapping_service is None:
-            raise RuntimeError("Groundworkers mapping service is not configured")
-        return self._mapping_service.concept_candidate_bundle(query, **kwargs)
+        return self._require_mapping_service().concept_candidate_bundle(query, **kwargs)
 
     async def async_candidate_bundle(self, query: str, **kwargs: Any) -> dict[str, Any]:
         """Build a candidate bundle using the service's async retrieval path."""
 
-        if self._mapping_service is None:
-            raise RuntimeError("Groundworkers mapping service is not configured")
-        return await self._mapping_service.async_concept_candidate_bundle(
+        return await self._require_mapping_service().async_concept_candidate_bundle(
             query, **kwargs
         )
 
     def concept_mapping_context(self, concept_id: int, **kwargs: Any) -> dict[str, Any]:
         """Build the shared context packet for one known OMOP concept."""
 
-        if self._mapping_service is None:
-            raise RuntimeError("Groundworkers mapping service is not configured")
-        return self._mapping_service.concept_mapping_context(concept_id, **kwargs)
+        return self._require_mapping_service().concept_mapping_context(
+            concept_id, **kwargs
+        )
+
+    def concept_shared_standard_ancestor(
+        self, concept_ids: list[int], *, max_depth: int = 5
+    ) -> dict[str, Any]:
+        """Find a unique nearest common standard ancestor."""
+
+        return self._require_mapping_service().concept_shared_standard_ancestor(
+            concept_ids, max_depth=max_depth
+        )
 
     def ground(self, query: str, **kwargs: Any) -> dict[str, Any]:
         """Resolve text through Groundworkers' shared tiered grounding policy."""
