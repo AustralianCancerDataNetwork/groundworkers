@@ -4,26 +4,36 @@ from typing import Any
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
+from groundworkers.base.sql import NormalizationProfile
 from groundworkers.services import MappingService
 
 
-def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: MappingService) -> None:
+def register_mapping_tools(
+    server: GroundworkersMCPServer, mapping_service: MappingService
+) -> None:
     @server.tool("concept_search_normalized")
     def concept_search_normalized(
         query: str,
         domain: str | None = None,
         vocabulary_id: str | None = None,
+        parent_ids: list[int] | None = None,
         standard_only: bool = False,
         include_synonyms: bool = False,
-        normalization_profile: str = "verbatim",
+        normalization_profile: NormalizationProfile = NormalizationProfile.VERBATIM,
         remove_stop_phrases: bool = True,
         limit: int = 20,
+        allow_unindexed_scan: bool = False,
     ) -> dict[str, Any]:
         """Deterministic near-verbatim concept search after text normalization.
 
         Both the query and candidate concept names are normalized before comparison,
         making this more robust to punctuation and whitespace variation than
         concept_search_exact while remaining fully deterministic (no ranking).
+
+        Filters are optional when the normalized-name index exists. Without it,
+        pass domain, vocabulary_id, or parent_ids for a time-limited scoped scan.
+        A domain is useful when known. Set allow_unindexed_scan=True to accept an
+        unscoped scan deliberately.
         """
         safe_limit = max(1, min(limit, 50))
         try:
@@ -31,11 +41,13 @@ def register_mapping_tools(server: GroundworkersMCPServer, mapping_service: Mapp
                 query,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
+                parent_ids=parent_ids,
                 standard_only=standard_only,
                 include_synonyms=include_synonyms,
                 normalization_profile=normalization_profile,
                 remove_stop_phrases=remove_stop_phrases,
                 limit=safe_limit,
+                allow_unindexed_scan=allow_unindexed_scan,
             )
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}

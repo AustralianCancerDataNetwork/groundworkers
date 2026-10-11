@@ -162,8 +162,15 @@ class OmopEmbAdapter:
         concept_id: int,
         limit: int,
         model_name: str | None,
+        standard_only: bool = True,
+        active_only: bool = True,
     ) -> dict[str, Any]:
-        """Return stored-vector neighbours without calling the model provider."""
+        """Return stored-vector neighbours without calling the model provider.
+
+        The pgvector HNSW index is partial on ``is_standard AND is_valid``. This
+        method defaults to that indexed set. Pass ``standard_only=False`` to include
+        non-standard neighbours, at the cost of a full scan.
+        """
 
         record = self._resolve_model_record(model_name)
         reader = self._build_reader(record)
@@ -183,7 +190,10 @@ class OmopEmbAdapter:
         vector = np.asarray(vectors[concept_id], dtype=float).reshape(1, -1)
         raw = reader.get_nearest_concepts(
             query_embedding=vector,
-            concept_filter=self._build_concept_filter(),
+            concept_filter=self._build_concept_filter(
+                standard_only=standard_only,
+                active_only=active_only,
+            ),
             k=limit + 1,
             faiss_index_config=record.index_config,
         )

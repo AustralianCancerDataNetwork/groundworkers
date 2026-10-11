@@ -28,12 +28,22 @@ from groundworkers.tui.state import SetupSession
 
 _FIELD_BY_REMEDIATION = {
     PerformanceRemediation.TRIGRAM_INDEXES: "create_trigram_indexes",
+    PerformanceRemediation.NORMALIZED_INDEXES: "create_normalized_indexes",
     PerformanceRemediation.EMBEDDING_INDEX: "create_embedding_index",
 }
 _LABELS = {
     PerformanceRemediation.TRIGRAM_INDEXES: "Create Groundworkers trigram indexes",
+    PerformanceRemediation.NORMALIZED_INDEXES: "Create Groundworkers normalized-name indexes",
     PerformanceRemediation.EMBEDDING_INDEX: "Build the embedding vector index",
 }
+# Both are plain PostgreSQL indexes on the CDM vocabulary tables, so they share
+# the setup page's "connected PostgreSQL CDM" availability check.
+_POSTGRES_REMEDIATIONS = frozenset(
+    {
+        PerformanceRemediation.TRIGRAM_INDEXES,
+        PerformanceRemediation.NORMALIZED_INDEXES,
+    }
+)
 
 
 class PerformanceMaintenanceWizardController:
@@ -65,7 +75,7 @@ class PerformanceMaintenanceWizardController:
         )
         self._selected: set[PerformanceRemediation] = set()
         if trigram_available:
-            self._selected.add(PerformanceRemediation.TRIGRAM_INDEXES)
+            self._selected.update(_POSTGRES_REMEDIATIONS)
         if self._embedding_available:
             self._selected.add(PerformanceRemediation.EMBEDDING_INDEX)
         self._step_index = 0
@@ -103,8 +113,14 @@ class PerformanceMaintenanceWizardController:
     def apply(self) -> WizardResult:
         try:
             commands = build_performance_commands(
-                tuple(remediation for remediation in PerformanceRemediation if remediation in self._selected),
-                embedding_model=(self._coverage.index.model_name if self._coverage else None),
+                tuple(
+                    remediation
+                    for remediation in PerformanceRemediation
+                    if remediation in self._selected
+                ),
+                embedding_model=(
+                    self._coverage.index.model_name if self._coverage else None
+                ),
                 config_path=self._session.configuration.path,
             )
             if not commands:
@@ -148,7 +164,7 @@ class PerformanceMaintenanceWizardController:
                     kind=FieldKind.BOOLEAN,
                     default=remediation in self._selected,
                     disabled=(
-                        remediation is PerformanceRemediation.TRIGRAM_INDEXES
+                        remediation in _POSTGRES_REMEDIATIONS
                         and not self._trigram_available
                     )
                     or (
@@ -157,7 +173,7 @@ class PerformanceMaintenanceWizardController:
                     ),
                     help=(
                         "Requires a PostgreSQL CDM database."
-                        if remediation is PerformanceRemediation.TRIGRAM_INDEXES
+                        if remediation in _POSTGRES_REMEDIATIONS
                         else "Requires a registered pgvector model."
                     ),
                 )
@@ -171,11 +187,15 @@ class PerformanceMaintenanceWizardController:
             title="Confirm",
             review=WizardReview(
                 changes=tuple(
-                    ReviewChange(field=_LABELS[item], before="available", after="will run")
+                    ReviewChange(
+                        field=_LABELS[item], before="available", after="will run"
+                    )
                     for item in PerformanceRemediation
                     if item in self._selected
                 ),
-                effects=("Each index build runs as a background command with its own log.",),
+                effects=(
+                    "Each index build runs as a background command with its own log.",
+                ),
                 warnings=(
                     "Index builds can be slow and temporarily use substantial database resources.",
                 ),
@@ -192,14 +212,18 @@ class PerformanceMaintenanceWizardController:
             step=step,
             step_index=self._step_index,
             step_count=len(steps),
-            values={} if isinstance(step, ReviewStep) else {
+            values={}
+            if isinstance(step, ReviewStep)
+            else {
                 key: remediation in self._selected
                 for remediation, key in _FIELD_BY_REMEDIATION.items()
             },
             issues=issues,
             can_back=self._step_index > 0,
             can_next=not isinstance(step, ReviewStep),
-            can_apply=isinstance(step, ReviewStep) and step.review.ready_to_apply and not issues,
+            can_apply=isinstance(step, ReviewStep)
+            and step.review.ready_to_apply
+            and not issues,
             expected_revision=self._session.configuration.revision,
         )
 
@@ -210,12 +234,21 @@ class PerformanceMaintenanceWizardController:
             else:
                 self._selected.discard(remediation)
         if not self._selected:
-            return (ValidationIssue("Select at least one index to prepare.", "create_trigram_indexes"),)
+            return (
+                ValidationIssue(
+                    "Select at least one index to prepare.", "create_trigram_indexes"
+                ),
+            )
         return ()
 
 
 def _as_bool(value: object) -> bool:
-    return (isinstance(value, bool) and value) or str(value).strip().lower() in {"true", "yes", "1", "on"}
+    return (isinstance(value, bool) and value) or str(value).strip().lower() in {
+        "true",
+        "yes",
+        "1",
+        "on",
+    }
 
 
 __all__ = ["PerformanceMaintenanceWizardController"]

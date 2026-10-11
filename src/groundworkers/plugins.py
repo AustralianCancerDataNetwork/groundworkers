@@ -37,6 +37,9 @@ if TYPE_CHECKING:
         MutationOperation,
     )
 
+    from groundworkers.services.grounding import ConceptGroundingService
+    from groundworkers.services.mapping import MappingService
+
 logger = logging.getLogger(__name__)
 
 _PLUGIN_SETUP_FIELD_KINDS = frozenset(
@@ -167,6 +170,79 @@ class PluginConfigResolver:
         return self._resolver.resolve_vector_store(name)
 
 
+class MappingContext:
+    """Stable, read-only access to Groundworkers' shared mapping services.
+
+    The services are deliberately held behind this host-owned façade. Plugins
+    can reuse the configured vocabulary, graph, and mapping orchestration
+    without constructing a second adapter or depending on Groundworkers'
+    application container. All exposed operations are query-only.
+    """
+
+    resolver_identity = "groundworkers-grounding-v1"
+
+    def __init__(
+        self,
+        *,
+        mapping_service: MappingService | None = None,
+        grounding_service: ConceptGroundingService | None = None,
+    ) -> None:
+        self._mapping_service = mapping_service
+        self._grounding_service = grounding_service
+
+    @property
+    def available(self) -> bool:
+        """Whether the host built the candidate-mapping service."""
+
+        return self._mapping_service is not None
+
+    @property
+    def grounding_available(self) -> bool:
+        """Whether the shared tiered grounding capability is configured."""
+
+        return self._grounding_service is not None
+
+    def _require_mapping_service(self) -> MappingService:
+        if self._mapping_service is None:
+            raise RuntimeError("Groundworkers mapping service is not configured")
+        return self._mapping_service
+
+    def candidate_bundle(self, query: str, **kwargs: Any) -> dict[str, Any]:
+        """Build a shared candidate/evidence bundle for *query*."""
+
+        return self._require_mapping_service().concept_candidate_bundle(query, **kwargs)
+
+    async def async_candidate_bundle(self, query: str, **kwargs: Any) -> dict[str, Any]:
+        """Build a candidate bundle using the service's async retrieval path."""
+
+        return await self._require_mapping_service().async_concept_candidate_bundle(
+            query, **kwargs
+        )
+
+    def concept_mapping_context(self, concept_id: int, **kwargs: Any) -> dict[str, Any]:
+        """Build the shared context packet for one known OMOP concept."""
+
+        return self._require_mapping_service().concept_mapping_context(
+            concept_id, **kwargs
+        )
+
+    def concept_shared_standard_ancestor(
+        self, concept_ids: list[int], *, max_depth: int = 5
+    ) -> dict[str, Any]:
+        """Find a unique nearest common standard ancestor."""
+
+        return self._require_mapping_service().concept_shared_standard_ancestor(
+            concept_ids, max_depth=max_depth
+        )
+
+    def ground(self, query: str, **kwargs: Any) -> dict[str, Any]:
+        """Resolve text through Groundworkers' shared tiered grounding policy."""
+
+        if self._grounding_service is None:
+            raise RuntimeError("Groundworkers grounding service is not configured")
+        return self._grounding_service.ground(query, **kwargs)
+
+
 @dataclass(frozen=True)
 class PluginContext:
     """Resolved, read-only handles passed to every plugin.
@@ -190,6 +266,7 @@ class PluginContext:
     embedding_backend_factory: Callable[[], Any] | None
     embedding_model_backend_factory: Callable[[], Any] | None
     chat_backend_factory: Callable[[], Any] | None
+    mapping_context: MappingContext | None = None
 
 
 class GroundworkersPlugin(Protocol):

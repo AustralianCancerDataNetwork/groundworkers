@@ -33,7 +33,11 @@ def test_performance_surface_collects_index_readiness() -> None:
                 "fulltext_indexes_present",
                 "functional_indexes_present",
             ),
-            _result("database.groundworkers", "trigram_indexes_present"),
+            _result(
+                "database.groundworkers",
+                "trigram_indexes_present",
+                "normalized_indexes_present",
+            ),
         ),
         embedding_configuration=None,
         embedding_coverage=None,
@@ -45,21 +49,27 @@ def test_performance_surface_collects_index_readiness() -> None:
         ("Graph", "Full-text indexes", "Ready"),
         ("Graph", "Functional text indexes", "Ready"),
         ("Groundworkers", "Trigram indexes", "Ready"),
+        ("Groundworkers", "Normalized-name indexes", "Ready"),
         ("Embeddings", "Vector index", "Not configured"),
     ]
 
 
-def test_performance_commands_run_trigram_before_embedding_index() -> None:
+def test_performance_commands_run_text_indexes_before_embedding_index() -> None:
     commands = build_performance_commands(
         (
-            PerformanceRemediation.TRIGRAM_INDEXES,
             PerformanceRemediation.EMBEDDING_INDEX,
+            PerformanceRemediation.NORMALIZED_INDEXES,
+            PerformanceRemediation.TRIGRAM_INDEXES,
         ),
         embedding_model="ollama/qwen3-embedding:0.6b",
         config_path="/tmp/config.toml",
     )
 
     assert commands[0].argv[-1] == "trigram"
-    assert commands[1].argv[1:3] == ("maintenance", "rebuild-index")
-    assert "--index-type" in commands[1].argv
-    assert all(command.environment == (("OA_CONFIG_PATH", "/tmp/config.toml"),) for command in commands)
+    assert commands[1].argv[-1] == "normalized"
+    assert commands[2].argv[1:3] == ("maintenance", "rebuild-index")
+    assert "--index-type" in commands[2].argv
+    assert all(
+        command.environment == (("OA_CONFIG_PATH", "/tmp/config.toml"),)
+        for command in commands
+    )

@@ -1,7 +1,8 @@
-
+from unittest.mock import Mock
 
 import pytest
 
+from groundworkers.base.errors import GroundworkersError
 from groundworkers.services import MappingService
 from groundworkers.services.vocab import (
     ConceptMappingResult,
@@ -29,7 +30,7 @@ class StubVocabAdapter:
             )
         ]
 
-    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20):
+    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20, allow_unindexed_scan=False):
         return [
             ConceptMatch(
                 concept={
@@ -46,6 +47,21 @@ class StubVocabAdapter:
                 match_source="name",
             )
         ]
+
+    def search_normalized_with_plan(self, query: str, **kwargs):
+        scoped = bool(
+            kwargs.get("domain")
+            or kwargs.get("vocabulary_id")
+            or kwargs.get("parent_ids")
+        )
+        if not scoped and not kwargs.get("allow_unindexed_scan"):
+            raise GroundworkersError(
+                "INVALID_INPUT",
+                "Build indexes via Setup → Performance → normalised-name indexes, or pass domain, vocabulary_id, or parent_ids.",
+            )
+        return self.search_normalized(query, **kwargs), (
+            "scoped_scan" if scoped else "unindexed_scan"
+        )
 
     def search_fulltext(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, min_rank=0.0, limit=20):
         return ([
@@ -337,11 +353,20 @@ def build_service(graph: StubGraphAdapter | None = None) -> MappingService:
 def test_concept_search_normalized_returns_normalized_metadata_and_results():
     service = build_service()
 
-    result = service.concept_search_normalized(" Type-2 Diabetes, NOS ")
+    result = service.concept_search_normalized(
+        " Type-2 Diabetes, NOS ", allow_unindexed_scan=True
+    )
 
     assert result["normalized_query"] == "type 2 diabetes"
+    assert result["plan"] == "unindexed_scan"
     assert result["results"][0]["match_mode"] == "label_exact_normalized"
     assert result["results"][0]["matched_text_normalized"] == "type 2 diabetes mellitus"
+
+
+def test_concept_search_normalized_accepts_parent_scope():
+    result = build_service().concept_search_normalized("diabetes", parent_ids=[101])
+
+    assert result["plan"] == "scoped_scan"
 
 
 def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
@@ -349,6 +374,7 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
 
     result = service.concept_candidate_bundle(
         "type 2 diabetes",
+        vocabulary_id="ICD10CM",
         include_hierarchy_context=True,
         include_relationship_summary=True,
     )
@@ -426,11 +452,83 @@ def test_concept_nearest_standard_ancestor_raises_when_no_graph():
     service = MappingService(StubVocabAdapter())
 
     from groundworkers.base.errors import GroundworkersError as GWError
+
     try:
         service.concept_nearest_standard_ancestor(query="diabetes")
         assert False, "should have raised"
     except GWError as exc:
         assert exc.code == "BACKEND_UNAVAIL"
+
+
+def test_concept_shared_standard_ancestor_selects_unique_nearest_common_parent():
+    graph = Mock()
+    graph.get_concept.side_effect = lambda concept_id: {
+        "concept_id": concept_id,
+        "concept_name": f"Specific finding {concept_id}",
+        "domain_id": "Condition",
+        "standard_concept": False,
+    }
+    graph.get_ancestors.side_effect = lambda concept_id, _depth: [
+        {
+            "concept_id": 803,
+            "concept_name": "Shared standard finding",
+            "concept_code": "803",
+            "vocabulary_id": "SNOMED",
+            "domain_id": "Condition",
+            "concept_class_id": "Clinical Finding",
+            "standard_concept": True,
+            "depth": 1,
+        },
+        {
+            "concept_id": 804,
+            "concept_name": "More distant shared finding",
+            "domain_id": "Condition",
+            "standard_concept": True,
+            "depth": 2,
+        },
+    ] if concept_id in {801, 802} else []
+
+    result = build_service(graph).concept_shared_standard_ancestor([801, 802])
+
+    assert result["found"] is True
+    assert result["selection_reason"] == "nearest_shared_standard_ancestor"
+    assert result["selected_ancestor"]["concept_id"] == 803
+    assert result["selected_ancestor"]["depth"] == 1
+
+
+def test_concept_shared_standard_ancestor_leaves_equal_depth_tie_unresolved():
+    graph = Mock()
+    graph.get_concept.side_effect = lambda concept_id: {
+        "concept_id": concept_id,
+        "concept_name": f"Concept {concept_id}",
+        "domain_id": "Condition",
+        "standard_concept": False,
+    }
+    graph.get_ancestors.return_value = [
+        {
+            "concept_id": ancestor_id,
+            "concept_name": f"Ancestor {ancestor_id}",
+            "domain_id": "Condition",
+            "standard_concept": True,
+            "depth": 1,
+        }
+        for ancestor_id in (803, 804)
+    ]
+
+    result = build_service(graph).concept_shared_standard_ancestor([801, 802])
+
+    assert result["found"] is False
+    assert result["selection_reason"] == "multiple_nearest_shared_ancestors"
+    assert result["selected_ancestor"] is None
+
+
+def test_concept_shared_standard_ancestor_requires_graph():
+    service = MappingService(StubVocabAdapter())
+
+    from groundworkers.base.errors import GroundworkersError as GWError
+
+    with pytest.raises(GWError, match="omop_graph"):
+        service.concept_shared_standard_ancestor([801, 802])
 
 
 def test_concept_mapping_context_assembles_requested_context():
@@ -496,6 +594,7 @@ def test_mapping_evaluate_candidates_computes_summary_metrics():
 # Recording stub for propagation tests (Gap 8 and Gap 1)
 # ---------------------------------------------------------------------------
 
+
 class _RecordingVocabAdapter(StubVocabAdapter):
     """Wraps StubVocabAdapter and records the active_only / parent_ids received per channel."""
 
@@ -528,10 +627,11 @@ def _service_with_recording_vocab(emb=None):
 # active_only propagation (Gap 8)
 # ---------------------------------------------------------------------------
 
+
 def test_active_only_true_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes", active_only=True)
+    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM", active_only=True)
 
     assert vocab.received["exact"]["active_only"] is True
     assert vocab.received["normalized"]["active_only"] is True
@@ -541,7 +641,7 @@ def test_active_only_true_propagated_to_all_lexical_channels():
 def test_active_only_false_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes", active_only=False)
+    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM", active_only=False)
 
     assert vocab.received["exact"]["active_only"] is False
     assert vocab.received["normalized"]["active_only"] is False
@@ -551,6 +651,7 @@ def test_active_only_false_propagated_to_all_lexical_channels():
 # ---------------------------------------------------------------------------
 # parent_ids propagation (Gap 1)
 # ---------------------------------------------------------------------------
+
 
 def test_parent_ids_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
@@ -565,7 +666,7 @@ def test_parent_ids_propagated_to_all_lexical_channels():
 def test_parent_ids_none_propagated_when_not_specified():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes")
+    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM")
 
     assert vocab.received["exact"]["parent_ids"] is None
     assert vocab.received["normalized"]["parent_ids"] is None
@@ -624,6 +725,7 @@ def test_embedding_channel_no_parent_ids_note_when_parent_ids_absent():
 # ---------------------------------------------------------------------------
 # Constraints echoed correctly in bundle output
 # ---------------------------------------------------------------------------
+
 
 def test_candidate_bundle_constraints_reflect_active_only_and_parent_ids():
     service, _ = _service_with_recording_vocab()
@@ -724,3 +826,37 @@ def test_nearest_standard_ancestor_still_succeeds_through_ancestry():
     assert result["found"] is True
     assert result["selected_parent"]["concept_id"] == 301
     assert result["warnings"] == []
+
+
+def test_candidate_bundle_omits_the_normalized_channel_when_it_would_scan():
+    service = MappingService(StubVocabAdapter(), graph_service=StubGraphAdapter())
+
+    result = service.concept_candidate_bundle("diabetes")
+
+    assert "normalized" not in result["channels"]
+    assert any("normalized channel omitted" in warning for warning in result["warnings"])
+
+
+def test_candidate_bundle_keeps_the_normalized_channel_when_a_vocabulary_bounds_it():
+    service = MappingService(StubVocabAdapter(), graph_service=StubGraphAdapter())
+
+    result = service.concept_candidate_bundle("diabetes", vocabulary_id="SNOMED")
+
+    assert result["channels"]["normalized"]["available"] is True
+    assert not any("normalized channel omitted" in warning for warning in result["warnings"])
+
+
+def test_candidate_bundle_keeps_a_failed_timeout_channel_as_unavailable():
+    class TimedOutVocab(StubVocabAdapter):
+        def search_normalized_with_plan(self, _query, **_kwargs):
+            raise GroundworkersError("QUERY_TIMEOUT", "normalized scan timed out")
+
+    service = MappingService(TimedOutVocab(), graph_service=StubGraphAdapter())
+
+    result = service.concept_candidate_bundle("diabetes", domain="Condition")
+
+    assert result["channels"]["normalized"]["available"] is False
+    assert result["channels"]["normalized"]["retrieval_notes"] == [
+        "normalized scan timed out"
+    ]
+    assert any("normalized channel timed out" in warning for warning in result["warnings"])

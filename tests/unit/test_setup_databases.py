@@ -83,9 +83,7 @@ cdm_db = "cdm_db"
     snapshot = load_configuration(config_path=path)
 
     assert snapshot.state is ConfigurationState.INCOMPLETE
-    assert [issue.code for issue in snapshot.issues] == [
-        "vocabulary_connection_split"
-    ]
+    assert [issue.code for issue in snapshot.issues] == ["vocabulary_connection_split"]
     assert resolve_database_targets(snapshot) == ()
 
 

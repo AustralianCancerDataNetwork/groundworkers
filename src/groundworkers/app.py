@@ -15,6 +15,7 @@ from groundworkers.config import AppConfig
 from groundworkers.plugins import (
     GroundworkersPlugin,
     GroundworkersPluginReadiness,
+    MappingContext,
     PluginConfigResolver,
     PluginContext,
     PluginReadinessResult,
@@ -52,8 +53,12 @@ class Adapters:
     # _build_plugin_context) so a plugin reuses the one backend connection
     # instead of opening a second one. None when the corresponding backend
     # is unconfigured, same gating as the adapters above.
-    embedding_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
-    embedding_model_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    embedding_backend_factory: Callable[[], Any] | None = field(
+        default=None, repr=False
+    )
+    embedding_model_backend_factory: Callable[[], Any] | None = field(
+        default=None, repr=False
+    )
     chat_backend_factory: Callable[[], Any] | None = field(default=None, repr=False)
 
 
@@ -104,7 +109,9 @@ def build_adapters(config: AppConfig) -> Adapters:
         nonlocal shared_model_backend
         if shared_model_backend is None:
             if resolved_model is None:
-                raise RuntimeError("No embedding model is configured for Groundworkers.")
+                raise RuntimeError(
+                    "No embedding model is configured for Groundworkers."
+                )
             from omop_llm import build_model_backend_from_resolved
 
             shared_model_backend = build_model_backend_from_resolved(resolved_model)
@@ -180,9 +187,14 @@ def build_adapters(config: AppConfig) -> Adapters:
 def build_services(config: AppConfig, adapters: Adapters) -> Services:
     services = Services()
     assisted_classifier = None
-    if adapters.llm is not None and config.groundworkers.source_planning_llm_assisted_enabled:
+    if (
+        adapters.llm is not None
+        and config.groundworkers.source_planning_llm_assisted_enabled
+    ):
         assisted_classifier = AssistedColumnRoleClassifier(adapters.llm)
-    services.source_planning = SourcePlanningService(assisted_classifier=assisted_classifier)
+    services.source_planning = SourcePlanningService(
+        assisted_classifier=assisted_classifier
+    )
     if adapters.omop_graph is not None:
         # cdm is optional; only the classified-edge traversals
         # (concept_associations / concept_extended_inheritance) require it.
@@ -206,7 +218,27 @@ def build_services(config: AppConfig, adapters: Adapters) -> Services:
     return services
 
 
-def _build_plugin_context(config: AppConfig, adapters: Adapters) -> PluginContext:
+def build_mapping_context(
+    config: AppConfig,
+    *,
+    adapters: Adapters | None = None,
+    services: Services | None = None,
+) -> MappingContext:
+    """Build the mapping capabilities shared by hosted and standalone plugins."""
+
+    shared_adapters = adapters or build_adapters(config)
+    shared_services = services or build_services(config, shared_adapters)
+    return MappingContext(
+        mapping_service=shared_services.mapping,
+        grounding_service=shared_services.grounding,
+    )
+
+
+def _build_plugin_context(
+    config: AppConfig,
+    adapters: Adapters,
+    services: Services | None = None,
+) -> PluginContext:
     """Assemble the resolved handles every plugin is given.
 
     `cdm_database`/`vector_store` come straight off `AppConfig`, already
@@ -223,6 +255,11 @@ def _build_plugin_context(config: AppConfig, adapters: Adapters) -> PluginContex
         embedding_backend_factory=adapters.embedding_backend_factory,
         embedding_model_backend_factory=adapters.embedding_model_backend_factory,
         chat_backend_factory=adapters.chat_backend_factory,
+        mapping_context=(
+            build_mapping_context(config, adapters=adapters, services=services)
+            if services is not None
+            else None
+        ),
     )
 
 
@@ -292,7 +329,8 @@ def verify_plugin_readiness(
             summary="This plugin does not expose readiness verification.",
         )
     adapters = build_adapters(config)
-    context = _build_plugin_context(config, adapters)
+    services = build_services(config, adapters)
+    context = _build_plugin_context(config, adapters, services)
     state, issue = _build_plugin(config, context, plugin)
     if state is None:
         return PluginReadinessResult(
@@ -342,13 +380,14 @@ def load_plugin_readiness(
 
 def build_application(config: AppConfig) -> GroundworkersApp:
     adapters = build_adapters(config)
-    context = _build_plugin_context(config, adapters)
+    services = build_services(config, adapters)
+    context = _build_plugin_context(config, adapters, services)
     plugin_definitions = tuple(discover_plugins())
     plugins, plugin_issues = _build_plugins(config, context, plugin_definitions)
     return GroundworkersApp(
         config=config,
         adapters=adapters,
-        services=build_services(config, adapters),
+        services=services,
         plugins=plugins,
         plugin_definitions=plugin_definitions,
         plugin_issues=plugin_issues,

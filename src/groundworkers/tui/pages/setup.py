@@ -406,7 +406,9 @@ class SetupPage(GroundworkersPage):
         row = next((item for item in view.rows if item.key == row_key), None)
         if row is None or row.detail is None:
             return
-        detail = key_value_detail(f"{self._selected_section_title()} detail", row.detail)
+        detail = key_value_detail(
+            f"{self._selected_section_title()} detail", row.detail
+        )
         if detail is not None:
             context.surface.show_detail(self.route.key, detail)
 
@@ -425,17 +427,24 @@ class SetupPage(GroundworkersPage):
             self._start_verify_all(context)
             return
         if action_key == "overview.integration":
-            output = self._integration_output() if self._session.databases_connected else None
+            output = (
+                self._integration_output()
+                if self._session.databases_connected
+                else None
+            )
             if output is None:
-                context.notify("Verify the CDM before showing integration commands.", severity="warning")
+                context.notify(
+                    "Verify the CDM before showing integration commands.",
+                    severity="warning",
+                )
             else:
-                context.notify(f"stdio: {output.stdio_command}\nHTTP: {output.http_command}")
+                context.notify(
+                    f"stdio: {output.stdio_command}\nHTTP: {output.http_command}"
+                )
             return
         if action_key == "graph.prepare":
             context.open_wizard(
-                GraphMaintenanceWizardController(
-                    self._session, self._graph_readiness()
-                )
+                GraphMaintenanceWizardController(self._session, self._graph_readiness())
             )
             return
         if action_key == "performance.refresh":
@@ -622,7 +631,9 @@ class SetupPage(GroundworkersPage):
 
         self.run_worker(verify, thread=True, exclusive=True)
 
-    def _finish_performance_checks(self, results, coverage, context: PageContext) -> None:
+    def _finish_performance_checks(
+        self, results, coverage, context: PageContext
+    ) -> None:
         self._session.connection_results = tuple(results)
         self._session.embedding_coverage = coverage
         self._show_current_state(context)
@@ -698,7 +709,11 @@ class SetupPage(GroundworkersPage):
 
     def _graph_target_result(self, target_key: str):
         return next(
-            (result for result in self._session.connection_results if result.target_key == target_key),
+            (
+                result
+                for result in self._session.connection_results
+                if result.target_key == target_key
+            ),
             None,
         )
 
@@ -716,7 +731,9 @@ class SetupPage(GroundworkersPage):
         return build_integration_output(self._session.configuration)
 
     def _integration_ready(self) -> bool:
-        return self._session.databases_connected and self._integration_output() is not None
+        return (
+            self._session.databases_connected and self._integration_output() is not None
+        )
 
     def _start_llm_provider_check(self, context: PageContext) -> None:
         context.notify("Checking LLM provider endpoint and model.")
@@ -855,8 +872,7 @@ class SetupPage(GroundworkersPage):
                 )
                 tail = collapse_tqdm_tail(tail)
                 step_label = (
-                    f"{step_index + 1}/{run.total} · "
-                    f"{run.steps[step_index].spec.key}"
+                    f"{step_index + 1}/{run.total} · {run.steps[step_index].spec.key}"
                     if step_index is not None
                     else "No step has started"
                 )
@@ -911,7 +927,9 @@ class SetupPage(GroundworkersPage):
         step_index = _selected_log_step(run)
         path = None if step_index is None else run.steps[step_index].log_path
         if path is None:
-            context.notify("No log output is available for this run.", severity="warning")
+            context.notify(
+                "No log output is available for this run.", severity="warning"
+            )
             return
         try:
             text = read_log_tail(path)
