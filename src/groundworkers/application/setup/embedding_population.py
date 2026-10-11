@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, cast
 
 from groundskeeping.contracts import Command, CommandPlan, CommandStep
-from oa_configurator import Resolver, safe_endpoint
+from oa_configurator import ResolvedCDMDatabase, Resolver, Role, safe_endpoint
+from omop_alchemy.config import create_cdm_engines
 from omop_llm import canonical_model_name
 from sqlalchemy.engine import Engine
 
@@ -237,7 +238,14 @@ def _cdm_engine_and_schema(snapshot: ConfigurationSnapshot) -> tuple[Engine, str
     resolver = Resolver(snapshot.stack)
     groundworkers = GroundworkersConfig.validate_candidate(snapshot.stack)
     database = resolver.resolve_database(groundworkers.cdm_db)
-    return database.create_engine(), database.schema_name or "main"
+    if not isinstance(database, ResolvedCDMDatabase):
+        raise ValueError("Groundworkers cdm_db must resolve to a CDM database.")
+    primary_engine, vocab_engine = create_cdm_engines(
+        database, register_claims=False
+    )
+    if vocab_engine is not primary_engine:
+        vocab_engine.dispose()
+    return primary_engine, database.schema_for_role(Role.PRIMARY) or "main"
 
 
 def _embedding_index_snapshot(

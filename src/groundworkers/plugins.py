@@ -267,6 +267,8 @@ class PluginContext:
     embedding_model_backend_factory: Callable[[], Any] | None
     chat_backend_factory: Callable[[], Any] | None
     mapping_context: MappingContext | None = None
+    cdm_session_factory: Callable[[], Any] | None = None
+    cdm_vocab_engine: Engine | None = None
 
 
 class GroundworkersPlugin(Protocol):

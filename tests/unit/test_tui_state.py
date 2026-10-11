@@ -111,7 +111,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -125,8 +124,8 @@ cdm_db = "cdm_db"
         database_entry_name="cdm_db",
         connection_name="main",
         safe_url="sqlite:///:memory:",
-        cdm_schema="main",
-        vocabulary_schema="main",
+        cdm_schema=None,
+        vocabulary_schema=None,
         connection_url="sqlite:///:memory:",
     )
     view = DatabasePresenter().landing(
@@ -161,7 +160,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -175,8 +173,8 @@ cdm_db = "cdm_db"
         database_entry_name="cdm_db",
         connection_name="main",
         safe_url="sqlite:///:memory:",
-        cdm_schema="main",
-        vocabulary_schema="main",
+        cdm_schema=None,
+        vocabulary_schema=None,
         connection_url="sqlite:///:memory:",
     )
     view = DatabasePresenter().landing(

@@ -805,7 +805,7 @@ def cdm_setup_workflow(
             ConfigWorkflowStep(
                 "cdm",
                 "Describe the CDM",
-                ("cdm_db_name", "schema_name", "vocab_schema", "results_schema"),
+                ("cdm_db_name", "cdm_schema", "vocab_schema", "results_schema"),
             ),
         ),
     )
@@ -934,7 +934,6 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     database = stack.databases.get(cdm_name)
     connection_name = getattr(database, "connection", "cdm_main")
     connection = stack.connections.get(connection_name)
-    fresh = connection is None
     dialect = getattr(connection, "dialect", "postgresql+psycopg")
     return (
         FieldSpec(
@@ -995,9 +994,14 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             help="Keep the generated name unless reusing or resolving a collision.",
         ),
         FieldSpec(
-            "schema_name",
+            "cdm_schema",
             "CDM schema",
-            default=getattr(database, "schema_name", "public" if fresh else "main"),
+            required=False,
+            default=(
+                getattr(database, "cdm_schema", None)
+                if database is not None
+                else ("public" if dialect != "sqlite" else None)
+            ),
         ),
         FieldSpec(
             "vocab_schema",
@@ -1122,6 +1126,13 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     _, cdm = _cdm_entry(stack)
     connections = tuple(stack.connections) or ("cdm_main",)
     location = _store_location_field(stack, database)
+    store_connection_name = (
+        connection_name or getattr(cdm, "connection", None) or connections[0]
+    )
+    store_connection = stack.connections.get(store_connection_name)
+    store_schema = getattr(database, "schema_name", None)
+    if store_schema is None and getattr(store_connection, "dialect", None) != "sqlite":
+        store_schema = "groundworkers"
     return (
         location,
         FieldSpec(
@@ -1149,9 +1160,7 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "store_connection_name",
             "Connection",
             kind=FieldKind.CHOICE,
-            default=connection_name
-            or getattr(cdm, "connection", None)
-            or connections[0],
+            default=store_connection_name,
             choices=tuple(ChoiceOption(name, name) for name in connections),
             help="An existing connection. Add one through CDM setup or omop-config.",
         ),
@@ -1159,12 +1168,7 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "store_schema_name",
             "Schema",
             required=False,
-            # No hardcoded fallback: 'public' is a PostgreSQL name, and it was
-            # being offered for SQLite stores and for CDMs whose own schema is
-            # something else. Blank means no override, which is right whenever
-            # there is nothing better to copy.
-            default=getattr(database, "schema_name", None)
-            or getattr(cdm, "schema_name", None),
+            default=store_schema,
             help="Blank uses the connection's own default schema.",
         ),
         FieldSpec(
@@ -1239,10 +1243,7 @@ def _store_location_field(
 
 
 def _matches_cdm(database: object, cdm: CDMDatabaseConfig) -> bool:
-    return (
-        getattr(database, "connection", None) == cdm.connection
-        and getattr(database, "schema_name", None) == cdm.schema_name
-    )
+    return getattr(database, "connection", None) == cdm.connection
 
 
 def _backend_type_field(
@@ -1388,12 +1389,15 @@ def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     database: dict[str, object] = {
         "name": str(answers["cdm_db_name"]),
         "connection": connection,
-        "schema_name": str(answers["schema_name"]),
     }
-    for key in ("vocab_schema", "results_schema"):
-        value = answers.get(key)
-        if value not in (None, ""):
-            database[key] = value
+    if str(answers["dialect"]) != "sqlite":
+        schema = answers.get("cdm_schema")
+        if schema not in (None, ""):
+            database["cdm_schema"] = schema
+        for key in ("vocab_schema", "results_schema"):
+            value = answers.get(key)
+            if value not in (None, ""):
+                database[key] = value
     return {"cdm_db": database}
 
 
@@ -1426,8 +1430,8 @@ def _store_database(
     A vector store must reference a ``GenericDatabaseConfig`` and the CDM entry
     is a ``CDMDatabaseConfig``, so "in the CDM database" cannot be expressed by
     pointing at the CDM entry itself. It is expressed instead as a generic entry
-    that copies the CDM's connection and schema, which is the same physical
-    place.
+    on the CDM's connection. PostgreSQL stores vectors in a dedicated
+    ``groundworkers`` schema; SQLite has no schema.
     """
     if _store_location(answers) == STORE_LOCATION_CDM:
         cdm_name, cdm = _cdm_entry(stack)
@@ -1440,8 +1444,9 @@ def _store_database(
             "kind": "generic",
             "connection": cdm.connection,
         }
-        if cdm.schema_name:
-            database["schema_name"] = cdm.schema_name
+        cdm_connection = stack.connections.get(cdm.connection)
+        if getattr(cdm_connection, "dialect", None) != "sqlite":
+            database["schema_name"] = "groundworkers"
         return database
     database = {
         "name": str(answers["store_database_name"]),
@@ -1449,7 +1454,8 @@ def _store_database(
         "connection": str(answers["store_connection_name"]),
     }
     schema = answers.get("store_schema_name")
-    if schema not in (None, ""):
+    connection = stack.connections.get(str(answers["store_connection_name"]))
+    if schema not in (None, "") and getattr(connection, "dialect", None) != "sqlite":
         database["schema_name"] = schema
     return database
 

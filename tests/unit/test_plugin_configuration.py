@@ -13,7 +13,7 @@ from oa_configurator import (
     PackageConfigBase,
     RefTo,
     VectorStoreConfig,
-    load_stack_config_from_path,
+    load_stack_config,
     save_stack_config,
 )
 from pydantic import Field
@@ -103,7 +103,7 @@ def test_existing_references_and_pydantic_constraint_run_through_controller(
     assert review.can_apply
     assert controller.apply().applied
 
-    saved = load_stack_config_from_path(path)
+    saved = load_stack_config(path)
     config = ComparatorRecommenderConfig.validate_candidate(saved)
     assert config.comparator_db == "cdm_db"
     assert config.embedding_model_name == "embedding_model"
@@ -137,7 +137,6 @@ def test_recursive_reference_creation_writes_a_complete_oa_stack(tmp_path: Path)
         "vector_store_name::database::connection::database_name": str(
             tmp_path / "plugin-vectors.db"
         ),
-        "vector_store_name::database::schema_name": "main",
         "vector_store_name::backend_type": "sqlitevec",
         "min_databases_default": 2,
     }
@@ -147,7 +146,7 @@ def test_recursive_reference_creation_writes_a_complete_oa_stack(tmp_path: Path)
     assert "plugin-secret-canary" not in repr(review)
     assert controller.apply().applied
 
-    saved = load_stack_config_from_path(path)
+    saved = load_stack_config(path)
     config = ComparatorRecommenderConfig.validate_candidate(saved)
     assert config.embedding_model_name == "plugin_embedding_model"
     assert config.vector_store_name == "plugin_vectors"
@@ -172,12 +171,12 @@ def test_concurrent_write_after_review_conflicts(tmp_path: Path) -> None:
     )
     assert review.can_apply
 
-    changed = load_stack_config_from_path(path)
+    changed = load_stack_config(path)
     changed.tools["external_writer"] = {"changed": True}
     save_stack_config(changed, path)
 
     assert controller.apply().status.value == "conflicted"
-    assert "comparator_recommender" not in load_stack_config_from_path(path).tools
+    assert "comparator_recommender" not in load_stack_config(path).tools
 
 
 def test_attempted_save_failure_returns_failed(tmp_path: Path, monkeypatch) -> None:

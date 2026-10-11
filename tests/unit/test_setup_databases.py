@@ -29,8 +29,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -48,10 +46,12 @@ def test_database_targets_are_resolved_with_safe_urls(tmp_path: Path) -> None:
     assert targets[1].key == "database.graph"
     assert targets[2].key == "database.groundworkers"
     assert targets[0].safe_url == "sqlite:///:memory:"
+    assert targets[0].cdm_schema is None
+    assert targets[0].vocabulary_schema is None
     assert "connection_url" not in repr(targets[0])
 
 
-def test_distinct_vocabulary_connection_is_refused_rather_than_targeted(
+def test_distinct_vocabulary_connection_is_accepted_by_the_configuration_layer(
     tmp_path: Path,
 ) -> None:
     """Nothing reads a second engine, so offering it as a target would promise a
@@ -70,9 +70,7 @@ database_name = "vocabulary.db"
 [databases.cdm_db]
 kind = "cdm"
 connection = "cdm"
-schema_name = "main"
 vocab_connection = "vocabulary"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -82,9 +80,9 @@ cdm_db = "cdm_db"
 
     snapshot = load_configuration(config_path=path)
 
-    assert snapshot.state is ConfigurationState.INCOMPLETE
-    assert [issue.code for issue in snapshot.issues] == ["vocabulary_connection_split"]
-    assert resolve_database_targets(snapshot) == ()
+    assert snapshot.state is ConfigurationState.UNVERIFIED
+    assert snapshot.issues == ()
+    assert len(resolve_database_targets(snapshot)) == 3
 
 
 def test_database_verification_records_latency(tmp_path: Path) -> None:
@@ -445,8 +443,8 @@ def _target(
         database_entry_name="cdm_db",
         connection_name="main",
         safe_url=f"sqlite:///{db_path}",
-        cdm_schema="main",
-        vocabulary_schema="main",
+        cdm_schema=None,
+        vocabulary_schema=None,
         connection_url=f"sqlite:///{db_path}",
         role=role,
         expected_embedding_model_name=expected_model_name,

@@ -24,7 +24,7 @@ def _stack_without_backends():
 
 
 def _stack_with_cdm():
-    return build_cdm_stack(schema_name="omop", vocab_schema="omop_vocab")
+    return build_cdm_stack()
 
 
 def test_cdm_only_stack_serves_graph_tools_without_embedding_tools():

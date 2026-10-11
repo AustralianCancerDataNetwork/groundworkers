@@ -68,8 +68,8 @@ class DatabaseTarget:
     database_entry_name: str
     connection_name: str
     safe_url: str
-    cdm_schema: str
-    vocabulary_schema: str
+    cdm_schema: str | None
+    vocabulary_schema: str | None
     connection_url: str = field(repr=False)
     role: str = "cdm"
     # The schema omop-emb's registry and storage tables live in, when this target

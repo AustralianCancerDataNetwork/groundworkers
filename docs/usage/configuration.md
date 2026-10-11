@@ -64,7 +64,7 @@ database_name = "omop"
 [databases.cdm_db]
 kind = "cdm"
 connection = "cdm_main"
-schema_name = "public"
+cdm_schema = "public"
 vocab_schema = "public"
 
 [providers.local_ollama]

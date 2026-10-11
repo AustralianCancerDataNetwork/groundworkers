@@ -13,11 +13,12 @@ import sqlalchemy as sa
 from omop_alchemy.cdm.model.vocabulary import Domain
 
 from groundworkers.base.domain_names import DomainNameResolver
+from tests.support.omop import route_sqlite_omop_roles
 
 
 @pytest.fixture()
 def resolver() -> DomainNameResolver:
-    engine = sa.create_engine("sqlite:///:memory:", future=True)
+    engine = route_sqlite_omop_roles(sa.create_engine("sqlite:///:memory:", future=True))
     Domain.__table__.create(engine)
     with engine.begin() as conn:
         conn.execute(

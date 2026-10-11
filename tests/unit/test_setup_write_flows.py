@@ -18,7 +18,7 @@ from groundskeeping.configurator import (
     ConfigWizardController,
     MutationOperation,
 )
-from oa_configurator import load_stack_config_from_path, save_stack_config
+from oa_configurator import load_stack_config, save_stack_config
 
 from groundworkers.application.setup.configuration_provider import (
     CDM_SETUP_TARGET,
@@ -110,7 +110,7 @@ def test_chat_setup_creates_then_updates_the_same_target(tmp_path: Path) -> None
     _drive_llm_to_review(controller)
     assert controller.apply().status.value == "applied"
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     saved = GroundworkersConfig.validate_candidate(stack)
     assert saved.llm_model_name == "chat_model"
     assert stack.models["chat_model"].model == "second-model:v1"
@@ -131,7 +131,7 @@ def test_chat_setup_creates_then_updates_the_same_target(tmp_path: Path) -> None
     controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model:v1"})
     assert controller.apply().status.value == "applied"
 
-    updated_stack = load_stack_config_from_path(path)
+    updated_stack = load_stack_config(path)
     updated = GroundworkersConfig.validate_candidate(updated_stack)
     assert updated.llm_model_name == "chat_model"
     assert updated_stack.models["chat_model"].model == "first-model:v1"
@@ -158,7 +158,7 @@ def test_blank_api_key_on_update_preserves_the_stored_credential(
     controller.submit({"llm_model_entry_name": "chat_model", "llm_model_choice": "first-model:v1"})
     controller.apply()
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     assert stack.providers["chat_provider"].api_key == "original-secret"
 
 
@@ -183,7 +183,7 @@ def test_cdm_setup_creates_connection_and_database_entries(tmp_path: Path) -> No
     result = controller.apply()
 
     assert result.status.value == "applied"
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     assert "warehouse" in stack.connections
     assert "warehouse_cdm" in stack.databases
     assert GroundworkersConfig.validate_candidate(stack).cdm_db == "warehouse_cdm"
@@ -419,7 +419,7 @@ def test_concurrent_edit_is_reported_as_conflicted(tmp_path: Path) -> None:
     _drive_llm_to_review(controller)
 
     # Another writer changes the file after the plan was prepared.
-    other = build_cdm_stack(schema_name="other")
+    other = build_cdm_stack(cdm_schema="other")
     save_stack_config(other, path)
     other_bytes = path.read_text(encoding="utf-8")
 
@@ -457,7 +457,7 @@ def test_embedding_model_name_is_never_reused_as_the_chat_model(
     _drive_llm_to_review(controller)
     controller.apply()
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     saved = GroundworkersConfig.validate_candidate(stack)
     assert saved.llm_model_name == "chat_model"
     assert stack.models["chat_model"].model == "second-model:v1"

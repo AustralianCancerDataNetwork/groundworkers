@@ -19,10 +19,13 @@ from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.base.sql import normalization_expression
 from groundworkers.services.vocab import VocabService, normalize_text_for_matching
 from groundworkers.tools.search_tools import register_search_tools
+from tests.support.omop import route_sqlite_omop_roles
 
 
 def _service(tmp_path) -> VocabService:
-    engine = create_engine(f"sqlite:///{tmp_path / 'vocabulary.db'}")
+    engine = route_sqlite_omop_roles(
+        create_engine(f"sqlite:///{tmp_path / 'vocabulary.db'}")
+    )
 
     @event.listens_for(engine, "connect")
     def sqlite_normalisation_functions(connection, _record) -> None:

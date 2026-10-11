@@ -19,9 +19,10 @@ from omop_graph.graph.traverse import traverse
 from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
 from omop_graph.reasoning.resolvers import ResolverPipeline
 from omop_graph.reasoning.resolvers.resolvers import EmbeddingResolver
-from sqlalchemy import func, select, text
+from sqlalchemy import func, literal, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import Session, sessionmaker
 
 from groundworkers.base.concept_payload import serialise_concept_view
 from groundworkers.base.domain_names import DomainNameResolver
@@ -63,24 +64,23 @@ class OmopGraphAdapter:
 
     def __init__(
         self,
-        engine: Engine,
+        engine: Engine | Callable[[], Session],
         *,
+        cdm_session_factory: Callable[[], Session] | None = None,
         embedding_backend_factory: Callable[[], EmbeddingBackend] | None = None,
         resolved_embedding_model: ResolvedModel | None = None,
         model_backend_factory: Callable[[], ModelBackend] | None = None,
         embedding_metric: str = "cosine",
         faiss_cache_dir: str | None = None,
     ) -> None:
-        # No `vocab_schema` parameter. It cannot be honoured and never was: no
-        # omop-alchemy model declares `schema="vocab"`, so oa-configurator's
-        # "vocab" translate-map key is unreachable from the ORM and vocabulary
-        # tables resolve through the primary schema like every other CDM table
-        # (see omop_alchemy/config.py, `vocabulary_identity`). The engine handed
-        # in already carries the full map, so if omop-alchemy ever tags its
-        # vocabulary models the routing starts working here with no change.
-        # Re-adding the parameter would restore a caller-visible argument that
-        # silently changes nothing.
-        self.engine = engine
+        if isinstance(engine, Engine):
+            self.engine: Engine | None = engine
+            self._cdm_session_factory = cdm_session_factory or sessionmaker(
+                bind=engine
+            )
+        else:
+            self.engine = None
+            self._cdm_session_factory = cdm_session_factory or engine
         self._embedding_backend_factory = embedding_backend_factory
         self._resolved_embedding_model = resolved_embedding_model
         self._model_backend_factory = model_backend_factory
@@ -90,7 +90,7 @@ class OmopGraphAdapter:
         self._embedding_configured = False
         self._kg: KnowledgeGraph | None = None
         self._model_backend: ModelBackend | None = None
-        self._domain_names = DomainNameResolver(engine)
+        self._domain_names = DomainNameResolver(self._cdm_session_factory)
 
     @property
     def embedding_resolver_active(self) -> bool:
@@ -565,8 +565,10 @@ class OmopGraphAdapter:
         # Fail fast with a clear message if the database is unreachable before
         # KnowledgeGraph has a chance to raise something opaque.
         try:
-            with self.engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
+            with self._cdm_session_factory() as session:
+                session.execute(
+                    select(literal(1)), bind_arguments={"mapper": Concept}
+                )
         except Exception as exc:
             raise GroundworkersError(
                 "BACKEND_UNAVAIL",
@@ -598,7 +600,9 @@ class OmopGraphAdapter:
                 logger.warning("%s", self._embedding_configuration_error)
 
         try:
-            self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=emb_config)
+            self._kg = KnowledgeGraph(
+                self._cdm_session_factory, emb_config=emb_config
+            )
         except Exception as exc:
             if emb_config is None:
                 self._embedding_configured = False
@@ -610,7 +614,7 @@ class OmopGraphAdapter:
             self._embedding_configuration_error = self._embedding_failure_detail(exc)
             logger.warning("%s", self._embedding_configuration_error)
             try:
-                self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=None)
+                self._kg = KnowledgeGraph(self._cdm_session_factory, emb_config=None)
             except Exception as lexical_exc:
                 raise self._wrap_graph_error(lexical_exc, default_code="BACKEND_UNAVAIL")
         return self._kg

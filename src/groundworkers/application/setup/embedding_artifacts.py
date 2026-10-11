@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from omop_emb.storage.embedding_bundle import ExportMetadata
-
 from groundworkers.application.setup.models import (
     ArtifactCompatibility,
     ArtifactDiscovery,
@@ -99,6 +97,7 @@ def _inspect_bundle(path: Path) -> ArtifactMetadata:
     # Imported lazily: reading exported bundles is an optional capability behind the
     # `embedding-artifacts` extra, and a core install must still import this module.
     import h5py
+    from omop_emb.storage.embedding_bundle import ExportMetadata
 
     with h5py.File(path, "r") as bundle:
         metadata = ExportMetadata.from_h5_attrs(bundle.attrs)

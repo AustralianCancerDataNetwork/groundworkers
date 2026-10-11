@@ -81,7 +81,9 @@ The concept-embedding row and the free-text-embedding row look similar but are n
 
 ## Build and register a new plugin
 
-`build()` receives `PluginContext`. The context provides the resolved CDM database and engine, vector store, shared lazy model backend factories, the optional read-only `mapping_context`, and a deliberately narrow resolver for independent named OA resources. Return `None` when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.
+`build()` receives `PluginContext`. The context provides the resolved CDM database and primary engine, routed `cdm_session_factory`, vocabulary engine, vector store, shared lazy model backend factories, the optional read-only `mapping_context`, and a deliberately narrow resolver for independent named OA resources. Return `None` when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.
+
+Use `context.cdm_session_factory` for role-tagged OMOP queries. `context.cdm_engine` remains available for code that needs the primary engine directly. Plugins that construct an OMOP graph or query vocabulary tables should use the routed factory so vocabulary and primary roles reach their configured schemas.
 
 `register()` adds MCP tools, prompts, or resources against the state returned by `build()`. The shared MCP registration wrapper supplies the same safe error translation used by core tools. Code-defined prompts can continue to derive their arguments from the callable signature. A plugin publishing data-defined prompts can pass explicit string metadata with `PromptArgument`; this keeps dynamic pack fields out of Python closure signatures:
 
@@ -158,7 +160,8 @@ Schemas requiring live discovery or a conditional flow (and therefore not fittin
 ```python
 from typing import Annotated, ClassVar
 
-from oa_configurator import PackageConfigBase, Sensitive
+from oa_configurator import PackageConfigBase
+from oa_configurator.refs import Sensitive, Secret
 from pydantic import Field
 
 
@@ -167,9 +170,17 @@ class ExampleConfig(PackageConfigBase):
     api_token: Annotated[str | None, Sensitive()] = Field(default=None)
 ```
 
-The `oa_configurator.Secret` alias is equivalent to `Annotated[str | None, Sensitive()]`. Prefer a `RefTo` field when a plugin can reuse an existing database, model, provider, or vector-store entry. The plugin then stores only the logical reference name; sensitivity remains declared on the referenced schema, such as `ConnectionConfig.password` or `ProviderConfig.api_key`, and the generic recursive configuration workflow preserves those declarations.
+The `Secret` alias is equivalent to `Annotated[str | None, Sensitive()]`. Prefer a `RefTo` field when a plugin can reuse an existing database, model, provider, or vector-store entry. The plugin then stores only the logical reference name; sensitivity remains declared on the referenced schema, such as `ConnectionConfig.password` or `ProviderConfig.api_key`, and the generic recursive configuration workflow preserves those declarations.
 
 This protects display and logging surfaces; it does not encrypt persisted configuration. Plugin documentation must describe the storage expectations for any secret it introduces.
+
+## Upgrading plugins to Groundworkers 0.7
+
+1. Require `oa-configurator>=2,<3` and `groundworkers>=0.7,<0.8` in the plugin package.
+2. Import `Sensitive` and `Secret` from `oa_configurator.refs`, and load files with `load_stack_config(path)`.
+3. Create CDM role engines with `omop_alchemy.config.create_cdm_engines(resolved)`; use `context.cdm_session_factory` when Groundworkers provides the database.
+4. Remove schema fields from SQLite database entries. For PostgreSQL CDM entries, use `cdm_schema`; vector-store database entries continue to use `schema_name`.
+5. Keep accepting `context.cdm_engine` for integrations that need the primary SQLAlchemy engine. The routed factory handles vocabulary, primary, and results roles for ORM queries.
 
 ## Setup steps
 

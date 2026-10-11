@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import Any
 
 from omop_alchemy.cdm.model.vocabulary import Domain
 from sqlalchemy import select
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +19,13 @@ class DomainNameResolver:
     restarts the server anyway.
     """
 
-    def __init__(self, engine: Engine) -> None:
-        self._engine = engine
+    def __init__(self, engine: Engine | Callable[[], Any]) -> None:
+        if isinstance(engine, Engine):
+            self._engine: Engine | None = engine
+            self._session_factory: Callable[[], Any] | None = None
+        else:
+            self._engine = None
+            self._session_factory = engine
         self._by_lowered: dict[str, str] | None = None
 
     def _load(self) -> dict[str, str]:
@@ -30,8 +34,17 @@ class DomainNameResolver:
 
         mapping: dict[str, str] = {}
         try:
-            with self._engine.connect() as conn:
-                rows = conn.execute(select(Domain.domain_id, Domain.domain_name)).all()
+            if self._session_factory is not None:
+                with self._session_factory() as session:
+                    rows = session.execute(
+                        select(Domain.domain_id, Domain.domain_name)
+                    ).all()
+            else:
+                assert self._engine is not None
+                with self._engine.connect() as conn:
+                    rows = conn.execute(
+                        select(Domain.domain_id, Domain.domain_name)
+                    ).all()
         except Exception:
             logger.warning("Could not read the domain table; domain names unresolved.", exc_info=True)
             self._by_lowered = {}

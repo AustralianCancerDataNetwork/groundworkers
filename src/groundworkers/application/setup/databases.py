@@ -15,13 +15,25 @@ from typing import Any
 from oa_configurator import (  # type: ignore[import-untyped]
     ResolvedCDMDatabase,
     Resolver,
+    Role,
+    supports_schemas,
 )
 from omop_emb.backends.embedding_table import (
     CONCEPT_METADATA_COLUMNS,
     EMBEDDING_COLUMN_NAME,
 )
 from omop_emb.model_registry import ModelRegistry
-from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy import (
+    Column,
+    MetaData,
+    Table,
+    create_engine,
+    exists,
+    func,
+    inspect,
+    literal,
+    select,
+)
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import NoSuchModuleError
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
@@ -37,7 +49,6 @@ from groundworkers.application.setup.models import (
 )
 from groundworkers.base.sql import (
     normalization_key_expression_sql,
-    quote_identifier,
 )
 from groundworkers.config import GroundworkersConfig
 
@@ -131,9 +142,9 @@ def resolve_database_targets(
     cdm = resolver.resolve_database(groundworkers.cdm_db)
     if not isinstance(cdm, ResolvedCDMDatabase):
         return ()
-    cdm_schema = cdm.schema_name or (
-        "main" if cdm.connection.url.startswith("sqlite") else "public"
-    )
+    schema_capable = supports_schemas(cdm.connection.dialect_name)
+    cdm_schema = cdm.schema_for_role(Role.PRIMARY) if schema_capable else None
+    vocab_schema = cdm.schema_for_role(Role.VOCAB) if schema_capable else None
     embedding_target: DatabaseTarget | None = None
     expected_embedding_model_name: str | None = None
     embedding_safe_url: str | None = None
@@ -155,8 +166,8 @@ def resolve_database_targets(
             database_entry_name=embedding.database.name,
             connection_name=embedding.database.connection.name,
             safe_url=embedding.database.connection.safe_url,
-            cdm_schema=embedding_schema or "main",
-            vocabulary_schema=embedding_schema or "main",
+            cdm_schema=embedding_schema,
+            vocabulary_schema=embedding_schema,
             connection_url=embedding.database.connection.url,
             role="embedding",
             embedding_schema=embedding_schema,
@@ -170,7 +181,7 @@ def resolve_database_targets(
             connection_name=cdm.connection.name,
             safe_url=cdm.connection.safe_url,
             cdm_schema=cdm_schema,
-            vocabulary_schema=cdm.vocab_schema,
+            vocabulary_schema=vocab_schema,
             connection_url=cdm.connection.url,
             role="cdm",
         ),
@@ -181,7 +192,7 @@ def resolve_database_targets(
             connection_name=cdm.connection.name,
             safe_url=cdm.connection.safe_url,
             cdm_schema=cdm_schema,
-            vocabulary_schema=cdm.vocab_schema,
+            vocabulary_schema=vocab_schema,
             connection_url=cdm.connection.url,
             role="graph",
         ),
@@ -192,7 +203,7 @@ def resolve_database_targets(
             connection_name=cdm.connection.name,
             safe_url=cdm.connection.safe_url,
             cdm_schema=cdm_schema,
-            vocabulary_schema=cdm.vocab_schema,
+            vocabulary_schema=vocab_schema,
             connection_url=cdm.connection.url,
             role="groundworkers",
             embedding_schema=embedding_schema,
@@ -201,9 +212,6 @@ def resolve_database_targets(
             embedding_connection_url=embedding_connection_url,
         ),
     ]
-    # No separate vocabulary target: a CDM entry naming a second connection for
-    # its vocabulary is rejected before it gets here, by `split_vocabulary_connection`
-    # via `_incomplete_issues`, so `cdm.vocab_connection` is always `cdm.connection`.
     if embedding_target is not None:
         targets.append(embedding_target)
     return tuple(targets)
@@ -222,7 +230,7 @@ def verify_database_target(
     try:
         engine = engine_factory(target.connection_url)
         with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
+            connection.execute(select(literal(1)))
             diagnostics = _diagnostics_for_target(
                 connection,
                 target,
@@ -258,7 +266,9 @@ def _diagnostics_for_target(
     if target.role == "embedding":
         return _embedding_diagnostics(connection, schema=target.embedding_schema)
     if target.role == "graph":
-        return _graph_diagnostics(connection, target.cdm_schema)
+        return _graph_diagnostics(
+            connection, target.cdm_schema, target.vocabulary_schema
+        )
     if target.role == "groundworkers":
         return _groundworkers_diagnostics(
             connection,
@@ -266,13 +276,13 @@ def _diagnostics_for_target(
             engine_factory=engine_factory,
         )
     if target.role == "cdm":
-        return _cdm_diagnostics(connection, target.cdm_schema)
+        return _cdm_diagnostics(connection, target.vocabulary_schema)
     return ()
 
 
 def _cdm_diagnostics(
     connection: Connection,
-    schema: str,
+    schema: str | None,
 ) -> tuple[ResourceDiagnostic, ...]:
     inspector = inspect(connection)
     existing = set(inspector.get_table_names(schema=schema))
@@ -294,11 +304,15 @@ def _cdm_diagnostics(
 
 def _graph_diagnostics(
     connection: Connection,
-    schema: str,
+    cdm_schema: str | None,
+    vocabulary_schema: str | None,
 ) -> tuple[ResourceDiagnostic, ...]:
-    diagnostics: list[ResourceDiagnostic] = list(_cdm_diagnostics(connection, schema))
+    diagnostics: list[ResourceDiagnostic] = list(
+        _cdm_diagnostics(connection, vocabulary_schema)
+    )
     inspector = inspect(connection)
-    existing_tables = set(inspector.get_table_names(schema=schema))
+    existing_tables = set(inspector.get_table_names(schema=cdm_schema))
+    vocabulary_tables = set(inspector.get_table_names(schema=vocabulary_schema))
     missing_graph_tables = tuple(
         table for table in GRAPH_TABLES if table not in existing_tables
     )
@@ -307,20 +321,22 @@ def _graph_diagnostics(
             _warning(
                 "graph_tables_missing",
                 "Graph relationship-classification tables are missing from "
-                f"schema {schema!r}: {', '.join(missing_graph_tables)}.",
+                f"schema {cdm_schema!r}: {', '.join(missing_graph_tables)}.",
             )
         )
     else:
         diagnostics.append(
             _info(
                 "graph_tables_present",
-                f"Graph relationship-classification tables are present in schema {schema!r}.",
+                f"Graph relationship-classification tables are present in schema {cdm_schema!r}.",
             )
         )
         empty_tables = tuple(
             table
             for table in GRAPH_TABLES
-            if _table_is_empty(connection, schema, table)
+            if _table_is_empty(
+                connection, cdm_schema, table, schema_tag=Role.PRIMARY
+            )
         )
         if empty_tables:
             diagnostics.append(
@@ -333,9 +349,9 @@ def _graph_diagnostics(
 
     fulltext_sidecar_unpopulated: list[str] = []
     for table, column in GRAPH_FTS_COLUMNS.items():
-        if table not in existing_tables:
+        if table not in vocabulary_tables:
             continue
-        columns = _column_names(connection, schema, table)
+        columns = _column_names(connection, vocabulary_schema, table)
         if column not in columns:
             diagnostics.append(
                 _warning(
@@ -343,7 +359,13 @@ def _graph_diagnostics(
                     f"Full-text sidecar column {table}.{column} is missing.",
                 )
             )
-        elif _column_has_null_values(connection, schema, table, column):
+        elif _column_has_null_values(
+            connection,
+            vocabulary_schema,
+            table,
+            column,
+            schema_tag=Role.VOCAB,
+        ):
             fulltext_sidecar_unpopulated.append(f"{table}.{column}")
     if fulltext_sidecar_unpopulated:
         diagnostics.append(
@@ -355,7 +377,9 @@ def _graph_diagnostics(
             )
         )
     missing_fts_indexes = tuple(
-        name for name in GRAPH_FTS_INDEXES if not _index_exists(inspector, schema, name)
+        name
+        for name in GRAPH_FTS_INDEXES
+        if not _index_exists(inspector, vocabulary_schema, name)
     )
     if missing_fts_indexes:
         diagnostics.append(
@@ -372,11 +396,11 @@ def _graph_diagnostics(
     missing_functional = tuple(
         label
         for table, column, label, aliases in GRAPH_FUNCTIONAL_INDEX_TARGETS
-        if table in existing_tables
+        if table in vocabulary_tables
         and not _functional_lower_index_exists(
             connection,
             inspector,
-            schema,
+            vocabulary_schema,
             table,
             column,
             aliases,
@@ -405,7 +429,7 @@ def _groundworkers_diagnostics(
     engine_factory: Callable[[str], Engine],
 ) -> tuple[ResourceDiagnostic, ...]:
     diagnostics: list[ResourceDiagnostic] = []
-    schema = target.cdm_schema
+    schema = target.vocabulary_schema
     inspector = inspect(connection)
     existing_tables = set(inspector.get_table_names(schema=schema))
     missing_trigram = tuple(
@@ -494,7 +518,7 @@ def _groundworkers_embedding_model_diagnostics(
     try:
         engine = engine_factory(target.embedding_connection_url)
         with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
+            connection.execute(select(literal(1)))
             inspector = inspect(connection)
             existing_tables = set(
                 inspector.get_table_names(schema=target.embedding_schema)
@@ -588,7 +612,9 @@ def _embedding_diagnostics(
                 )
             )
             continue
-        count = _count_table_rows(connection, schema, table_name)
+        count = _count_table_rows(
+            connection, schema, table_name, schema_tag=None
+        )
         if count == 0:
             diagnostics.append(
                 _warning(
@@ -930,21 +956,15 @@ def _postgres_index_definitions(
     table_name: str,
 ) -> tuple[str, ...] | None:
     try:
-        rows = connection.execute(
-            text(
-                """
-                SELECT indexdef
-                FROM pg_indexes
-                WHERE schemaname = :schema
-                  AND tablename = :table_name
-                """
-            ),
-            {"schema": schema or "public", "table_name": table_name},
-        )
+        indexes = inspect(connection).get_indexes(table_name, schema=schema)
     except Exception:
-        # Broad except: callers fall back to reflected names or report absence.
+        # Callers fall back to reflected names or report absence.
         return None
-    return tuple(str(row[0]) for row in rows)
+    return tuple(
+        " ".join(index.get("expressions") or ())
+        for index in indexes
+        if index.get("expressions")
+    )
 
 
 def _index_defines_lower_expression(
@@ -972,24 +992,6 @@ def _column_names(
     schema: str | None,
     table_name: str,
 ) -> set[str]:
-    if connection.dialect.name == "postgresql":
-        rows = connection.execute(
-            text(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = :schema
-                  AND table_name = :table_name
-                """
-            ),
-            {"schema": schema or "public", "table_name": table_name},
-        )
-        return {str(row[0]) for row in rows}
-    if connection.dialect.name == "sqlite":
-        rows = connection.execute(
-            text(f"PRAGMA table_info({quote_identifier(connection, table_name)})")
-        )
-        return {str(row[1]) for row in rows}
     return {
         item["name"]
         for item in inspect(connection).get_columns(table_name, schema=schema)
@@ -997,9 +999,15 @@ def _column_names(
 
 
 def _table_is_empty(
-    connection: Connection, schema: str | None, table_name: str
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+    *,
+    schema_tag: Role,
 ) -> bool:
-    return _count_table_rows(connection, schema, table_name) == 0
+    return _count_table_rows(
+        connection, schema, table_name, schema_tag=schema_tag
+    ) == 0
 
 
 def _column_has_null_values(
@@ -1007,14 +1015,23 @@ def _column_has_null_values(
     schema: str | None,
     table_name: str,
     column_name: str,
+    *,
+    schema_tag: Role,
 ) -> bool:
     """Return whether a full-text sidecar contains any unpopulated rows."""
 
-    qualified = _qualified_name(connection, schema, table_name)
-    column = quote_identifier(connection, column_name)
+    table, routed_connection = _inspection_table(
+        connection, schema, table_name, schema_tag=schema_tag
+    )
     return bool(
-        connection.execute(
-            text(f"SELECT EXISTS (SELECT 1 FROM {qualified} WHERE {column} IS NULL)")
+        routed_connection.execute(
+            select(
+                exists(
+                    select(literal(1))
+                    .select_from(table)
+                    .where(table.c[column_name].is_(None))
+                )
+            )
         ).scalar()
     )
 
@@ -1023,20 +1040,41 @@ def _count_table_rows(
     connection: Connection,
     schema: str | None,
     table_name: str,
+    *,
+    schema_tag: Role | None,
 ) -> int:
-    qualified = _qualified_name(connection, schema, table_name)
+    table, routed_connection = _inspection_table(
+        connection, schema, table_name, schema_tag=schema_tag
+    )
     return int(
-        connection.execute(text(f"SELECT count(*) FROM {qualified}")).scalar() or 0
+        routed_connection.execute(select(func.count()).select_from(table)).scalar()
+        or 0
     )
 
 
-def _qualified_name(connection: Connection, schema: str | None, table_name: str) -> str:
-    if schema:
-        return (
-            f"{quote_identifier(connection, schema)}."
-            f"{quote_identifier(connection, table_name)}"
-        )
-    return quote_identifier(connection, table_name)
+def _inspection_table(
+    connection: Connection,
+    schema: str | None,
+    table_name: str,
+    *,
+    schema_tag: Role | None,
+) -> tuple[Table, Connection]:
+    columns = inspect(connection).get_columns(table_name, schema=schema)
+    table = Table(
+        table_name,
+        MetaData(),
+        *(Column(column["name"], column["type"]) for column in columns),
+        schema=schema_tag.value if schema_tag is not None else schema,
+    )
+    if schema_tag is None:
+        return table, connection
+    schema_translate_map = dict(
+        connection.get_execution_options().get("schema_translate_map", {})
+    )
+    schema_translate_map[schema_tag.value] = schema
+    return table, connection.execution_options(
+        schema_translate_map=schema_translate_map
+    )
 
 
 def _exception_chain(exc: BaseException):

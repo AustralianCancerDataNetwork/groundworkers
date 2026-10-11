@@ -85,7 +85,11 @@ class GroundworkersApp:
 
 def build_adapters(config: AppConfig) -> Adapters:
     adapters = Adapters()
-    adapters.cdm = CDMAdapter(config.cdm_engine)
+    adapters.cdm = CDMAdapter(
+        config.cdm_engine,
+        vocab_engine=config.cdm_vocab_engine,
+        session_factory=config.cdm_session_factory,
+    )
 
     resolved_store = config.vector_store
     resolved_model = config.embedding_model
@@ -149,6 +153,7 @@ def build_adapters(config: AppConfig) -> Adapters:
     complete_embedding = resolved_store is not None and resolved_model is not None
     adapters.omop_graph = OmopGraphAdapter(
         engine=config.cdm_engine,
+        cdm_session_factory=config.cdm_session_factory,
         embedding_backend_factory=(
             get_embedding_backend if complete_embedding else None
         ),
@@ -251,6 +256,8 @@ def _build_plugin_context(
         resolver=PluginConfigResolver(Resolver(config.stack)),
         cdm_database=config.cdm_database,
         cdm_engine=config.cdm_engine,
+        cdm_session_factory=config.cdm_session_factory,
+        cdm_vocab_engine=config.cdm_vocab_engine,
         vector_store=config.vector_store,
         embedding_backend_factory=adapters.embedding_backend_factory,
         embedding_model_backend_factory=adapters.embedding_model_backend_factory,

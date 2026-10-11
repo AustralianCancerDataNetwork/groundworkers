@@ -18,7 +18,8 @@ app = build_application(config)
 |---|---|
 | `groundworkers` | `GroundworkersConfig` |
 | `cdm_database` | `ResolvedCDMDatabase` |
-| `cdm_engine`, `vocabulary_engine` | `sqlalchemy.Engine` |
+| `cdm_engine`, `cdm_vocab_engine` | `sqlalchemy.Engine` |
+| `cdm_session_factory` | Routed SQLAlchemy session factory for primary, vocabulary, and results roles |
 | `embedding_model` | `ResolvedModel \| None` |
 | `vector_store` | `ResolvedVectorStore \| None` |
 
@@ -41,6 +42,8 @@ services.source_planning
 ```
 
 A CDM-only configuration is fully supported. Graph availability follows the resolved CDM database — there is no separate section to enable.
+
+The engines are created by `omop_alchemy.config.create_cdm_engines(..., register_claims=False)`, and `cdm_session_factory` comes from `omop_alchemy.cross_database.cdm_sessionmaker`. Use the session factory for queries that may touch more than one OMOP role. On PostgreSQL, engine creation checks role schema claims eagerly, so the configured databases must be reachable while `build_app_config()` runs.
 
 ## Grounding free text
 
