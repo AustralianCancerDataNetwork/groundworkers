@@ -50,6 +50,9 @@ def _exercise_transports() -> None:
         def complete_structured(self, _prompt, _schema, **_kwargs):
             return {"decisions": [{"header": "unknown_a", "role": "values", "confidence": 0.9}]}
 
+        async def async_complete_structured(self, _prompt, _schema, **_kwargs):
+            return self.complete_structured(_prompt, _schema, **_kwargs)
+
     service = SourcePlanningService(
         assisted_classifier=AssistedColumnRoleClassifier(FixedModel())
     )
