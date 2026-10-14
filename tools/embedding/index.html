@@ -1992,7 +1992,7 @@
 
 
 <h1 id="embedding-tools">Embedding Tools</h1>
-<p>Five tools expose the embedding index. All require <code>omop_emb</code> to be enabled in the config.</p>
+<p>Five tools expose the embedding index. They require <code>embedding_model_name</code> and <code>vector_store_name</code> in <code>[tools.groundworkers]</code>.</p>
 <h2 id="embedding_index_status"><code>embedding_index_status</code></h2>
 <p>Returns the status of the embedding backend and all registered models. Takes no arguments.</p>
 <p><strong>Response</strong>:
@@ -2010,9 +2010,11 @@
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div></p>
-<p>When the backend is unavailable or no models are registered, <code>"available"</code> is <code>false</code> and <code>"models"</code> is an empty array. This tool never returns an error dict — it degrades gracefully.</p>
+<p>When the backend is unavailable or no models are registered, <code>"available"</code> is <code>false</code> and <code>"models"</code> is an empty array. This tool never returns an error dict — it degrades gracefully. A legacy registry, misplaced registry, or missing model table is reported in <code>detail</code> with a specific explanation.</p>
+<p>Groundworkers opens the store through omop-emb's read-only reader for status and query tools. A pre-3.0 store reports <code>LEGACY_REGISTRY</code>. The migration script is tracked in oa-configurator issue #40; once it ships, Groundworkers will show omop-emb's migration command. Groundworkers does not migrate the store.</p>
 <h2 id="embedding_neighbours"><code>embedding_neighbours</code></h2>
 <p>Returns the nearest embedding-space neighbours for one OMOP concept by looking up its existing vector in the index.</p>
+<p>By default <code>standard_only</code> and <code>active_only</code> are both <code>true</code>, matching the partial HNSW index predicate. Set either to <code>false</code> to widen the result set.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4119419</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;model_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;qwen3-embedding:0.6b&quot;</span><span class="p">}</span>
 </code></pre></div>
 <p><code>model_name</code> is optional; if omitted the default model is used. <code>limit</code> is clamped to <code>[1, 50]</code>.</p>
@@ -2040,9 +2042,10 @@
 </code></pre></div>
 <p>All parameters except <code>query</code> are optional.</p>
 <div class="admonition warning">
-<p class="admonition-title">Requires <code>api_base</code> configuration</p>
+<p class="admonition-title">Requires a configured embedding model</p>
 <p><code>embedding_search</code> must encode the query string using a live embedding model.
-This requires <code>omop_emb.api_base</code> (and <code>api_key</code>) to be configured.  Without it
+Configure <code>embedding_model_name</code> in <code>[tools.groundworkers]</code> and give its
+<code>[models.*]</code> entry a provider in <code>[providers.*]</code>. Without a live model client,
 the tool returns <code>BACKEND_UNAVAIL</code>.</p>
 </div>
 <h2 id="embedding_search_batch"><code>embedding_search_batch</code></h2>
@@ -2073,7 +2076,7 @@ the tool returns <code>BACKEND_UNAVAIL</code>.</p>
 <span class="w">  </span><span class="nt">&quot;vector&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">0.0123</span><span class="p">,</span><span class="w"> </span><span class="mf">-0.0441</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div></p>
-<p>Like <code>embedding_search</code>, this requires <code>omop_emb.api_base</code> and <code>omop_emb.api_key</code> to be configured.</p>
+<p>Like <code>embedding_search</code>, this requires a configured <code>embedding_model_name</code> and a live provider client.</p>
 
 
 

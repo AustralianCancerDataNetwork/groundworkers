@@ -1960,7 +1960,7 @@ pytest<span class="w"> </span>tests/unit/test_concept_tools.py
 </code></pre></div>
 <h2 id="test-configuration">Test configuration</h2>
 <p>Integration tests that query the OMOP database require a <code>.env</code> file at the repo root (or an environment-variable equivalent):</p>
-<div class="highlight"><pre><span></span><code>OMOP_CDM_DB_URL=postgresql://user:pass@localhost:5432/omop
+<div class="highlight"><pre><span></span><code>OA_CONFIG_PATH=/path/to/stack.toml
 </code></pre></div>
 <p>Unit tests mock the adapter layer and run without a live database.</p>
 <h2 id="what-is-tested">What is tested</h2>
@@ -1990,7 +1990,7 @@ pytest<span class="w"> </span>tests/unit/test_concept_tools.py
 </tr>
 <tr>
 <td>Config validation</td>
-<td><code>OmopGraphConfig</code> schema name validation; <code>OmopEmbConfig</code> enabled-without-url guard; extra field rejection</td>
+<td>oa-configurator stack validation, Groundworkers package fields, and extra field rejection</td>
 </tr>
 </tbody>
 </table>

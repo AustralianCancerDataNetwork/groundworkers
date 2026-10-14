@@ -1992,14 +1992,13 @@
 
 
 <h1 id="cdm-adapter">CDM Adapter</h1>
-<p><code>CDMAdapter</code> holds the SQLAlchemy engine and session factory for a single CDM database connection. It is the shared connection layer used by both <code>VocabService</code> and <code>OmopGraphAdapter</code>.</p>
+<p><code>CDMAdapter</code> holds the primary engine, vocabulary engine, and routed session factory for a resolved CDM database. It is the shared connection layer used by <code>VocabService</code> and <code>OmopGraphAdapter</code>.</p>
 <h2 id="what-it-is">What it is</h2>
 <p><code>CDMAdapter</code> is a thin connection-management object. It does not issue queries itself. Its purpose is to:</p>
 <ul>
-<li>hold a <code>sqlalchemy.Engine</code> pointed at the CDM database</li>
-<li>expose a <code>sessionmaker</code> for callers that need scoped sessions</li>
-<li>be constructed once per CDM database in <code>build_application()</code> and shared across the
-  components that need it</li>
+<li>hold the primary and vocabulary <code>sqlalchemy.Engine</code> objects</li>
+<li>expose a routed session factory for callers that query role-tagged OMOP tables</li>
+<li>be constructed once per CDM database in <code>build_application()</code> and shared across the components that need it</li>
 </ul>
 <h2 id="who-uses-it">Who uses it</h2>
 <table>
@@ -2016,17 +2015,16 @@
 </tr>
 <tr>
 <td><code>OmopGraphAdapter</code></td>
-<td>Shares the same engine (no separate connection pool) so omop-graph and vocabulary queries use the same connection pool.</td>
+<td>Uses the routed session factory so vocabulary and primary-role graph tables reach their configured databases.</td>
 </tr>
 </tbody>
 </table>
 <p>The adapter is created once per CDM database at application startup and wired through <code>build_application()</code>. It is not per-request.</p>
 <h2 id="construction">Construction</h2>
-<p><code>CDMAdapter</code> is config-agnostic: it takes an already-constructed <code>sqlalchemy.Engine</code>, not a config object. Only <code>build_application()</code> reads config and calls <code>sqlalchemy.create_engine()</code>. This means:</p>
+<p><code>CDMAdapter</code> is config-agnostic. It accepts an engine and optional routed factory, while <code>build_application()</code> creates them through <code>omop_alchemy.config.create_cdm_engines()</code> and <code>omop_alchemy.cross_database.cdm_sessionmaker()</code>:</p>
 <ul>
-<li>the adapter is testable by passing a SQLite engine or an in-memory engine directly</li>
-<li>changing the connection source means changing <code>build_application()</code> only;
-  <code>CDMAdapter</code> and every service that uses it are untouched</li>
+<li>the adapter remains testable by passing a SQLite engine directly</li>
+<li>changing the connection source means changing <code>build_application()</code> only;<code>CDMAdapter</code> and every service that uses it are untouched</li>
 </ul>
 <h2 id="usage-from-build_application">Usage from <code>build_application()</code></h2>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">groundworkers.app</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_application</span>
@@ -2042,8 +2040,8 @@
 <div class="highlight"><pre><span></span><code><span class="n">app</span><span class="o">.</span><span class="n">services</span><span class="o">.</span><span class="n">vocab</span>  <span class="c1"># backed by app.adapters.cdm</span>
 </code></pre></div></p>
 <h2 id="lifecycle">Lifecycle</h2>
-<p><code>CDMAdapter</code> connects lazily: the engine is constructed at adapter creation time, but the first database connection is deferred until the first query. <code>is_available()</code> performs a lightweight probe (<code>SELECT 1</code>) to confirm connectivity without blocking unrelated tool calls.</p>
-<p><code>close()</code> disposes the engine and releases the connection pool. Call it explicitly in teardown (for example in a test fixture <code>yield</code>/<code>finally</code> block) when you need to ensure connections are returned promptly. Process-level startup and shutdown wiring belongs in the application or transport layer, not in the adapter itself.</p>
+<p><code>build_app_config()</code> creates role engines through <code>create_cdm_engines(..., register_claims=False)</code>. Startup fails fast when either database role is unreachable and prints the scrubbed reason with a database recovery hint. <code>CDMAdapter.is_available()</code> also performs a lightweight Core query (<code>SELECT 1</code>).</p>
+<p><code>close()</code> disposes both role engines. Call it explicitly in teardown (for example in a test fixture <code>yield</code>/<code>finally</code> block) when you need to ensure connections are returned promptly. Process-level startup and shutdown wiring belongs in the application or transport layer, not in the adapter itself.</p>
 
 
 

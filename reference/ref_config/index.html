@@ -1811,34 +1811,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#groundworkers.config.split_vocabulary_connection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        split_vocabulary_connection
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="split_vocabulary_connection">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#groundworkers.config.split_vocabulary_connection--returns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Returns
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1971,34 +1943,6 @@
     <span class="md-ellipsis">
       
         Notes
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#groundworkers.config.split_vocabulary_connection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        split_vocabulary_connection
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="split_vocabulary_connection">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#groundworkers.config.split_vocabulary_connection--returns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Returns
       
     </span>
   </a>
@@ -2248,37 +2192,6 @@ resolved by any other package.</p>
 
 </div>
 
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="groundworkers.config.split_vocabulary_connection" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">split_vocabulary_connection</span><span class="p">(</span><span class="n">stack</span><span class="p">,</span> <span class="n">cdm_db</span><span class="p">)</span></code>
-
-</h3>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Report a CDM entry whose vocabulary sits on a second physical connection.</p>
-<p>Groundworkers reads the vocabulary through the CDM engine and nothing else:
-the knowledge graph, the vocabulary service, and the embedding tier are all
-handed <code>AppConfig.cdm_engine</code>, with only the vocabulary <em>schema</em> applied on
-top. A <code>vocab_connection</code> naming a different server is therefore not a
-supported split -- it would be silently ignored and the vocabulary schema
-looked for on the CDM server instead. Reported here so both the runtime and
-the setup console can refuse it in the same terms, rather than plumbing a
-second engine no caller reads.</p>
-<h5 id="groundworkers.config.split_vocabulary_connection--returns">Returns</h5>
-<p>tuple[str, str] or None
-    The <code>(primary, vocabulary)</code> connection names when they differ, or
-    <code>None</code> when the entry is absent, is not a CDM entry, or names one
-    connection for both roles.</p>
-
-
-    </div>
-
-</div>
 
 
 

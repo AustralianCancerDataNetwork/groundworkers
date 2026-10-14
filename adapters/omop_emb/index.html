@@ -2056,20 +2056,20 @@
 <li>optional on-the-fly query encoding through an embedding client</li>
 <li>exposing backend availability and registered model metadata</li>
 </ul>
-<p>The adapter does <strong>not</strong> resolve stack config itself. <code>build_application(...)</code> constructs it from the already-resolved <code>omop-emb</code> package config and any required engines.</p>
+<p>The adapter does <strong>not</strong> resolve stack config itself. <code>build_application(...)</code> constructs it from Groundworkers' <code>[tools.groundworkers]</code> <code>embedding_model_name</code> and <code>vector_store_name</code> references.</p>
 <h2 id="backends">Backends</h2>
 <p><code>groundworkers</code> supports the same primary storage backends it wires from <code>omop-emb</code>:</p>
 <table>
 <thead>
 <tr>
 <th>Backend</th>
-<th>omop-emb config</th>
+<th>Groundworkers stack config</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>sqlitevec</code></td>
-<td><code>backend = "sqlitevec"</code> plus <code>sqlite_path</code></td>
+<td>a <code>[vector_stores.*]</code> entry with <code>backend_type = "sqlitevec"</code> and a database reference</td>
 </tr>
 <tr>
 <td><code>pgvector</code></td>
@@ -2086,7 +2086,7 @@
 <li><code>index_status</code> reports registered models and concept counts</li>
 </ul>
 <h3 id="text-search-mode">Text search mode</h3>
-<p>Requires an embedding client configured through <code>omop-emb</code> package settings.</p>
+<p>Requires <code>embedding_model_name</code> and <code>vector_store_name</code>, plus a configured embedding provider/model.</p>
 <ul>
 <li><code>embedding_search</code> encodes a text query on the fly</li>
 <li><code>embedding_search_batch</code> encodes and searches multiple text queries with one provider/index batch, returning rows aligned to input order</li>
