@@ -20,7 +20,6 @@ from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
-from groundskeeping.contracts import CommandPlan
 from oa_configurator import (  # type: ignore[import-untyped]
     PackageConfigBase,
     ResolvedDatabase,
@@ -36,6 +35,7 @@ if TYPE_CHECKING:
         ConfigWorkflowSpec,
         MutationOperation,
     )
+    from groundskeeping.contracts import CommandPlan
 
     from groundworkers.services.grounding import ConceptGroundingService
     from groundworkers.services.mapping import MappingService
