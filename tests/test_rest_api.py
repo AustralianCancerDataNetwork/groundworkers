@@ -6,11 +6,13 @@ from fastapi.testclient import TestClient
 from groundworkers.app import Adapters, GroundworkersApp, Services
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config_from_stack
+from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
 from groundworkers.services.source_planning.models import (
     IngestionPlan,
     PreIngestBundle,
     SourceFormat,
 )
+from groundworkers.services.source_planning.service import SourcePlanningService
 from groundworkers.services.source_planning.warnings import PlanningWarning
 from groundworkers.transports.rest import create_rest_app
 from groundworkers.transports.rest.api import _status_code_for_error
@@ -160,6 +162,37 @@ def test_assisted_plan_endpoint_decodes_and_serializes_bundle() -> None:
             "caller_hint": "data_dictionary",
         }
     ]
+
+
+def test_assisted_plan_endpoint_runs_real_service_and_classifier() -> None:
+    class FixedModel:
+        def complete_structured(self, _prompt, _schema, **_kwargs):
+            return {
+                "decisions": [
+                    {"header": "unknown_a", "role": "values", "confidence": 0.93}
+                ]
+            }
+
+    service = SourcePlanningService(
+        assisted_classifier=AssistedColumnRoleClassifier(FixedModel())
+    )
+    client = _client(mapping=FakeMappingService(), source_planning=service)
+
+    response = client.post(
+        "/v1/source-planning/assisted-plan",
+        json={
+            "content": "unknown_a,unknown_b\nA,B\n",
+            "filename": "diagnoses.csv",
+            "include_intermediate": True,
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["llm_tier_used"] is True
+    annotation = result["annotated_tables"][0]["column_annotations"]["unknown_a"]
+    assert annotation["role"] == "values"
+    assert annotation["detection_tier"] == "LLM"
 
 
 def test_candidate_bundle_endpoint_returns_backend_unavailable_when_service_missing() -> None:

@@ -31,8 +31,9 @@ def _snapshot_for(path: str):
     return load_configuration(config_path=path)
 
 
-def test_groundworkers_spec_keeps_setup_as_a_registered_page() -> None:
+def test_groundworkers_spec_keeps_setup_as_a_registered_page(monkeypatch) -> None:
     pytest.importorskip("groundskeeping")
+    monkeypatch.setattr("groundworkers.plugins.discover_plugins", lambda: [])
 
     from groundworkers.tui.app import build_groundworkers_tui_spec
 
@@ -86,6 +87,16 @@ def test_installed_plugin_config_schema_adds_a_tier_a_page(
     assert view.status.value == "warning"
     assert "prerequisites" in view.message
     assert tuple(action.label for action in view.actions) == ("Configure", "Verify")
+    from groundskeeping.app import OperatorApp
+
+    async def run_check() -> None:
+        app = OperatorApp(spec)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            tabs = app.query_one("#page-tabs")
+            assert tabs.styles.display != "none"
+
+    asyncio.run(run_check())
 
 
 def test_plugin_readiness_renders_generic_table_and_details(
@@ -175,13 +186,14 @@ def test_plugin_setup_wizard_exposes_protocol_spec_without_assignment_error(
     assert controller.start().spec.title == "Example setup"
 
 
-def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path) -> None:
+def test_groundworkers_pages_do_not_cover_workbench(tmp_path: Path, monkeypatch) -> None:
     """Layout only. Uses a real config so the page renders its sections.
 
     A missing config now opens the location wizard on activate, which is a
     different journey and is covered by its own tests.
     """
     pytest.importorskip("groundskeeping")
+    monkeypatch.setattr("groundworkers.plugins.discover_plugins", lambda: [])
 
     from groundskeeping.app import OperatorApp
 

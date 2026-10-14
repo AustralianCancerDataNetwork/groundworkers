@@ -112,5 +112,8 @@ include = ["src"]
 testpaths = ["tests"]
 markers = [
   "integration: requires a live backend or database",
+  "required_integration: deterministic integration contract required by CI",
+  "required_format: optional document-format contract required in all-extras CI",
+  "optional_integration: environment-dependent integration smoke test",
   "requires_client: requires an embedding API client",
 ]

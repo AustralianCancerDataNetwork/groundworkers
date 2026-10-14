@@ -93,9 +93,56 @@ def _embedding_stack(tmp_path: Path, extra: dict | None = None):
     return stack
 
 
-def test_discover_plugins_finds_nothing_by_default() -> None:
-    """No entry points are registered in this environment; the loader is inert."""
+def test_discover_plugins_returns_empty_controlled_registry(monkeypatch) -> None:
+    """A core-only host has no plugins when the registry boundary is empty."""
+    monkeypatch.setattr("groundworkers.plugins.entry_points", lambda **_kwargs: ())
     assert discover_plugins() == []
+
+
+class FakeEntryPoint:
+    def __init__(self, name: str, plugin=None, error: Exception | None = None) -> None:
+        self.name = name
+        self.plugin = plugin
+        self.error = error
+
+    def load(self):
+        if self.error is not None:
+            raise self.error
+        return self.plugin
+
+
+def test_discover_plugins_loads_one_and_multiple_plugins(monkeypatch) -> None:
+    first, second = FakePlugin(), FakeReadinessPlugin()
+    second.name = "readiness_plugin"
+    second.config_cls = None
+    registry = [FakeEntryPoint("first", first)]
+    monkeypatch.setattr("groundworkers.plugins.entry_points", lambda **_kwargs: registry)
+    assert discover_plugins() == [first]
+
+    registry.append(FakeEntryPoint("second", second))
+    assert discover_plugins() == [first, second]
+
+
+def test_broken_plugin_entry_point_does_not_hide_a_valid_plugin(monkeypatch) -> None:
+    valid = FakePlugin()
+    monkeypatch.setattr(
+        "groundworkers.plugins.entry_points",
+        lambda **_kwargs: (
+            FakeEntryPoint("broken", error=ImportError("plugin import failed")),
+            FakeEntryPoint("valid", valid),
+        ),
+    )
+
+    assert discover_plugins() == [valid]
+
+
+def test_discovery_rejects_duplicate_plugin_identities(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "groundworkers.plugins.entry_points",
+        lambda **_kwargs: (FakeEntryPoint("one", FakePlugin()), FakeEntryPoint("two", FakePlugin())),
+    )
+    with pytest.raises(ValueError, match="not unique"):
+        discover_plugins()
 
 
 def test_build_application_uses_config_defaults_when_no_section_present(
