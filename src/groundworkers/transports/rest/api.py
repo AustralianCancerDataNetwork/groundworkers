@@ -154,6 +154,11 @@ def _status_code_for_error(code: str) -> int:
         "NOT_FOUND": 404,
         "BACKEND_UNAVAIL": 503,
         "MISSING_DEPENDENCY": 503,
+        "LEGACY_REGISTRY": 503,
+        "MISPLACED_REGISTRY": 503,
+        "MISSING_STORAGE_TABLE": 503,
+        "MODEL_REGISTRATION_CONFLICT": 409,
+        "READ_ONLY_STORE": 409,
         "QUERY_ERROR": 500,
         "INTERNAL_ERROR": 500,
     }.get(code, 500)

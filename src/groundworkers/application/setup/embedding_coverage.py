@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from omop_emb.config import MetricType
-
+from groundworkers.application.setup.databases import classify_connection_error
 from groundworkers.application.setup.models import (
     CoverageScope,
     CoverageSnapshot,
@@ -33,30 +32,16 @@ def load_coverage(
             blocker=FILTERED_AGGREGATE_BLOCKER,
             metadata={"omop_emb_capability": "unfiltered_by_vocabulary_only"},
         )
-    aggregate = getattr(backend, "get_embedding_count_by_vocabulary", None)
-    if not callable(aggregate):
-        return CoverageSnapshot(
-            scope=scope,
-            available=False,
-            blocker=(
-                "This omop-emb version does not expose pushed-down embedding counts "
-                "by vocabulary."
-            ),
-            metadata={"omop_emb_capability": "missing"},
-        )
     try:
         eligible = _coerce_counts(eligible_counter(scope))
         embedded = _coerce_counts(
-            aggregate(
-                model_name=scope.model_name,
-                metric_type=MetricType(scope.metric),
-            )
+            backend.get_embedding_count_by_vocabulary(model_name=scope.model_name)
         )
-    except Exception:
+    except Exception as exc:
         return CoverageSnapshot(
             scope=scope,
             available=False,
-            blocker="Coverage counts could not be loaded from the configured stores.",
+            blocker=classify_connection_error(exc).detail,
         )
     return calculate_coverage(scope, eligible=eligible, embedded=embedded)
 

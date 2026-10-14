@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tomllib
 from dataclasses import asdict
 from pathlib import Path
 
@@ -22,8 +23,10 @@ from groundskeeping.contracts import FormStep, ReviewStep, WizardResultStatus
 from oa_configurator import (
     ConfigurationError,
     GenericDatabaseConfig,
+    Resolver,
+    Role,
     StackConfig,
-    load_stack_config_from_path,
+    load_stack_config,
     save_stack_config,
 )
 
@@ -37,6 +40,7 @@ from groundworkers.application.setup.configuration_provider import (
 )
 from groundworkers.config import GroundworkersConfig
 from tests.support import build_cdm_stack
+from tests.support.stack_config import build_embedding_stack
 
 CDM_SUBMISSIONS = (
     (
@@ -51,8 +55,8 @@ CDM_SUBMISSIONS = (
         "cdm",
         {
             "cdm_db_name": "cdm_db",
-            "schema_name": "main",
-            "vocab_schema": "main",
+            "cdm_schema": None,
+            "vocab_schema": None,
             "results_schema": None,
         },
     ),
@@ -68,6 +72,55 @@ def test_groundworkers_config_uses_real_1x_references() -> None:
     assert candidate.databases["cdm_db"].connection == "cdm_main"
 
 
+@pytest.mark.parametrize(
+    ("dialect", "cdm_schema", "vocab_schema"),
+    [("sqlite", None, None), ("postgresql+psycopg", "clinical", "vocabulary")],
+)
+def test_cdm_wizard_output_round_trips_through_stack_resolver(
+    tmp_path: Path, dialect: str, cdm_schema: str | None, vocab_schema: str | None
+) -> None:
+    path = tmp_path / f"{dialect}.toml"
+    sqlite_path = tmp_path / "cdm.db"
+    sqlite_path.touch()
+    service = GroundworkersConfigMutationService(path)
+    controller = ConfigWizardController(cdm_setup_workflow(MutationOperation.CREATE), service)
+    controller.start()
+    controller.submit({"connection_name": "cdm_main", "dialect": dialect})
+    if dialect != "sqlite":
+        controller.submit(
+            {
+                "host": "postgres.example.test",
+                "port": 5432,
+                "user": "groundworkers",
+            }
+        )
+        controller.submit({"database_name": "omop"})
+    else:
+        controller.submit({"database_name": str(sqlite_path)})
+    controller.submit(
+        {
+            "cdm_db_name": "cdm_db",
+            "cdm_schema": cdm_schema,
+            "vocab_schema": vocab_schema,
+            "results_schema": None,
+        }
+    )
+    assert controller.apply().status is WizardResultStatus.APPLIED
+
+    loaded = load_stack_config(path)
+    resolved = Resolver(loaded).resolve_database("cdm_db")
+    assert resolved.connection.dialect_name == (
+        "sqlite" if dialect == "sqlite" else "postgresql"
+    )
+    assert resolved.schema_for_role(Role.PRIMARY) == cdm_schema
+    assert resolved.schema_for_role(Role.VOCAB) == vocab_schema
+    if dialect == "sqlite":
+        saved = tomllib.loads(path.read_text(encoding="utf-8"))
+        cdm_entry = saved["databases"]["cdm_db"]
+        assert "cdm_schema" not in cdm_entry
+        assert "schema_name" not in cdm_entry
+
+
 def test_groundworkers_config_rejects_missing_and_wrong_kind_references() -> None:
     missing = StackConfig(tools={"groundworkers": {"cdm_db": "missing"}})
     wrong_kind = StackConfig(
@@ -75,7 +128,6 @@ def test_groundworkers_config_rejects_missing_and_wrong_kind_references() -> Non
         databases={
             "cdm_db": GenericDatabaseConfig(
                 connection="cdm_main",
-                schema_name="main",
             )
         },
         tools={"groundworkers": {"cdm_db": "cdm_db"}},
@@ -162,9 +214,9 @@ def test_provider_updates_an_existing_cdm_configuration(tmp_path: Path) -> None:
     review = controller.submit(
         {
             "cdm_db_name": "cdm_db",
-            "schema_name": "clinical",
-            "vocab_schema": "vocabulary",
-            "results_schema": "results",
+            "cdm_schema": None,
+            "vocab_schema": None,
+            "results_schema": None,
         }
     ).snapshot
     assert isinstance(review.step, ReviewStep)
@@ -174,7 +226,7 @@ def test_provider_updates_an_existing_cdm_configuration(tmp_path: Path) -> None:
     reloaded = load_configuration(config_path=path)
     assert reloaded.stack is not None
     assert reloaded.stack.connections["cdm_main"].database_name == "updated.db"
-    assert reloaded.stack.databases["cdm_db"].schema_name == "clinical"
+    assert reloaded.stack.databases["cdm_db"].cdm_schema is None
 
 
 def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe(
@@ -253,6 +305,31 @@ def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe
     assert canary not in repr(result)
     assert canary not in caplog.text
     assert canary in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("discovered", "flagged"),
+    ((("stored-model", "other-model"), False), (("other-model",), True)),
+)
+def test_model_update_preserves_stored_choice_and_flags_missing_inventory(
+    tmp_path: Path, discovered: tuple[str, ...], flagged: bool
+) -> None:
+    path = tmp_path / "config.toml"
+    save_stack_config(build_embedding_stack(model_name="stored-model"), path)
+    controller = ConfigWizardController(
+        model_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(
+            path, model_discoverer=lambda *_args: discovered
+        ),
+    )
+    controller.start()
+    controller.submit({})
+    model = controller.submit({"model_source": "new"}).snapshot
+    choice = next(field for field in model.step.fields if field.key == "model_choice")
+
+    assert choice.default == "stored-model"
+    assert any(option.value == "stored-model" for option in choice.choices)
+    assert ("not reported" in (choice.help or "")) is flagged
 
 
 def test_stale_and_mismatched_apply_intents_are_consumed_and_safe(
@@ -443,8 +520,8 @@ def _reach_cdm_review(controller: ConfigWizardController):
     return controller.submit(
         {
             "cdm_db_name": "cdm_db",
-            "schema_name": "main",
-            "vocab_schema": "main",
+            "cdm_schema": None,
+            "vocab_schema": None,
             "results_schema": None,
         }
     ).snapshot
@@ -565,7 +642,7 @@ def test_an_asymmetric_model_preselects_its_convention_and_writes_the_pair(
     controller.submit({"prefix_convention": "nomic"})
     assert controller.apply().status is WizardResultStatus.APPLIED
 
-    model = load_stack_config_from_path(path).models["embedding_model"]
+    model = load_stack_config(path).models["embedding_model"]
     # The trailing space is part of the prefix and must survive the round trip.
     assert model.document_prefix == "search_document: "
     assert model.query_prefix == "search_query: "
@@ -613,5 +690,5 @@ def test_custom_prefixes_are_only_asked_for_when_chosen(tmp_path: Path) -> None:
     controller.submit({"document_prefix": "index: ", "query_prefix": "ask: "})
     assert controller.apply().status is WizardResultStatus.APPLIED
 
-    model = load_stack_config_from_path(path).models["embedding_model"]
+    model = load_stack_config(path).models["embedding_model"]
     assert (model.document_prefix, model.query_prefix) == ("index: ", "ask: ")

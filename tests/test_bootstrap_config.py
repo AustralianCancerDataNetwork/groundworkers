@@ -8,12 +8,20 @@ from oa_configurator import (
     CDMDatabaseConfig,
     ConfigurationError,
     ConnectionConfig,
-    load_stack_config_from_path,
+    Resolver,
+    Role,
+    load_stack_config,
 )
 from oa_configurator.io import save_stack_config
+from sqlalchemy import create_engine
 
-from groundworkers.bootstrap import build_app_config_from_stack
+from groundworkers.bootstrap import (
+    DatabaseUnavailableError,
+    build_app_config,
+    build_app_config_from_stack,
+)
 from groundworkers.config import GroundworkersConfig
+from groundworkers.server import _configuration_failure
 from tests.support.stack_config import (
     add_chat_model,
     build_cdm_stack,
@@ -67,7 +75,7 @@ def test_config_loading_contract_relied_on_by_bootstrap(
     config_path.chmod(0o644)
 
     with caplog.at_level(logging.WARNING, logger="oa_configurator.logging_config"):
-        stack = load_stack_config_from_path(config_path)
+        stack = load_stack_config(config_path)
 
     assert stack.loaded_path == config_path
     # Gained by adopting upstream: the local copy never warned about a config
@@ -82,7 +90,47 @@ def test_malformed_config_is_rejected(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="Malformed TOML"):
-        load_stack_config_from_path(config_path)
+        load_stack_config(config_path)
+
+
+def test_startup_failure_includes_scrubbed_legacy_config_reason(tmp_path: Path) -> None:
+    path = tmp_path / "legacy.toml"
+    path.write_text(
+        '[connections.main]\ndialect = "sqlite"\ndatabase_name = ":memory:"\n'
+        '[databases.cdm_db]\nkind = "cdm"\nconnection = "main"\n'
+        'schema_name = "public"\npassword = "review-secret"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError) as raised:
+        build_app_config(config_path=path)
+    message = _configuration_failure(raised.value, config_path=str(path))
+
+    assert "1.x" in message or "schema_name" in message or "upgrade" in message
+    assert "review-secret" not in message
+
+
+def test_startup_failure_identifies_closed_database_without_credentials(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "closed-port.toml"
+    path.write_text(
+        '[connections.main]\ndialect = "postgresql+psycopg"\n'
+        'host = "127.0.0.1"\nport = 1\nuser = "review"\n'
+        'password = "review-secret"\ndatabase_name = "closed"\n'
+        '[databases.cdm_db]\nkind = "cdm"\nconnection = "main"\n'
+        '[tools.groundworkers]\ncdm_db = "cdm_db"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DatabaseUnavailableError) as raised:
+        build_app_config(config_path=path)
+    message = _configuration_failure(raised.value, config_path=str(path))
+
+    assert "Check the configured CDM database endpoint" in message
+    assert "both role databases" not in message
+    assert message.count("(") == message.count(")")
+    assert "review-secret" not in message
 
 
 def test_config_validation_error_does_not_echo_rejected_secret(
@@ -101,7 +149,7 @@ api_key = "rejected-secret"
     )
 
     with pytest.raises(ConfigurationError) as raised:
-        load_stack_config_from_path(config_path)
+        load_stack_config(config_path)
 
     assert "rejected-secret" not in str(raised.value)
 
@@ -113,7 +161,7 @@ def test_build_app_config_resolves_relative_packs_root(tmp_path: Path) -> None:
         config_path,
     )
 
-    config = build_app_config_from_stack(load_stack_config_from_path(config_path))
+    config = build_app_config_from_stack(load_stack_config(config_path))
 
     assert config.knowledge_root == (tmp_path / "relative-packs").resolve()
 
@@ -131,19 +179,15 @@ def test_a_vocabulary_connection_naming_the_cdm_connection_is_accepted() -> None
     stack = build_cdm_stack()
     stack.databases["cdm_db"] = CDMDatabaseConfig(
         connection="cdm_main",
-        schema_name="main",
         vocab_connection="cdm_main",
-        vocab_schema="vocab",
     )
 
     config = build_app_config_from_stack(stack)
 
-    assert config.cdm_database.vocab_schema == "vocab"
+    assert config.cdm_database.vocab_connection.name == "cdm_main"
 
 
-def test_distinct_vocabulary_connection_is_refused() -> None:
-    """The graph, the vocabulary service, and the embedding tier all read the CDM
-    engine; a second connection would be silently ignored."""
+def test_distinct_vocabulary_connection_is_routed_to_a_second_engine() -> None:
     stack = build_cdm_stack()
     stack.connections["vocab_main"] = ConnectionConfig(
         dialect="sqlite",
@@ -151,13 +195,37 @@ def test_distinct_vocabulary_connection_is_refused() -> None:
     )
     stack.databases["cdm_db"] = CDMDatabaseConfig(
         connection="cdm_main",
-        schema_name="main",
         vocab_connection="vocab_main",
-        vocab_schema="main",
     )
 
-    with pytest.raises(ConfigurationError, match="vocab_schema"):
+    config = build_app_config_from_stack(stack)
+
+    assert config.cdm_vocab_engine.url.database == "vocabulary.db"
+    assert config.cdm_engine.url.database == ":memory:"
+    config.cdm_engine.dispose()
+    config.cdm_vocab_engine.dispose()
+
+
+def test_cdm_engine_initialization_error_includes_safe_cause(monkeypatch) -> None:
+    import groundworkers.bootstrap as bootstrap
+
+    stack = build_cdm_stack(cdm_schema="clinical", vocab_schema="vocabulary")
+    resolved = Resolver(stack).resolve_database("cdm_db")
+    unsafe_url = resolved.connection_for_role(Role.PRIMARY).url
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError(f"schema registry rejected {unsafe_url}")
+
+    monkeypatch.setattr(bootstrap, "create_cdm_engines", fail)
+
+    with pytest.raises(ConfigurationError) as raised:
         build_app_config_from_stack(stack)
+
+    message = str(raised.value)
+    assert "Check the configured CDM database endpoint" in message
+    assert "RuntimeError: schema registry rejected" in message
+    assert "fixture-password" not in message
+    assert "***" in message
 
 
 def test_optional_model_and_vector_store_are_resolved_without_building_backends() -> (
@@ -177,7 +245,7 @@ def test_invalid_cdm_reference_is_rejected_at_bootstrap(issue: str) -> None:
         build_app_config_from_stack(build_invalid_reference_stack(issue))  # type: ignore[arg-type]
 
 
-def test_describe_masks_connection_and_provider_secrets() -> None:
+def test_describe_masks_connection_and_provider_secrets(monkeypatch) -> None:
     stack = build_embedding_stack()
     add_chat_model(
         stack,
@@ -197,6 +265,11 @@ def test_describe_masks_connection_and_provider_secrets() -> None:
         "https://user:pass@models.example.test/v1?api_key=query-secret#fragment-secret"
     )
 
+    import groundworkers.bootstrap as bootstrap
+
+    primary = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(bootstrap, "create_cdm_engines", lambda *_args, **_kw: (primary, primary))
+    monkeypatch.setattr(bootstrap, "cdm_sessionmaker", lambda *_args, **_kw: lambda: None)
     config = build_app_config_from_stack(stack)
     rendered = repr(config.describe())
     runtime_repr = repr(config)
@@ -216,7 +289,7 @@ def test_the_shipped_example_config_loads() -> None:
 
     example = Path(__file__).resolve().parents[1] / "config" / "groundworkers.example.toml"
 
-    config = GroundworkersConfig.validate_candidate(load_stack_config_from_path(example))
+    config = GroundworkersConfig.validate_candidate(load_stack_config(example))
 
     assert config.cdm_db == "cdm_db"
     assert config.embedding_model_name == "embedding_model"
@@ -249,7 +322,7 @@ def test_endpoint_redaction_contract_relied_on_by_describe() -> None:
     assert safe_endpoint(None) is None
 
 
-def test_describe_leaks_no_value_declared_sensitive_by_the_schema() -> None:
+def test_describe_leaks_no_value_declared_sensitive_by_the_schema(monkeypatch) -> None:
     """Trust the Sensitive() declaration; verify the pipeline honours it.
 
     Asserts no field oa-configurator marks Sensitive() reaches `describe()`,
@@ -268,6 +341,11 @@ def test_describe_leaks_no_value_declared_sensitive_by_the_schema() -> None:
         database_name="omop",
     )
 
+    import groundworkers.bootstrap as bootstrap
+
+    primary = create_engine("sqlite:///:memory:")
+    monkeypatch.setattr(bootstrap, "create_cdm_engines", lambda *_args, **_kw: (primary, primary))
+    monkeypatch.setattr(bootstrap, "cdm_sessionmaker", lambda *_args, **_kw: lambda: None)
     rendered = build_app_config_from_stack(stack).describe()
 
     for provider in stack.providers.values():

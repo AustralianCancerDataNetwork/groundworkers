@@ -1,4 +1,4 @@
-"""Load and persist the authoritative oa-configurator 1.x stack."""
+"""Load and persist the authoritative oa-configurator 2.0 stack."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from groundworkers.application.setup.models import (
     ConfigurationState,
     SetupIssue,
 )
-from groundworkers.config import GroundworkersConfig, split_vocabulary_connection
+from groundworkers.config import GroundworkersConfig
 
 
 class ConfigurationConflictError(RuntimeError):
@@ -127,15 +127,7 @@ def save_configuration(
             "This configuration is read-only; use its controlling source to edit it."
         )
     validated = StackConfig.model_validate(stack.model_dump(mode="python"))
-    groundworkers = GroundworkersConfig.validate_candidate(validated)
-    split = split_vocabulary_connection(validated, groundworkers.cdm_db)
-    if split is not None:
-        primary, vocabulary = split
-        raise ValueError(
-            f"The CDM database reads its vocabulary from connection {vocabulary!r} and "
-            f"its clinical tables from {primary!r}. Groundworkers uses one connection "
-            "for both; separate them with vocab_schema instead."
-        )
+    GroundworkersConfig.validate_candidate(validated)
     destination = Path(path).expanduser().resolve()
     existed = destination.exists()
     if existed:
@@ -167,7 +159,7 @@ def save_configuration(
 
 def _incomplete_issues(stack: StackConfig) -> tuple[SetupIssue, ...]:
     try:
-        groundworkers = GroundworkersConfig.validate_candidate(stack)
+        GroundworkersConfig.validate_candidate(stack)
     except (ConfigurationError, ValidationError, ValueError) as exc:
         return (
             SetupIssue(
@@ -181,20 +173,6 @@ def _incomplete_issues(stack: StackConfig) -> tuple[SetupIssue, ...]:
         )
     # Reference-valid but unrunnable: the runtime refuses this at bootstrap, so
     # the console must not present it as merely unverified.
-    split = split_vocabulary_connection(stack, groundworkers.cdm_db)
-    if split is not None:
-        primary, vocabulary = split
-        return (
-            SetupIssue(
-                code="vocabulary_connection_split",
-                field=f"databases.{groundworkers.cdm_db}.vocab_connection",
-                message=(
-                    f"The CDM database reads its vocabulary from connection {vocabulary!r} "
-                    f"and its clinical tables from {primary!r}. Groundworkers uses one "
-                    "connection for both; separate them with vocab_schema instead."
-                ),
-            ),
-        )
     return ()
 
 

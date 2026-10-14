@@ -11,13 +11,15 @@ from __future__ import annotations
 import pytest
 import sqlalchemy as sa
 from omop_alchemy.cdm.model.vocabulary import Domain
+from sqlalchemy.orm import sessionmaker
 
 from groundworkers.base.domain_names import DomainNameResolver
+from tests.support.omop import route_sqlite_omop_roles
 
 
 @pytest.fixture()
 def resolver() -> DomainNameResolver:
-    engine = sa.create_engine("sqlite:///:memory:", future=True)
+    engine = route_sqlite_omop_roles(sa.create_engine("sqlite:///:memory:", future=True))
     Domain.__table__.create(engine)
     with engine.begin() as conn:
         conn.execute(
@@ -84,14 +86,45 @@ def test_unknown_message_names_the_value_and_valid_options(resolver):
     assert "Condition" in message
 
 
-def test_an_unreadable_domain_table_does_not_reject_everything():
-    """Reference data being unavailable must not fail every search."""
+def test_missing_domain_table_on_engine_has_routing_guidance():
     engine = sa.create_engine("sqlite:///:memory:", future=True)  # no domain table
 
     resolver = DomainNameResolver(engine)
 
+    with pytest.raises(RuntimeError, match="Engine mode cannot route vocabulary") as raised:
+        resolver.canonical("Condition")
+    assert raised.value.__cause__ is not None
+    assert "no such table" in str(raised.value.__cause__).lower()
+
+
+def test_engine_connection_errors_are_reraised_unchanged(monkeypatch):
+    engine = sa.create_engine("sqlite:///:memory:", future=True)
+    resolver = DomainNameResolver(engine)
+    original = RuntimeError("database is unavailable")
+
+    def fail_connect():
+        raise original
+
+    monkeypatch.setattr(engine, "connect", fail_connect)
+    with pytest.raises(RuntimeError, match="database is unavailable") as raised:
+        resolver.canonical("Condition")
+    assert raised.value is original
+
+
+def test_domain_load_failure_is_retried_after_the_table_appears():
+    engine = route_sqlite_omop_roles(sa.create_engine("sqlite:///:memory:", future=True))
+    session_factory = sessionmaker(bind=engine)
+    resolver = DomainNameResolver(session_factory)
+
     assert resolver.canonical("Condition") == "Condition"
-    assert resolver.known_domains() == ()
+    Domain.__table__.create(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            sa.insert(Domain),
+            {"domain_id": "Condition", "domain_name": "Condition", "domain_concept_id": 19},
+        )
+
+    assert resolver.canonical("condition") == "Condition"
 
 
 def test_the_table_is_read_once(resolver):

@@ -10,15 +10,15 @@ The adapter is responsible for:
 - optional on-the-fly query encoding through an embedding client
 - exposing backend availability and registered model metadata
 
-The adapter does **not** resolve stack config itself. `build_application(...)` constructs it from the already-resolved `omop-emb` package config and any required engines.
+The adapter does **not** resolve stack config itself. `build_application(...)` constructs it from Groundworkers' `[tools.groundworkers]` `embedding_model_name` and `vector_store_name` references.
 
 ## Backends
 
 `groundworkers` supports the same primary storage backends it wires from `omop-emb`:
 
-| Backend | omop-emb config |
+| Backend | Groundworkers stack config |
 |---|---|
-| `sqlitevec` | `backend = "sqlitevec"` plus `sqlite_path` |
+| `sqlitevec` | a `[vector_stores.*]` entry with `backend_type = "sqlitevec"` and a database reference |
 | `pgvector` | a `[vector_stores.*]` entry with `backend_type = "pgvector"` and a `database` reference |
 
 FAISS remains a sidecar acceleration layer rather than a standalone primary backend.
@@ -34,7 +34,7 @@ No live model API is required.
 
 ### Text search mode
 
-Requires an embedding client configured through `omop-emb` package settings.
+Requires `embedding_model_name` and `vector_store_name`, plus a configured embedding provider/model.
 
 - `embedding_search` encodes a text query on the fly
 - `embedding_search_batch` encodes and searches multiple text queries with one provider/index batch, returning rows aligned to input order

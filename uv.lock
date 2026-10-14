@@ -1091,16 +1091,16 @@ wheels = [
 
 [[package]]
 name = "groundskeeping"
-version = "0.8.1"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
     { name = "pydantic" },
     { name = "textual" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/2b/3a898cd1ab1ea5e5415dd2bb963f4a9f4127e5473fa20adac95a40129299/groundskeeping-0.8.1.tar.gz", hash = "sha256:181c5c478fbed19b94ee6e868b593930de3f1930b211797ab554c84e88eab1e2", size = 211336, upload-time = "2026-08-31T00:08:33.415Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/da/17a42fd95f145756e012d7dcff33e984ae6dd1c5875ea6a0fb79dbb1ab16/groundskeeping-0.9.1.tar.gz", hash = "sha256:89ad50f94a80895728593aeee6f79cd03f43d32044339e5287b89b6b8e2b977c", size = 211780, upload-time = "2026-10-11T02:14:34.241Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/23/56ae96fea86d9e0b69c8b27a347da482b77aa7586b1cc14dab7218c481b7/groundskeeping-0.8.1-py3-none-any.whl", hash = "sha256:6f1cd0f460f0a4ab9d64605e26274b9f09983b434131af445c165754c83f518d", size = 79671, upload-time = "2026-08-31T00:08:32.035Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/64/c7bb7fdf4a549bcb229ff342ae5db6b112187fdd00714951a72fc04bfa7c/groundskeeping-0.9.1-py3-none-any.whl", hash = "sha256:a8cc7a008a4ad6c34de95cf6fd27e6a86bc32533e1ffbabd2e0807a17490540f", size = 80317, upload-time = "2026-10-11T02:14:32.543Z" },
 ]
 
 [[package]]
@@ -1174,7 +1174,7 @@ xlsx = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110,<1.0" },
-    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.8.1,<1" },
+    { name = "groundskeeping", marker = "extra == 'tui'", specifier = ">=0.9.1,<1" },
     { name = "h5py", marker = "extra == 'embedding-artifacts'", specifier = ">=3.10,<4" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -1185,13 +1185,13 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "numpy", specifier = ">=1.26,<3" },
-    { name = "oa-configurator", specifier = ">=1.3.0,<2" },
-    { name = "omop-alchemy", specifier = ">=1.1,<2" },
-    { name = "omop-emb", specifier = ">=2.1,<3" },
-    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=2.1,<3" },
-    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=2.1,<3" },
-    { name = "omop-graph", specifier = ">=2.1,<3" },
-    { name = "omop-llm", specifier = ">=1,<2" },
+    { name = "oa-configurator", specifier = ">=2.0.0,<3" },
+    { name = "omop-alchemy", specifier = ">=2.0.0,<3" },
+    { name = "omop-emb", specifier = ">=3.0.0,<4" },
+    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=3.0.0,<4" },
+    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=3.0.0,<4" },
+    { name = "omop-graph", specifier = ">=3.0.0,<4" },
+    { name = "omop-llm", specifier = ">=1.0.2,<2" },
     { name = "omop-semantics", specifier = ">=0.6,<1" },
     { name = "openpyxl", marker = "extra == 'all-source'", specifier = ">=3.1,<4" },
     { name = "openpyxl", marker = "extra == 'xlsx'", specifier = ">=3.1,<4" },
@@ -2494,7 +2494,7 @@ wheels = [
 
 [[package]]
 name = "oa-configurator"
-version = "1.3.0"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2505,9 +2505,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ea/aa/71f787266a0a2baddf9c6452a43be901690acc5f5888de1d07c8f6adbf9b/oa_configurator-1.3.0.tar.gz", hash = "sha256:70bb6648ce94f9d09f870b02962f40a004d20aec0cfcad45b6a7fd5dcf0fe33a", size = 191240, upload-time = "2026-08-31T00:41:59.351Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/62/64bf398b8fe381d138446199be69bc437ef93fdb70aab48cebf51467f6ea/oa_configurator-2.0.0.tar.gz", hash = "sha256:26406e90aeadd4c747646763b80f16025c4c6638afec687517788bc537d0d581", size = 278382, upload-time = "2026-10-10T22:48:42.275Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/cd/8af5f354c87225732fadcf8213fddbccb6e6468868533e84a0be842e2a62/oa_configurator-1.3.0-py3-none-any.whl", hash = "sha256:9b92391c9033fbab78bd5a26932168dd184ca175f391de8099ce537cf71cf6ab", size = 67448, upload-time = "2026-08-31T00:41:58.074Z" },
+    { url = "https://files.pythonhosted.org/packages/06/9b/99f0073d97de3545d48cf28c8f39b724d543baf83e8af8d0ba5c8bffbb01/oa_configurator-2.0.0-py3-none-any.whl", hash = "sha256:2186beb5567850ba5bfe4950c2820b909d3746c6fa233a6074a85396a343af35", size = 118027, upload-time = "2026-10-10T22:48:40.571Z" },
 ]
 
 [[package]]
@@ -2581,7 +2581,7 @@ wheels = [
 
 [[package]]
 name = "omop-alchemy"
-version = "1.1.0"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
@@ -2591,15 +2591,16 @@ dependencies = [
     { name = "rich" },
     { name = "sqlalchemy" },
     { name = "typer" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/b6/315c72cba081c4cb5fed6737155047667e9057b92307579200551953e248/omop_alchemy-1.1.0.tar.gz", hash = "sha256:d78905132ad0f8933d8d6fceccbac903f497d40a54634ec9193023b237bb5afb", size = 395165, upload-time = "2026-08-24T06:19:41.929Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/4b/a925c1db558070a4a807a38456a90dab33ab766e18cd3de890dae94295ca/omop_alchemy-2.0.0.tar.gz", hash = "sha256:403848b2c377ef6200119f4d5280a1b7e1abe0c42e8681fe16a74ee87fa82259", size = 734827, upload-time = "2026-10-10T23:39:29.99Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/2c/c51519b2c1ff3b71b1117ca5e829451cbbe0d77d404d3ff8b485bd3e989c/omop_alchemy-1.1.0-py3-none-any.whl", hash = "sha256:31b64099145a6183fb71d6d89ecd662a506b5e9f9ab74b0b117860e1085991eb", size = 233776, upload-time = "2026-08-24T06:19:40.288Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/d2/2c271ce7d09b978bf812b698baf9000f1bc56afa2d1915b58c9b079875db/omop_alchemy-2.0.0-py3-none-any.whl", hash = "sha256:17cdbf3d901f23da339b7e4d4598f22f178499733fa326884de6e0de40c78f02", size = 298023, upload-time = "2026-10-10T23:39:28.182Z" },
 ]
 
 [[package]]
 name = "omop-emb"
-version = "2.1.0"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -2614,9 +2615,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/44/1b3022eb8b896def2d0978da4958fa270711ddeee736cd1266ef8dc980fe/omop_emb-2.1.0.tar.gz", hash = "sha256:5aaca2bd52859b7db141bc911873a4dead8fe3356b34db8b2eda4f08814ae511", size = 235460, upload-time = "2026-08-20T12:30:54.632Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/68/54b0a9538da687f38e995d16fb335d585cd7dbca423be5874fb3f07217ae/omop_emb-3.0.0.tar.gz", hash = "sha256:6ceabae683e9f36cc9250fb0a62a6074a588b5ff5594e8fd8b06c1dcec5a826e", size = 249683, upload-time = "2026-10-11T00:20:20.468Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/9a/f38c4be9ab59d84c5d0a3acfa64de91049d50e8b0a911c4d107b280e2a0a/omop_emb-2.1.0-py3-none-any.whl", hash = "sha256:1f9f91f628fd96fc79ecbc33b0e7e0478daecee444368d4eb84603fd8c82e5b8", size = 95199, upload-time = "2026-08-20T12:30:53.295Z" },
+    { url = "https://files.pythonhosted.org/packages/58/a6/e564d7d43b294c592a93f1da737a7e836cb50f592a9127e6b10ef4383471/omop_emb-3.0.0-py3-none-any.whl", hash = "sha256:0e78c7c0ef01a71d1a62498d9fab494aab81d7fa40aa1e712ec097530c5df730", size = 94080, upload-time = "2026-10-11T00:20:18.782Z" },
 ]
 
 [package.optional-dependencies]
@@ -2630,7 +2631,7 @@ pgvector = [
 
 [[package]]
 name = "omop-graph"
-version = "2.1.0"
+version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "oa-configurator" },
@@ -2641,14 +2642,14 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/b3/9bd23eaa0c1075279fa37472ddb3b4b1fafb2dd985b85ea258a8521d2436/omop_graph-2.1.0.tar.gz", hash = "sha256:870feca44a91f93c840ea4a84ac44292e962288e91bcd7d0995f99847cad35fd", size = 460091, upload-time = "2026-08-24T08:35:42.495Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/40/609efc228073c4d712a4f0328229fa1ffaef317ce180cd52189ff607090b/omop_graph-3.0.0.tar.gz", hash = "sha256:2184dab10323a541b400d42c94e603f33286b36b0d66a7797ce4f35b64d82104", size = 470552, upload-time = "2026-10-11T00:33:15.749Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/ef/e896ba1b2711aba66db0b297f72ae694e2cb60e057ccf29f3943808012a7/omop_graph-2.1.0-py3-none-any.whl", hash = "sha256:9de67d14c91fea99be629ed66306ef2e9436d3fb7b2d45fa2d2394d4768fd40b", size = 124996, upload-time = "2026-08-24T08:35:40.965Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/14/e86bfac20c51dc4f70596d5b69d1107093b96356543157d7db1a555ec262/omop_graph-3.0.0-py3-none-any.whl", hash = "sha256:7bf0c99f325ba0796c8b0ff2239e68657a08686dcdd0b34aeeda750bd4566e44", size = 126600, upload-time = "2026-10-11T00:33:13.968Z" },
 ]
 
 [[package]]
 name = "omop-llm"
-version = "1.0.1"
+version = "1.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "any-llm-sdk", extra = ["gemini", "ollama"] },
@@ -2657,9 +2658,9 @@ dependencies = [
     { name = "ollama" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/ae/dec515aac6273c562b2edd2bea0b996d40a65092213907e2eeb09098fc46/omop_llm-1.0.1.tar.gz", hash = "sha256:cebdb7df66759f516198477c97e882534d8700787b0bae001b43a8f8071be964", size = 183148, upload-time = "2026-08-12T12:23:46.817Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/92/2147d62967adb61e91a5474ca0278bb3905be394718aad9c4d6427ba0196/omop_llm-1.0.2.tar.gz", hash = "sha256:a80267b95b1f1ad76e41a2285030d68d0c13825216dc7363f6eb87647c83c599", size = 182158, upload-time = "2026-10-11T00:10:42.623Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/14/fc6782952879b08d02bd64c5b7fd1114465d826196681fd69a69e8207db0/omop_llm-1.0.1-py3-none-any.whl", hash = "sha256:aecfa1578286c3fad8f61c33032bd63355f8079ee5915ad2941a87e87cd3796a", size = 25863, upload-time = "2026-08-12T12:23:45.81Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/b4/fe6d24752cf7c472a0473f7f484660bc57a7779d29ae1669d387ae76b668/omop_llm-1.0.2-py3-none-any.whl", hash = "sha256:7dbd72df14fccefcf1be09fbcea89b8870c944c91db3dd686bacdcb1bcb544cc", size = 25864, upload-time = "2026-10-11T00:10:41.434Z" },
 ]
 
 [[package]]
@@ -2741,7 +2742,7 @@ wheels = [
 
 [[package]]
 name = "orm-loader"
-version = "1.0.1"
+version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chardet" },
@@ -2750,9 +2751,9 @@ dependencies = [
     { name = "pyarrow" },
     { name = "sqlalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/4c/fe51c02e90710fc63b2a6cd9f563f48c0cc8bf2aad6bfb66e806e3c13fcf/orm_loader-1.0.1.tar.gz", hash = "sha256:8ab3c3aa65cf07b02fb23505c04e5898ab339ceb155e8a697b8b0fab089a18b8", size = 140755, upload-time = "2026-08-16T11:09:09.903Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/cd/b3a29d383b80e1c282a3ee12a28f00b5608802763dd98ed7b3adc637e630/orm_loader-2.0.0.tar.gz", hash = "sha256:73232ecb5f1474738e54f30fae89999620d57cc41456ae799669a74c690a76b3", size = 171586, upload-time = "2026-10-10T23:22:15.966Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/cc/ab60acffb180da5736c087586d93c71596929428815d5d8ef39567c06593/orm_loader-1.0.1-py3-none-any.whl", hash = "sha256:ebe7eb4644749086eeabb0cf6d5c8961622369bf72181dc2a0a4458136e75507", size = 61010, upload-time = "2026-08-16T11:09:08.52Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/61/6687b9c1602deb1c364d4653c641698e3de298b9c4f5dc98c59698455ac7/orm_loader-2.0.0-py3-none-any.whl", hash = "sha256:a118ddc3fcb611d658b7be52f616b641804ae65067efd05753d1bc14a03b52c9", size = 74959, upload-time = "2026-10-10T23:22:14.645Z" },
 ]
 
 [[package]]

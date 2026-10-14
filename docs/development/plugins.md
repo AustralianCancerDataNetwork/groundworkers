@@ -59,7 +59,7 @@ For example, a plugin recommending comparator cohorts might reason like this.
 
 | Use case | What you need | How you get it |
 |---|---|---|
-| Look up existing OMOP concepts | Read access to the CDM vocabulary connection Groundworkers already opened | `context.cdm_engine` / `context.resolver` |
+| Look up existing OMOP concepts | Read access through Groundworkers' routed vocabulary session | `context.cdm_session_factory` / `context.resolver` |
 | Rank or filter by similarity to concepts Groundworkers already embedded | The concept embeddings Groundworkers already populated, via omop-emb | `context.vector_store` + `context.embedding_backend_factory` |
 | Ask an LLM to help decide something | The chat model Groundworkers already configured, via omop-llm | `context.chat_backend_factory` |
 
@@ -76,12 +76,14 @@ The concept-embedding row and the free-text-embedding row look similar but are n
 
 ### Assumptions this table is making
 
-- **Vocabulary only, so far.** Every example above reads OMOP *vocabulary* i.e. operations over concepts, concept relationships, concept embeddings, or the host's shared grounding cascade. Nothing about `context.cdm_engine` restricts a plugin to vocabulary tables specifically, however. These tables are available over the same CDM connection groundworkers itself uses, and a plugin *could* query clinical/person-level tables (`condition_occurrence`, `drug_exposure`, etc.) through it just as easily, subject to whatever environmental and procedural access controls actually govern that data.
+- **Vocabulary only, so far.** Every example above reads OMOP vocabulary: concepts, concept relationships, concept embeddings, or the host's shared grounding cascade. `context.cdm_session_factory` routes vocabulary and primary roles, including on split-vocabulary deployments. Clinical/person-level queries need a database role explicitly configured for them.
 - **Shared mapping access.** `PluginContext.mapping_context` is an optional,read-only capability façade over the host's mapping and grounding policy. Use its operations when a plugin needs candidate bundles, text grounding, or concept context. `concept_shared_standard_ancestor(concept_ids, max_depth=5)` returns the unique nearest shared standard ancestor when one exists; raise `max_depth` to widen the hierarchy search. The underlying vocabulary, graph, and service objects are deliberately not exposed. Do not construct a second `omop-graph` or vocabulary adapter from `context.cdm_engine`. The field is `None` only when the host did not compose services for the plugin context.
 
 ## Build and register a new plugin
 
-`build()` receives `PluginContext`. The context provides the resolved CDM database and engine, vector store, shared lazy model backend factories, the optional read-only `mapping_context`, and a deliberately narrow resolver for independent named OA resources. Return `None` when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.
+`build()` receives `PluginContext`. The context provides the resolved CDM database and primary engine, routed `cdm_session_factory`, vocabulary engine, vector store, shared lazy model backend factories, the optional read-only `mapping_context`, and a deliberately narrow resolver for independent named OA resources. Return `None` when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.
+
+Use `context.cdm_session_factory` for role-tagged OMOP queries. `context.cdm_engine` remains available for primary-role access. On split-vocabulary stacks, plugins must use the routed factory; an Engine-based OmopGraphAdapter or DomainNameResolver cannot route vocabulary queries and will fail with upgrade guidance.
 
 `register()` adds MCP tools, prompts, or resources against the state returned by `build()`. The shared MCP registration wrapper supplies the same safe error translation used by core tools. Code-defined prompts can continue to derive their arguments from the callable signature. A plugin publishing data-defined prompts can pass explicit string metadata with `PromptArgument`; this keeps dynamic pack fields out of Python closure signatures:
 
@@ -158,7 +160,8 @@ Schemas requiring live discovery or a conditional flow (and therefore not fittin
 ```python
 from typing import Annotated, ClassVar
 
-from oa_configurator import PackageConfigBase, Sensitive
+from oa_configurator import PackageConfigBase
+from oa_configurator.refs import Sensitive, Secret
 from pydantic import Field
 
 
@@ -167,9 +170,22 @@ class ExampleConfig(PackageConfigBase):
     api_token: Annotated[str | None, Sensitive()] = Field(default=None)
 ```
 
-The `oa_configurator.Secret` alias is equivalent to `Annotated[str | None, Sensitive()]`. Prefer a `RefTo` field when a plugin can reuse an existing database, model, provider, or vector-store entry. The plugin then stores only the logical reference name; sensitivity remains declared on the referenced schema, such as `ConnectionConfig.password` or `ProviderConfig.api_key`, and the generic recursive configuration workflow preserves those declarations.
+The `Secret` alias is equivalent to `Annotated[str | None, Sensitive()]`. Prefer a `RefTo` field when a plugin can reuse an existing database, model, provider, or vector-store entry. The plugin then stores only the logical reference name; sensitivity remains declared on the referenced schema, such as `ConnectionConfig.password` or `ProviderConfig.api_key`, and the generic recursive configuration workflow preserves those declarations.
 
 This protects display and logging surfaces; it does not encrypt persisted configuration. Plugin documentation must describe the storage expectations for any secret it introduces.
+
+## Upgrading plugins to Groundworkers 0.7
+
+1. Require `oa-configurator>=2,<3` and `groundworkers>=0.7,<0.8` in the plugin package.
+2. Import `Sensitive` and `Secret` from `oa_configurator.refs`, and load files with `load_stack_config(path)`.
+3. Create CDM role engines with `omop_alchemy.config.create_cdm_engines(resolved, register_claims=False)` for read-only plugin access; use `context.cdm_session_factory` when Groundworkers provides the database.
+4. Remove schema fields from SQLite database entries. For PostgreSQL CDM entries, use `cdm_schema`; vector-store database entries continue to use `schema_name`.
+5. Keep accepting `context.cdm_engine` for integrations that need the primary SQLAlchemy engine. The routed factory handles vocabulary, primary, and results roles for ORM queries.
+6. Treat `context.embedding_backend_factory()` as a read-only omop-emb 3.0 `EmbeddingStoreReader`. It is shared with Groundworkers tools and status; reader methods no longer accept `metric_type`, and model enumeration is `get_registered_models()`. Do not use it to register models, create tables, or write vectors. Use a plugin-owned store and explicit setup operation for plugin data.
+7. Pass `context.cdm_session_factory` when constructing `OmopGraphAdapter`; Engine mode only works for colocated databases. `context.cdm_engine` is the primary-role engine and cannot query vocabulary on a split deployment.
+8. Use the current public error codes: `LEGACY_REGISTRY`, `MISPLACED_REGISTRY`, `MISSING_STORAGE_TABLE`, `MODEL_REGISTRATION_CONFLICT`, and `READ_ONLY_STORE`.
+9. Update `describe()` consumers for the `llm_model`, `stack`, `groundworkers`, and `app_name` keys and `cdm_schema` / `vocab_schema` names. The old `base.sql` schema/engine helpers have been removed; use oa-configurator's `physical_schema_of`, `qualified`, `supports_schemas`, and `schema_for_role` APIs.
+10. Update direct `AppConfig` construction for the required `stack`, `groundworkers`, `cdm_database`, `cdm_engine`, `cdm_vocab_engine`, `cdm_session_factory`, `embedding_model`, `llm_model`, `vector_store`, and `knowledge_root` fields; prefer `build_app_config()` in plugins and tests.
 
 ## Setup steps
 

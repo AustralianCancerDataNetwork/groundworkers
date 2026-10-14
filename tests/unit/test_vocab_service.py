@@ -9,6 +9,7 @@ from omop_alchemy.cdm.model.vocabulary import (
     Concept_Ancestor,
     Concept_Relationship,
     Concept_Synonym,
+    Domain,
 )
 from sqlalchemy import column as sa_column
 from sqlalchemy import create_engine, event
@@ -19,10 +20,13 @@ from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.base.sql import normalization_expression
 from groundworkers.services.vocab import VocabService, normalize_text_for_matching
 from groundworkers.tools.search_tools import register_search_tools
+from tests.support.omop import route_sqlite_omop_roles
 
 
 def _service(tmp_path) -> VocabService:
-    engine = create_engine(f"sqlite:///{tmp_path / 'vocabulary.db'}")
+    engine = route_sqlite_omop_roles(
+        create_engine(f"sqlite:///{tmp_path / 'vocabulary.db'}")
+    )
 
     @event.listens_for(engine, "connect")
     def sqlite_normalisation_functions(connection, _record) -> None:
@@ -38,10 +42,19 @@ def _service(tmp_path) -> VocabService:
         Concept_Synonym.__table__,
         Concept_Relationship.__table__,
         Concept_Ancestor.__table__,
+        Domain.__table__,
     ):
         table.create(engine)
 
     with engine.begin() as connection:
+        connection.execute(
+            Domain.__table__.insert(),
+            {
+                "domain_id": "Condition",
+                "domain_name": "Condition",
+                "domain_concept_id": 19,
+            },
+        )
         connection.execute(
             Concept.__table__.insert(),
             (

@@ -343,8 +343,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -401,8 +399,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -450,7 +446,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -472,6 +467,52 @@ cdm_db = "cdm_db"
             await pilot.pause()
 
             assert app.screen.query_one("#wizard-frame") is not None
+
+    asyncio.run(run_check())
+
+
+def test_legacy_configure_action_shows_repair_message_without_crashing(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("groundskeeping")
+
+    from groundskeeping.app import OperatorApp
+
+    from groundworkers.application.setup.configuration import load_configuration
+    from groundworkers.tui.app import build_groundworkers_tui_spec
+    from groundworkers.tui.presenters.overview import OverviewPresenter
+
+    config_path = tmp_path / "legacy.toml"
+    config_path.write_text(
+        '[connections.cdm_main]\ndialect = "sqlite"\ndatabase_name = ":memory:"\n'
+        '[databases.cdm_db]\nkind = "cdm"\nconnection = "cdm_main"\n'
+        'schema_name = "public"\n[tools.groundworkers]\ncdm_db = "cdm_db"\n',
+        encoding="utf-8",
+    )
+    snapshot = load_configuration(config_path=config_path)
+    landing = OverviewPresenter().landing(
+        snapshot,
+        connections=(),
+        embedding_coverage=None,
+        llm_result=None,
+        graph_ready=False,
+        integration_ready=False,
+    )
+    assert "Issues:" in landing.message
+    assert "schema_name" in landing.message or "upgrade" in landing.message.lower()
+
+    async def run_check() -> None:
+        app = OperatorApp(build_groundworkers_tui_spec(config_path=str(config_path)))
+        async with app.run_test(size=(100, 32), notifications=True) as pilot:
+            await pilot.pause()
+            await pilot.click("#view-action-0")
+            await pilot.pause()
+            assert app.is_running
+            assert not app.query("#wizard-frame")
+            notifications = list(app._notifications)
+            assert notifications
+            assert notifications[0].severity == "warning"
+            assert notifications[0].message
 
     asyncio.run(run_check())
 
@@ -503,8 +544,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -581,8 +620,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"

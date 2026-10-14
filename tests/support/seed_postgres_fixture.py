@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from datetime import date
 
+from oa_configurator import Resolver, load_stack_config
 from omop_alchemy.cdm.model.vocabulary import (  # noqa: F401
     Concept,
     Concept_Ancestor,
@@ -41,7 +42,10 @@ def _database_url() -> str:
 
 def seed() -> None:
     engine = create_engine(_database_url(), future=True)
-    bootstrap(engine, create=True)
+    cdm = Resolver(
+        load_stack_config(os.environ["GROUNDWORKERS_CONFIG_PATH"])
+    ).resolve_database("test_cdm_db")
+    bootstrap(cdm, create=True)
 
     concepts = [
         (201826, "Type 2 diabetes mellitus", "Condition", "SNOMED", "Clinical Finding", "S", "44054006"),

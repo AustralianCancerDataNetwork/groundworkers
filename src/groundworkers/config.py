@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar
@@ -12,12 +13,14 @@ from oa_configurator import (  # type: ignore[import-untyped]
     ResolvedCDMDatabase,
     ResolvedModel,
     ResolvedVectorStore,
+    Role,
     StackConfig,
     VectorStoreConfig,
     safe_endpoint,
 )
 from pydantic import Field, field_validator
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 
 class GroundworkersConfig(PackageConfigBase):
@@ -183,37 +186,6 @@ class GroundworkersConfig(PackageConfigBase):
         return value.rstrip("/") or "/"
 
 
-def split_vocabulary_connection(
-    stack: StackConfig, cdm_db: str
-) -> tuple[str, str] | None:
-    """Report a CDM entry whose vocabulary sits on a second physical connection.
-
-    Groundworkers reads the vocabulary through the CDM engine and nothing else:
-    the knowledge graph, the vocabulary service, and the embedding tier are all
-    handed ``AppConfig.cdm_engine``, with only the vocabulary *schema* applied on
-    top. A ``vocab_connection`` naming a different server is therefore not a
-    supported split -- it would be silently ignored and the vocabulary schema
-    looked for on the CDM server instead. Reported here so both the runtime and
-    the setup console can refuse it in the same terms, rather than plumbing a
-    second engine no caller reads.
-
-    Returns
-    -------
-    tuple[str, str] or None
-        The ``(primary, vocabulary)`` connection names when they differ, or
-        ``None`` when the entry is absent, is not a CDM entry, or names one
-        connection for both roles.
-    """
-
-    database = stack.databases.get(cdm_db)
-    if not isinstance(database, CDMDatabaseConfig):
-        return None
-    vocabulary = database.vocab_connection
-    if vocabulary is None or vocabulary == database.connection:
-        return None
-    return (database.connection, vocabulary)
-
-
 @dataclass(frozen=True, repr=False)
 class AppConfig:
     """Resolved runtime configuration owned and consumed by Groundworkers.
@@ -232,6 +204,8 @@ class AppConfig:
     groundworkers: GroundworkersConfig
     cdm_database: ResolvedCDMDatabase
     cdm_engine: Engine
+    cdm_vocab_engine: Engine
+    cdm_session_factory: Callable[[], Session]
     embedding_model: ResolvedModel | None
     llm_model: ResolvedModel | None
     vector_store: ResolvedVectorStore | None
@@ -275,13 +249,13 @@ class AppConfig:
                 "name": database.name,
                 "connection": database.connection.name,
                 "safe_url": safe_endpoint(database.connection.safe_url),
-                "schema_name": database.schema_name,
+                "cdm_schema": database.schema_for_role(Role.PRIMARY),
                 "vocabulary_connection": database.vocab_connection.name,
                 "vocabulary_safe_url": safe_endpoint(
                     database.vocab_connection.safe_url
                 ),
-                "vocabulary_schema": database.vocab_schema,
-                "results_schema": database.results_schema,
+                "vocab_schema": database.schema_for_role(Role.VOCAB),
+                "results_schema": database.schema_for_role(Role.RESULTS),
             },
             "model": _describe_model(self.embedding_model),
             "llm_model": _describe_model(self.llm_model),

@@ -143,7 +143,7 @@ def test_fresh_cdm_fields_are_postgresql_first_and_memory_sqlite_is_rejected(
     assert fields["host"].default == "localhost"
     assert fields["port"].default == 5432
     assert fields["database_name"].default is None
-    assert fields["schema_name"].default == "public"
+    assert fields["cdm_schema"].default == "public"
 
     service.submit(
         draft,

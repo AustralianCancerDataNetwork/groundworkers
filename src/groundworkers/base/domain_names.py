@@ -1,15 +1,37 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import Any
 
+from oa_configurator import CrossDatabaseStatementError
 from omop_alchemy.cdm.model.vocabulary import Domain
 from sqlalchemy import select
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
+
+
+def _is_missing_domain_table(exc: Exception) -> bool:
+    """Recognize database errors caused specifically by the absent domain table."""
+    pending: list[object] = [exc]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if "no such table" in str(current).lower():
+            return True
+        if getattr(current, "sqlstate", None) == "42P01" or getattr(
+            current, "pgcode", None
+        ) == "42P01":
+            return True
+        for attr in ("orig", "__cause__", "__context__"):
+            nested = getattr(current, attr, None)
+            if nested is not None:
+                pending.append(nested)
+    return False
 
 
 class DomainNameResolver:
@@ -20,8 +42,13 @@ class DomainNameResolver:
     restarts the server anyway.
     """
 
-    def __init__(self, engine: Engine) -> None:
-        self._engine = engine
+    def __init__(self, engine: Engine | Callable[[], Any]) -> None:
+        if isinstance(engine, Engine):
+            self._engine: Engine | None = engine
+            self._session_factory: Callable[[], Any] | None = None
+        else:
+            self._engine = None
+            self._session_factory = engine
         self._by_lowered: dict[str, str] | None = None
 
     def _load(self) -> dict[str, str]:
@@ -30,12 +57,32 @@ class DomainNameResolver:
 
         mapping: dict[str, str] = {}
         try:
-            with self._engine.connect() as conn:
-                rows = conn.execute(select(Domain.domain_id, Domain.domain_name)).all()
-        except Exception:
+            if self._session_factory is not None:
+                with self._session_factory() as session:
+                    rows = session.execute(
+                        select(Domain.domain_id, Domain.domain_name)
+                    ).all()
+            else:
+                assert self._engine is not None
+                with self._engine.connect() as conn:
+                    rows = conn.execute(
+                        select(Domain.domain_id, Domain.domain_name)
+                    ).all()
+        except Exception as exc:
             logger.warning("Could not read the domain table; domain names unresolved.", exc_info=True)
-            self._by_lowered = {}
-            return self._by_lowered
+            if self._engine is not None and (
+                isinstance(exc, CrossDatabaseStatementError) or _is_missing_domain_table(exc)
+            ):
+                raise RuntimeError(
+                    "Engine mode cannot route vocabulary queries. If this deployment "
+                    "keeps the vocabulary on its own database, pass "
+                    "cdm_session_factory (PluginContext.cdm_session_factory) "
+                    "to DomainNameResolver."
+                ) from exc
+            if self._engine is not None:
+                raise
+            # Leave the cache empty so transient outages are retried next time.
+            return mapping
 
         for domain_id, domain_name in rows:
             if not domain_id:

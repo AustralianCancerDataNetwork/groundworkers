@@ -1,4 +1,4 @@
-"""oa-configurator 1.x stack fixtures shared across migration tests."""
+"""oa-configurator 2.0 stack fixtures shared across migration tests."""
 
 from __future__ import annotations
 
@@ -28,12 +28,24 @@ def build_cdm_stack(
     connection_name: str = "cdm_main",
     database_name: str = "cdm_db",
     sqlite_path: str = ":memory:",
-    schema_name: str = "main",
-    vocab_schema: str | None = "main",
+    cdm_schema: str | None = None,
+    vocab_schema: str | None = None,
     results_schema: str | None = None,
     groundworkers: dict[str, object] | None = None,
 ) -> StackConfig:
     """Build the smallest valid Groundworkers CDM-only stack."""
+
+    if any((cdm_schema, vocab_schema, results_schema)):
+        connection = ConnectionConfig(
+            dialect="postgresql+psycopg",
+            host="postgres.example.test",
+            port=5432,
+            user="groundworkers",
+            password="fixture-password",
+            database_name="cdm",
+        )
+    else:
+        connection = ConnectionConfig(dialect="sqlite", database_name=sqlite_path)
 
     tool = {
         "cdm_db": database_name,
@@ -41,15 +53,12 @@ def build_cdm_stack(
     }
     return StackConfig(
         connections={
-            connection_name: ConnectionConfig(
-                dialect="sqlite",
-                database_name=sqlite_path,
-            )
+            connection_name: connection
         },
         databases={
             database_name: CDMDatabaseConfig(
                 connection=connection_name,
-                schema_name=schema_name,
+                cdm_schema=cdm_schema,
                 vocab_schema=vocab_schema,
                 results_schema=results_schema,
             )
@@ -81,7 +90,7 @@ def build_embedding_stack(
             dialect="sqlite",
             database_name="embeddings.db",
         )
-        schema_name = "main"
+        schema_name = None
     else:
         connection = ConnectionConfig(
             dialect="postgresql+psycopg",
@@ -94,10 +103,10 @@ def build_embedding_stack(
         schema_name = "groundworkers"
 
     stack.connections[vector_connection_name] = connection
-    stack.databases[vector_database_name] = GenericDatabaseConfig(
-        connection=vector_connection_name,
-        schema_name=schema_name,
-    )
+    generic_database = {"connection": vector_connection_name}
+    if schema_name is not None:
+        generic_database["schema_name"] = schema_name
+    stack.databases[vector_database_name] = GenericDatabaseConfig(**generic_database)
     stack.providers[provider_name] = ProviderConfig(
         provider="ollama",
         base_url="http://models.example.test",
@@ -159,7 +168,6 @@ def build_invalid_reference_stack(issue: InvalidReference) -> StackConfig:
     elif issue == "wrong_cdm_kind":
         stack.databases["cdm_db"] = GenericDatabaseConfig(
             connection="cdm_main",
-            schema_name="main",
         )
     elif issue == "missing_model":
         tool["embedding_model_name"] = "missing_model"

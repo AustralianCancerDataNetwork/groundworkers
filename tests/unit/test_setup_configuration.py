@@ -24,8 +24,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -130,9 +128,7 @@ def test_save_backs_up_atomically_replaces_and_reloads(tmp_path: Path) -> None:
         databases={
             "cdm_db": CDMDatabaseConfig(
                 connection="main",
-                schema_name="main",
-                vocab_schema="main",
-            )
+                            )
         },
         tools={"groundworkers": {"cdm_db": "cdm_db"}},
     )
@@ -158,7 +154,7 @@ def test_save_rejects_derived_configuration(tmp_path: Path) -> None:
             "main": ConnectionConfig(dialect="sqlite", database_name=":memory:")
         },
         databases={
-            "cdm_db": CDMDatabaseConfig(connection="main", schema_name="main")
+            "cdm_db": CDMDatabaseConfig(connection="main")
         },
         tools={"groundworkers": {"cdm_db": "cdm_db"}},
     )

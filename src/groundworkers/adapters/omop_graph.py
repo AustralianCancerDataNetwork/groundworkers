@@ -11,7 +11,7 @@ from omop_alchemy.cdm.model.vocabulary import (
     Domain,
     Vocabulary,
 )
-from omop_graph.extensions.omop_alchemy import PredicateKind
+from omop_graph.extensions.omop_alchemy import PredicateKind, RelationshipMapping
 from omop_graph.graph.kg import KnowledgeGraph, KnowledgeGraphEmbeddingConfiguration
 from omop_graph.graph.nodes import LabelMatchKind
 from omop_graph.graph.paths import find_shortest_paths_batch
@@ -19,9 +19,10 @@ from omop_graph.graph.traverse import traverse
 from omop_graph.reasoning.grounding import GroundingConstraints, ground_term
 from omop_graph.reasoning.resolvers import ResolverPipeline
 from omop_graph.reasoning.resolvers.resolvers import EmbeddingResolver
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import DBAPIError, NoResultFound
+from sqlalchemy.orm import Session, sessionmaker
 
 from groundworkers.base.concept_payload import serialise_concept_view
 from groundworkers.base.domain_names import DomainNameResolver
@@ -30,7 +31,7 @@ from groundworkers.base.errors import GroundworkersError
 if TYPE_CHECKING:
     import numpy as np
     from oa_configurator import ResolvedModel
-    from omop_emb import EmbeddingBackend
+    from omop_emb.backends import EmbeddingStoreReader
     from omop_llm import ModelBackend
 
 logger = logging.getLogger(__name__)
@@ -63,24 +64,24 @@ class OmopGraphAdapter:
 
     def __init__(
         self,
-        engine: Engine,
+        engine: Engine | Callable[[], Session],
         *,
-        embedding_backend_factory: Callable[[], EmbeddingBackend] | None = None,
+        cdm_session_factory: Callable[[], Session] | None = None,
+        embedding_backend_factory: Callable[[], EmbeddingStoreReader] | None = None,
         resolved_embedding_model: ResolvedModel | None = None,
         model_backend_factory: Callable[[], ModelBackend] | None = None,
         embedding_metric: str = "cosine",
         faiss_cache_dir: str | None = None,
     ) -> None:
-        # No `vocab_schema` parameter. It cannot be honoured and never was: no
-        # omop-alchemy model declares `schema="vocab"`, so oa-configurator's
-        # "vocab" translate-map key is unreachable from the ORM and vocabulary
-        # tables resolve through the primary schema like every other CDM table
-        # (see omop_alchemy/config.py, `vocabulary_identity`). The engine handed
-        # in already carries the full map, so if omop-alchemy ever tags its
-        # vocabulary models the routing starts working here with no change.
-        # Re-adding the parameter would restore a caller-visible argument that
-        # silently changes nothing.
-        self.engine = engine
+        self._engine_compatibility_mode = isinstance(engine, Engine) and cdm_session_factory is None
+        if isinstance(engine, Engine):
+            self.engine: Engine | None = engine
+            self._cdm_session_factory = cdm_session_factory or sessionmaker(
+                bind=engine
+            )
+        else:
+            self.engine = None
+            self._cdm_session_factory = cdm_session_factory or engine
         self._embedding_backend_factory = embedding_backend_factory
         self._resolved_embedding_model = resolved_embedding_model
         self._model_backend_factory = model_backend_factory
@@ -90,7 +91,9 @@ class OmopGraphAdapter:
         self._embedding_configured = False
         self._kg: KnowledgeGraph | None = None
         self._model_backend: ModelBackend | None = None
-        self._domain_names = DomainNameResolver(engine)
+        self._domain_names = DomainNameResolver(
+            engine if self._engine_compatibility_mode else self._cdm_session_factory
+        )
 
     @property
     def embedding_resolver_active(self) -> bool:
@@ -565,9 +568,20 @@ class OmopGraphAdapter:
         # Fail fast with a clear message if the database is unreachable before
         # KnowledgeGraph has a chance to raise something opaque.
         try:
-            with self.engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
+            with self._cdm_session_factory() as session:
+                session.execute(select(Concept.concept_id).limit(1))
+                session.execute(
+                    select(RelationshipMapping.relationship_id).limit(1),
+                    bind_arguments={"mapper": RelationshipMapping},
+                )
         except Exception as exc:
+            if self._engine_compatibility_mode:
+                raise GroundworkersError(
+                    "BACKEND_UNAVAIL",
+                    "This deployment keeps the vocabulary on its own database; "
+                    "pass cdm_session_factory (PluginContext.cdm_session_factory) "
+                    "when constructing OmopGraphAdapter.",
+                ) from exc
             raise GroundworkersError(
                 "BACKEND_UNAVAIL",
                 f"Cannot connect to database ({type(exc).__name__}).",
@@ -598,7 +612,9 @@ class OmopGraphAdapter:
                 logger.warning("%s", self._embedding_configuration_error)
 
         try:
-            self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=emb_config)
+            self._kg = KnowledgeGraph(
+                self._cdm_session_factory, emb_config=emb_config
+            )
         except Exception as exc:
             if emb_config is None:
                 self._embedding_configured = False
@@ -610,7 +626,7 @@ class OmopGraphAdapter:
             self._embedding_configuration_error = self._embedding_failure_detail(exc)
             logger.warning("%s", self._embedding_configuration_error)
             try:
-                self._kg = KnowledgeGraph(cdm_engine=self.engine, emb_config=None)
+                self._kg = KnowledgeGraph(self._cdm_session_factory, emb_config=None)
             except Exception as lexical_exc:
                 raise self._wrap_graph_error(lexical_exc, default_code="BACKEND_UNAVAIL")
         return self._kg
@@ -683,6 +699,16 @@ class OmopGraphAdapter:
     def _wrap_graph_error(exc: Exception, *, default_code: str) -> GroundworkersError:
         if isinstance(exc, GroundworkersError):
             return exc
+        current: BaseException | None = exc
+        seen: set[int] = set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if isinstance(current, DBAPIError):
+                return GroundworkersError(
+                    "BACKEND_UNAVAIL",
+                    f"The graph database is unavailable ({type(current).__name__}).",
+                )
+            current = current.__cause__ or current.__context__
         msg = str(exc)
         if "relationship classification" in msg or "relationship_mapping" in msg:
             return GroundworkersError(

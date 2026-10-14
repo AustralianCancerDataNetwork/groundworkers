@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import socket
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+from oa_configurator import Resolver
 from oa_configurator.io import save_stack_config
+from omop_emb.utils.errors import MisplacedRegistryError, MissingStorageTableError
 from sqlalchemy import create_engine, text
 
 from groundworkers.application.setup.configuration import load_configuration
 from groundworkers.application.setup.databases import (
-    _embedding_registry_rows,
     _index_defines_lower_expression,
+    _trigram_lower_index_exists,
     classify_connection_error,
     resolve_database_targets,
     verify_database_target,
@@ -19,7 +23,7 @@ from groundworkers.application.setup.models import (
     ConnectionFailureKind,
     DatabaseTarget,
 )
-from tests.support.stack_config import build_embedding_stack
+from tests.support.stack_config import build_cdm_stack, build_embedding_stack
 
 VALID_DATABASE_CONFIG = """
 [connections.main]
@@ -29,8 +33,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -47,15 +49,16 @@ def test_database_targets_are_resolved_with_safe_urls(tmp_path: Path) -> None:
     assert targets[0].key == "database.cdm"
     assert targets[1].key == "database.graph"
     assert targets[2].key == "database.groundworkers"
-    assert targets[0].safe_url == "sqlite:///:memory:"
+    assert targets[0].safe_url in {"sqlite:///:memory:", "sqlite:///%3Amemory%3A"}
+    assert targets[0].cdm_schema is None
+    assert targets[0].vocabulary_schema is None
     assert "connection_url" not in repr(targets[0])
 
 
-def test_distinct_vocabulary_connection_is_refused_rather_than_targeted(
+def test_distinct_vocabulary_connection_is_accepted_by_the_configuration_layer(
     tmp_path: Path,
 ) -> None:
-    """Nothing reads a second engine, so offering it as a target would promise a
-    split the runtime does not honour."""
+    """Split vocabularies are represented by the resolved CDM role targets."""
     path = tmp_path / "config.toml"
     path.write_text(
         """
@@ -70,9 +73,7 @@ database_name = "vocabulary.db"
 [databases.cdm_db]
 kind = "cdm"
 connection = "cdm"
-schema_name = "main"
 vocab_connection = "vocabulary"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -82,9 +83,9 @@ cdm_db = "cdm_db"
 
     snapshot = load_configuration(config_path=path)
 
-    assert snapshot.state is ConfigurationState.INCOMPLETE
-    assert [issue.code for issue in snapshot.issues] == ["vocabulary_connection_split"]
-    assert resolve_database_targets(snapshot) == ()
+    assert snapshot.state is ConfigurationState.UNVERIFIED
+    assert snapshot.issues == ()
+    assert len(resolve_database_targets(snapshot)) == 3
 
 
 def test_database_verification_records_latency(tmp_path: Path) -> None:
@@ -141,11 +142,13 @@ def test_graph_readiness_reports_missing_sidecars_and_indexes(tmp_path: Path) ->
 
     assert result.connected is True
     assert result.has_warnings is True
-    assert {diagnostic.code for diagnostic in result.diagnostics} >= {
-        "graph_tables_empty",
+    codes = {diagnostic.code for diagnostic in result.diagnostics}
+    assert "graph_tables_empty" in codes
+    assert not codes & {
         "fulltext_sidecar_missing",
         "fulltext_indexes_missing",
         "functional_indexes_missing",
+        "functional_indexes_unchecked",
     }
 
 
@@ -186,7 +189,7 @@ def test_graph_readiness_reports_unpopulated_fulltext_sidecars(tmp_path: Path) -
 
     result = verify_database_target(_target(db_path, role="graph"))
 
-    assert "fulltext_sidecar_unpopulated" in {
+    assert "fulltext_sidecar_unpopulated" not in {
         diagnostic.code for diagnostic in result.diagnostics
     }
 
@@ -211,7 +214,29 @@ def test_functional_index_detection_accepts_hand_named_postgres_expressions() ->
     )
 
 
-def test_groundworkers_tuning_reports_missing_trigram_indexes(tmp_path: Path) -> None:
+def test_trigram_reflection_checks_postgresql_operator_class(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "groundworkers.application.setup.databases._reflected_indexes",
+        lambda *_args: (
+            {
+                "name": "arbitrary_name",
+                "expressions": ["lower((concept_name)::text)"],
+                "dialect_options": {
+                    "postgresql_using": "gin",
+                    "postgresql_ops": {"lower": "gin_trgm_ops"},
+                },
+            },
+        ),
+    )
+    connection = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    assert _trigram_lower_index_exists(
+        connection, None, "public", "concept", "concept_name", ("legacy_alias",)
+    )
+
+
+def test_groundworkers_tuning_skips_postgres_trigram_checks_on_sqlite(tmp_path: Path) -> None:
     db_path = tmp_path / "omop.db"
     _create_tables(db_path, ("concept", "concept_synonym"))
     target = _target(db_path, role="groundworkers")
@@ -219,90 +244,120 @@ def test_groundworkers_tuning_reports_missing_trigram_indexes(tmp_path: Path) ->
     result = verify_database_target(target)
 
     assert result.connected is True
-    assert result.has_warnings is True
-    assert result.diagnostics[0].code == "trigram_indexes_missing"
+    assert not {
+        "trigram_indexes_missing",
+        "trigram_indexes_unchecked",
+    } & {diagnostic.code for diagnostic in result.diagnostics}
 
 
 def test_embedding_readiness_reports_valid_registered_model(tmp_path: Path) -> None:
-    db_path = tmp_path / "emb.db"
-    engine = create_engine(f"sqlite:///{db_path}")
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                CREATE TABLE model_registry (
-                    model_name TEXT PRIMARY KEY,
-                    storage_identifier TEXT NOT NULL,
-                    dimensions INTEGER NOT NULL,
-                    index_type TEXT NOT NULL,
-                    metric_type TEXT
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO model_registry
-                    (model_name, storage_identifier, dimensions, index_type, metric_type)
-                VALUES ('test-model', 'emb_test_model', 3, 'FLAT', NULL)
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                CREATE TABLE emb_test_model (
-                    concept_id INTEGER PRIMARY KEY,
-                    domain_id TEXT NOT NULL,
-                    vocabulary_id TEXT NOT NULL,
-                    is_standard BOOLEAN NOT NULL,
-                    is_valid BOOLEAN NOT NULL,
-                    embedding BLOB NOT NULL
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO emb_test_model
-                    (concept_id, domain_id, vocabulary_id, is_standard, is_valid, embedding)
-                VALUES (1, 'Condition', 'SNOMED', 1, 1, x'000102')
-                """
-            )
-        )
-    engine.dispose()
-
-    result = verify_database_target(_target(db_path, role="embedding"))
+    target = _resolved_embedding_targets(tmp_path, registered_models=("test-model",))["database.embedding"]
+    result = verify_database_target(target)
 
     assert result.connected is True
-    assert result.has_warnings is False
+    assert result.has_warnings is True
     assert {diagnostic.code for diagnostic in result.diagnostics} == {
         "embedding_registry_present",
-        "embedding_table_valid",
+        "embedding_table_empty",
     }
 
 
-def test_the_registry_is_read_from_the_configured_schema(tmp_path: Path) -> None:
-    """The hand-written SELECT this replaced named the table unqualified, and
-    text() is exempt from schema_translate_map -- so a store with a schema was
-    written by omop-emb into it and read back from the default one."""
-    default_path = tmp_path / "default.db"
-    store_path = tmp_path / "store.db"
-    _create_registry(store_path, model_name="in-the-store")
-    _create_registry(default_path, model_name="in-the-default-schema")
+def test_registry_reader_uses_the_resolved_registry_tag(tmp_path: Path) -> None:
+    from oa_configurator import physical_schema_of
+    from omop_emb.config import REGISTRY_SCHEMA_KEY
 
-    engine = create_engine(f"sqlite:///{default_path}")
-    with engine.connect() as connection:
-        connection.execute(text(f"ATTACH DATABASE '{store_path}' AS vectors"))
+    targets = _resolved_embedding_targets(tmp_path, registered_models=("tagged",))
+    target = targets["database.embedding"]
+    from omop_emb.backends import open_vector_store_writer
 
-        rows = _embedding_registry_rows(connection, schema="vectors")
-        unqualified = _embedding_registry_rows(connection, schema=None)
-    engine.dispose()
+    writer = open_vector_store_writer(target.resolved_vector_store)
+    try:
+        assert physical_schema_of(writer.emb_engine, schema_tag=REGISTRY_SCHEMA_KEY) is None
+    finally:
+        writer.close()
+    result = verify_database_target(target)
+    assert "embedding_registry_present" in {d.code for d in result.diagnostics}
 
-    assert [row["model_name"] for row in rows] == ["in-the-store"]
-    assert [row["model_name"] for row in unqualified] == ["in-the-default-schema"]
+
+def test_read_paths_use_reader_and_writer_attempts_are_refused(tmp_path: Path) -> None:
+    from omop_emb.backends import open_vector_store_reader
+    from omop_emb.utils.errors import ReadOnlyStoreError
+
+    target = _resolved_embedding_targets(tmp_path, registered_models=("read-only",))[
+        "database.embedding"
+    ]
+    reader = open_vector_store_reader(target.resolved_vector_store)
+    try:
+        result = verify_database_target(target)
+        assert result.connected is True
+        with pytest.raises(ReadOnlyStoreError):
+            reader.register_model(
+                model_name="forbidden-write",
+                dimensions=3,
+                provider_type="ollama",
+            )
+    finally:
+        reader.close()
+
+
+def test_duplicate_model_registration_has_actionable_conflict(tmp_path: Path) -> None:
+    from omop_emb.backends import open_vector_store_writer
+    from omop_emb.backends.index_config import FlatIndexConfig
+    from omop_emb.utils.errors import ModelRegistrationConflictError
+
+    target = _resolved_embedding_targets(tmp_path, registered_models=("duplicate",))[
+        "database.embedding"
+    ]
+    writer = open_vector_store_writer(target.resolved_vector_store)
+    try:
+        with pytest.raises(ModelRegistrationConflictError) as caught:
+            writer.register_model(
+                model_name="duplicate",
+                dimensions=4,
+                provider_type="ollama",
+                index_config=FlatIndexConfig(),
+            )
+    finally:
+        writer.close()
+    failure = classify_connection_error(caught.value)
+    assert failure.kind is ConnectionFailureKind.MODEL_REGISTRATION_CONFLICT
+    assert "one store per model per database" in failure.detail
+    assert "reuse the existing store or choose another database" in failure.detail
+
+
+def test_legacy_registry_error_is_specific_and_actionable() -> None:
+    from omop_emb.model_registry.model_registry_orm import MIGRATION_COMMAND
+    from omop_emb.utils.errors import LegacyRegistryError
+
+    failure = classify_connection_error(LegacyRegistryError("old registry"))
+
+    assert failure.kind is ConnectionFailureKind.LEGACY_REGISTRY
+    assert "predates omop-emb 3.0" in failure.detail
+    assert "migration script is tracked" in failure.detail
+    assert "once it ships" in failure.detail
+    assert "oa-configurator issue #40" in failure.detail
+    assert MIGRATION_COMMAND in failure.detail
+
+
+@pytest.mark.parametrize(
+    ("error", "kind", "detail"),
+    (
+        (
+            MisplacedRegistryError(),
+            ConnectionFailureKind.MISPLACED_REGISTRY,
+            "outside the schema resolved",
+        ),
+        (
+            MissingStorageTableError(),
+            ConnectionFailureKind.MISSING_STORAGE_TABLE,
+            "storage table is missing",
+        ),
+    ),
+)
+def test_registry_layout_errors_have_specific_diagnostics(error, kind, detail) -> None:
+    failure = classify_connection_error(error)
+    assert failure.kind is kind
+    assert detail in failure.detail
 
 
 def test_the_embedding_targets_carry_the_stores_schema(tmp_path: Path) -> None:
@@ -315,101 +370,59 @@ def test_the_embedding_targets_carry_the_stores_schema(tmp_path: Path) -> None:
         target.key: target
         for target in resolve_database_targets(load_configuration(config_path=path))
     }
+    assert targets["database.embedding"].resolved_vector_store.database.schema_name == "groundworkers"
+    assert targets["database.groundworkers"].resolved_vector_store.database.schema_name == "groundworkers"
+    assert (
+        targets["database.embedding"].resolved_vector_store.database.schema_name
+        == "groundworkers"
+    )
 
-    assert targets["database.embedding"].embedding_schema == "groundworkers"
-    assert targets["database.groundworkers"].embedding_schema == "groundworkers"
-    assert targets["database.cdm"].embedding_schema is None
 
+def _resolved_embedding_targets(tmp_path: Path, *, registered_models: tuple[str, ...]):
+    from omop_emb.backends import open_vector_store_writer
+    from omop_emb.backends.index_config import FlatIndexConfig
 
-def _create_registry(db_path: Path, *, model_name: str) -> None:
-    engine = create_engine(f"sqlite:///{db_path}")
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                CREATE TABLE model_registry (
-                    model_name TEXT PRIMARY KEY,
-                    storage_identifier TEXT NOT NULL,
-                    dimensions INTEGER NOT NULL,
-                    index_type TEXT NOT NULL,
-                    metric_type TEXT
-                )
-                """
+    stack = build_embedding_stack()
+    stack.connections["embedding_main"].database_name = str(tmp_path / "emb.db")
+    stack.connections["cdm_main"].database_name = str(tmp_path / "cdm.db")
+    config_path = tmp_path / "config.toml"
+    save_stack_config(stack, config_path)
+    targets = {
+        target.key: target
+        for target in resolve_database_targets(load_configuration(config_path=config_path))
+    }
+    cdm_engine = create_engine(targets["database.groundworkers"].connection_url)
+    with cdm_engine.begin() as connection:
+        connection.execute(text('CREATE TABLE IF NOT EXISTS "concept" (id INTEGER PRIMARY KEY)'))
+        connection.execute(text('CREATE TABLE IF NOT EXISTS "concept_synonym" (id INTEGER PRIMARY KEY)'))
+    cdm_engine.dispose()
+    store = open_vector_store_writer(targets["database.embedding"].resolved_vector_store)
+    try:
+        for model_name in registered_models:
+            store.register_model(
+                model_name=model_name,
+                dimensions=3,
+                provider_type="ollama",
+                index_config=FlatIndexConfig(),
             )
-        )
-        connection.execute(
-            text(
-                "INSERT INTO model_registry "
-                "(model_name, storage_identifier, dimensions, index_type, metric_type) "
-                "VALUES (:model_name, 'emb_test_model', 3, 'FLAT', NULL)"
-            ),
-            {"model_name": model_name},
-        )
-    engine.dispose()
+    finally:
+        store.close()
+    return targets
 
 
 def test_groundworkers_tuning_warns_when_grounding_model_is_missing(
     tmp_path: Path,
 ) -> None:
-    db_path = tmp_path / "emb.db"
-    engine = create_engine(f"sqlite:///{db_path}")
-    with engine.begin() as connection:
-        connection.execute(text('CREATE TABLE "concept" (id INTEGER PRIMARY KEY)'))
-        connection.execute(
-            text('CREATE TABLE "concept_synonym" (id INTEGER PRIMARY KEY)')
-        )
-        connection.execute(
-            text(
-                """
-                CREATE TABLE model_registry (
-                    model_name TEXT PRIMARY KEY,
-                    storage_identifier TEXT NOT NULL,
-                    dimensions INTEGER NOT NULL,
-                    index_type TEXT NOT NULL,
-                    metric_type TEXT
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO model_registry
-                    (model_name, storage_identifier, dimensions, index_type, metric_type)
-                VALUES ('other-model', 'emb_other_model', 3, 'FLAT', NULL)
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                CREATE TABLE emb_other_model (
-                    concept_id INTEGER PRIMARY KEY,
-                    domain_id TEXT NOT NULL,
-                    vocabulary_id TEXT NOT NULL,
-                    is_standard BOOLEAN NOT NULL,
-                    is_valid BOOLEAN NOT NULL,
-                    embedding BLOB NOT NULL
-                )
-                """
-            )
-        )
-    engine.dispose()
-
-    result = verify_database_target(
-        _target(
-            db_path,
-            role="groundworkers",
-            expected_model_name="missing-model",
-            embedding_connection_url=f"sqlite:///{db_path}",
-        )
-    )
+    targets = _resolved_embedding_targets(tmp_path, registered_models=("other-model",))
+    result = verify_database_target(targets["database.groundworkers"])
 
     assert result.connected is True
     assert result.has_warnings is True
     assert {diagnostic.code for diagnostic in result.diagnostics} >= {
-        "trigram_indexes_missing",
         "grounding_embedding_model_missing",
+    }
+    assert "trigram_indexes_missing" not in {
+        diagnostic.code for diagnostic in result.diagnostics
     }
 
 
@@ -432,26 +445,52 @@ def test_connection_errors_are_classified_without_original_message() -> None:
         assert "private" not in failure.detail
 
 
+@pytest.mark.parametrize(
+    ("sqlstate", "kind"),
+    (
+        ("3D000", ConnectionFailureKind.DATABASE_MISSING),
+        ("3F000", ConnectionFailureKind.SCHEMA_MISSING),
+        ("42P01", ConnectionFailureKind.TABLE_MISSING),
+    ),
+)
+def test_sqlstate_precedes_ambiguous_does_not_exist_text(sqlstate, kind) -> None:
+    error = RuntimeError("role does not exist")
+    error.sqlstate = sqlstate
+    error.orig = SimpleNamespace(sqlstate=sqlstate)
+
+    assert classify_connection_error(error).kind is kind
+
+
+def test_oa_schema_drift_classification_includes_acknowledgement_hint() -> None:
+    error = type("SchemaDriftError", (Exception,), {})("schema changed")
+
+    failure = classify_connection_error(error)
+
+    assert failure.kind is ConnectionFailureKind.QUERY
+    assert "omop-config acknowledge-schema-migration" in failure.next_action
+
+
 def _target(
     db_path: Path,
     *,
     role: str,
     expected_model_name: str | None = None,
-    embedding_connection_url: str | None = None,
 ) -> DatabaseTarget:
+    resolved_cdm = Resolver(
+        build_cdm_stack(sqlite_path=str(db_path))
+    ).resolve_database("cdm_db")
     return DatabaseTarget(
         key=f"database.{role}",
         label=role,
         database_entry_name="cdm_db",
-        connection_name="main",
-        safe_url=f"sqlite:///{db_path}",
-        cdm_schema="main",
-        vocabulary_schema="main",
-        connection_url=f"sqlite:///{db_path}",
+        connection_name=resolved_cdm.connection.name,
+        safe_url=resolved_cdm.connection.safe_url,
+        cdm_schema=None,
+        vocabulary_schema=None,
+        connection_url=resolved_cdm.connection.url,
         role=role,
         expected_embedding_model_name=expected_model_name,
-        embedding_safe_url=embedding_connection_url,
-        embedding_connection_url=embedding_connection_url,
+        resolved_cdm_database=resolved_cdm,
     )
 
 

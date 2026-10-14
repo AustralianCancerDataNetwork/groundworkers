@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
+import pytest
 from groundskeeping.configurator import ConfigWizardController, MutationOperation
-from oa_configurator import load_stack_config_from_path
+from oa_configurator import ConnectionConfig, load_stack_config
 from oa_configurator.io import save_stack_config
 
 from groundworkers.application.setup.configuration import load_configuration
@@ -68,11 +70,13 @@ def test_the_journey_creates_the_store_its_database_and_the_reference(
         "applied"
     )
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     config = GroundworkersConfig.validate_candidate(stack)
     assert config.vector_store_name == "embeddings"
     assert stack.vector_stores["embeddings"].database == "embedding_db"
     assert stack.databases["embedding_db"].kind == "generic"
+    saved = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert "schema_name" not in saved["databases"]["embedding_db"]
 
 
 def test_the_default_location_puts_the_vectors_in_the_cdm_database(
@@ -84,14 +88,98 @@ def test_the_default_location_puts_the_vectors_in_the_cdm_database(
 
     assert _drive(path).apply().status.value == "applied"
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     derived = stack.databases["cdm_db_vectors"]
     cdm = stack.databases["cdm_db"]
     assert stack.vector_stores["embeddings"].database == "cdm_db_vectors"
     assert derived.kind == "generic"
     assert derived.connection == cdm.connection
-    assert derived.schema_name == cdm.schema_name
+    assert derived.schema_name == cdm.cdm_schema
     assert set(stack.connections) == {"cdm_main"}
+
+
+@pytest.mark.parametrize(
+    ("dialect", "backend", "cdm_schema", "vocab_schema", "store_schema"),
+    (
+        ("sqlite", "sqlitevec", None, None, None),
+        ("postgresql", "pgvector", "clinical", "vocabulary", "groundworkers"),
+    ),
+)
+def test_cdm_store_location_round_trips_when_the_wizard_reopens(
+    tmp_path: Path,
+    dialect: str,
+    backend: str,
+    cdm_schema: str | None,
+    vocab_schema: str | None,
+    store_schema: str | None,
+) -> None:
+    path = tmp_path / f"{dialect}.toml"
+    save_stack_config(
+        build_cdm_stack(
+            sqlite_path=str(tmp_path / "cdm.db"),
+            cdm_schema=cdm_schema,
+            vocab_schema=vocab_schema,
+        ),
+        path,
+    )
+
+    assert _drive(path, backend_type=backend).apply().status.value == "applied"
+
+    stack = load_stack_config(path)
+    store_database = stack.databases["cdm_db_vectors"]
+    assert store_database.schema_name == store_schema
+    reopened = ConfigWizardController(
+        vector_store_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(config_path=path),
+    )
+    snapshot = reopened.start()
+    location = next(
+        field for field in snapshot.step.fields if field.key == "store_location"
+    )
+    assert location.default == STORE_LOCATION_CDM
+
+
+@pytest.mark.parametrize("same_connection", [False, True])
+def test_separate_store_location_round_trips_on_either_connection(
+    tmp_path: Path, same_connection: bool
+) -> None:
+    path = tmp_path / "config.toml"
+    stack = build_cdm_stack(
+        cdm_schema="clinical", vocab_schema="vocabulary"
+    )
+    if not same_connection:
+        stack.connections["vectors"] = ConnectionConfig(
+            dialect="postgresql+psycopg",
+            host="vectors.example.test",
+            port=5432,
+            user="groundworkers",
+            database_name="vectors",
+        )
+    save_stack_config(stack, path)
+    database_name = "cdm_db_vectors" if same_connection else "separate_vectors"
+    connection_name = "cdm_main" if same_connection else "vectors"
+
+    assert _drive(
+        path,
+        location=STORE_LOCATION_SEPARATE,
+        backend_type="pgvector",
+        store_database_name=database_name,
+        store_connection_name=connection_name,
+        store_schema_name="vectors",
+    ).apply().status.value == "applied"
+
+    reopened = ConfigWizardController(
+        vector_store_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(config_path=path),
+    )
+    location = next(
+        field for field in reopened.start().step.fields if field.key == "store_location"
+    )
+    assert location.default == STORE_LOCATION_SEPARATE
+    saved = load_stack_config(path)
+    store_database = saved.databases[database_name]
+    assert store_database.connection == connection_name
+    assert store_database.schema_name == "vectors"
 
 
 def test_the_cdm_location_needs_no_database_answers(tmp_path: Path) -> None:
@@ -124,7 +212,7 @@ def test_the_backend_choice_is_carried_through(tmp_path: Path) -> None:
         path, location=STORE_LOCATION_SEPARATE, backend_type="pgvector"
     ).apply()
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     assert stack.vector_stores["embeddings"].backend_type == "pgvector"
 
 
@@ -155,12 +243,15 @@ def test_the_schema_default_follows_the_cdm_rather_than_public(
     """'public' is a PostgreSQL name, and it was offered whatever the dialect and
     whatever the CDM's own schema was."""
     path = tmp_path / "config.toml"
-    save_stack_config(build_cdm_stack(schema_name="omop", vocab_schema="omop"), path)
+    save_stack_config(build_cdm_stack(cdm_schema="omop", vocab_schema="omop"), path)
 
     _drive(path, location=STORE_LOCATION_SEPARATE).apply()
 
-    stack = load_stack_config_from_path(path)
-    assert stack.databases["embedding_db"].schema_name == "omop"
+    stack = load_stack_config(path)
+    store_name = GroundworkersConfig.validate_candidate(stack).vector_store_name
+    assert store_name is not None
+    store_database = stack.vector_stores[store_name].database
+    assert stack.databases[store_database].schema_name == "groundworkers"
 
 
 def test_a_blank_faiss_cache_is_left_unset(tmp_path: Path) -> None:
@@ -169,7 +260,7 @@ def test_a_blank_faiss_cache_is_left_unset(tmp_path: Path) -> None:
 
     _drive(path, faiss_cache_dir="").apply()
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     assert stack.vector_stores["embeddings"].faiss_cache_dir is None
 
 
@@ -181,7 +272,7 @@ def test_the_store_reuses_a_named_connection_rather_than_defining_one(
 
     _drive(path, location=STORE_LOCATION_SEPARATE).apply()
 
-    stack = load_stack_config_from_path(path)
+    stack = load_stack_config(path)
     assert set(stack.connections) == {"cdm_main"}
     assert stack.databases["embedding_db"].connection == "cdm_main"
 

@@ -107,7 +107,20 @@ def test_migration_dependencies_use_explicit_public_boundaries() -> None:
     )
     dependencies = metadata["project"]["dependencies"]
 
-    assert "omop-llm>=1,<2" in dependencies
+    assert "oa-configurator>=2.0.0,<3" in dependencies
+    assert "omop-alchemy>=2.0.0,<3" in dependencies
+    assert "omop-graph>=3.0.0,<4" in dependencies
+    assert "omop-emb>=3.0.0,<4" in dependencies
+    assert "omop-llm>=1.0.2,<2" in dependencies
+    assert metadata["project"]["optional-dependencies"]["tui"][0] == (
+        "groundskeeping>=0.9.1,<1"
+    )
+    assert metadata["project"]["optional-dependencies"]["embedding-pgvector"] == [
+        "omop-emb[pgvector]>=3.0.0,<4"
+    ]
+    assert metadata["project"]["optional-dependencies"]["embedding-faiss"] == [
+        "omop-emb[faiss-cpu]>=3.0.0,<4"
+    ]
 
     # RELEASE BLOCKER. No source pins may survive into a publishable artifact.
     sources = metadata.get("tool", {}).get("uv", {}).get("sources", {})

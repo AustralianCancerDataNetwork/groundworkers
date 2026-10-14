@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from groundskeeping.configurator import ConfigWizardController, MutationOperation
-from oa_configurator import load_stack_config_from_path, save_stack_config
+from oa_configurator import load_stack_config, save_stack_config
 
 from groundworkers.application.setup.configuration_provider import (
     STORE_LOCATION_CDM,
@@ -77,7 +77,7 @@ def test_cdm_setup_saves_companion_cli_sections_with_custom_name(
     }
     assert controller.apply().status.value == "applied"
 
-    saved = load_stack_config_from_path(path)
+    saved = load_stack_config(path)
     assert saved.tools["omop_alchemy"]["cdm_db"] == "warehouse_cdm"
     assert saved.tools["omop_graph"]["cdm_db"] == "warehouse_cdm"
 
@@ -155,7 +155,7 @@ def test_vector_store_setup_completes_and_saves_both_package_sections(
     }
     assert controller.apply().status.value == "applied"
 
-    saved = load_stack_config_from_path(path)
+    saved = load_stack_config(path)
     assert saved.tools["omop_emb"] == {
         "cdm_db": "cdm_db",
         "embedding_model_name": "embedding_model",

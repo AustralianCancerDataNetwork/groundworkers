@@ -36,7 +36,7 @@ from groundworkers.services.source_planning import (
 )
 
 if TYPE_CHECKING:
-    from omop_emb import EmbeddingBackend
+    from omop_emb.backends import EmbeddingStoreReader
     from omop_llm import ModelBackend
 
 logger = logging.getLogger(__name__)
@@ -85,22 +85,24 @@ class GroundworkersApp:
 
 def build_adapters(config: AppConfig) -> Adapters:
     adapters = Adapters()
-    adapters.cdm = CDMAdapter(config.cdm_engine)
+    adapters.cdm = CDMAdapter(
+        config.cdm_engine,
+        vocab_engine=config.cdm_vocab_engine,
+        session_factory=config.cdm_session_factory,
+    )
 
     resolved_store = config.vector_store
     resolved_model = config.embedding_model
-    shared_backend: EmbeddingBackend | None = None
+    shared_backend: EmbeddingStoreReader | None = None
 
-    def get_embedding_backend() -> EmbeddingBackend:
+    def get_embedding_backend() -> EmbeddingStoreReader:
         nonlocal shared_backend
         if shared_backend is None:
             if resolved_store is None:
                 raise RuntimeError("No vector store is configured.")
-            from omop_emb.backends import (
-                resolve_backend_from_resolved_vector_store,
-            )
+            from omop_emb.backends import open_vector_store_reader
 
-            shared_backend = resolve_backend_from_resolved_vector_store(resolved_store)
+            shared_backend = open_vector_store_reader(resolved_store)
         return shared_backend
 
     shared_model_backend: ModelBackend | None = None
@@ -129,7 +131,7 @@ def build_adapters(config: AppConfig) -> Adapters:
             backend_type=resolved_store.backend_type,
             default_model_name=(resolved_model.model if resolved_model else None),
             model_backend_factory=(get_model_backend if resolved_model else None),
-            cdm_engine=config.cdm_engine,
+            cdm_session_factory=config.cdm_session_factory,
             faiss_cache_dir=resolved_store.faiss_cache_dir,
             configuration_detail=configuration_detail,
         )
@@ -149,6 +151,7 @@ def build_adapters(config: AppConfig) -> Adapters:
     complete_embedding = resolved_store is not None and resolved_model is not None
     adapters.omop_graph = OmopGraphAdapter(
         engine=config.cdm_engine,
+        cdm_session_factory=config.cdm_session_factory,
         embedding_backend_factory=(
             get_embedding_backend if complete_embedding else None
         ),
@@ -251,6 +254,8 @@ def _build_plugin_context(
         resolver=PluginConfigResolver(Resolver(config.stack)),
         cdm_database=config.cdm_database,
         cdm_engine=config.cdm_engine,
+        cdm_session_factory=config.cdm_session_factory,
+        cdm_vocab_engine=config.cdm_vocab_engine,
         vector_store=config.vector_store,
         embedding_backend_factory=adapters.embedding_backend_factory,
         embedding_model_backend_factory=adapters.embedding_model_backend_factory,

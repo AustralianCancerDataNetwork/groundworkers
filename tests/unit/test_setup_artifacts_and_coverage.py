@@ -80,8 +80,11 @@ def test_filtered_scope_does_not_use_unfiltered_omop_emb_aggregate() -> None:
 
 
 def test_unfiltered_coverage_uses_pushed_down_counts() -> None:
+    calls: list[str] = []
+
     class Backend:
-        def get_embedding_count_by_vocabulary(self, **_kwargs):
+        def get_embedding_count_by_vocabulary(self, *, model_name):
+            calls.append(model_name)
             return (("SNOMED", "4"),)
 
     result = load_coverage(
@@ -93,6 +96,7 @@ def test_unfiltered_coverage_uses_pushed_down_counts() -> None:
     assert result.available is True
     assert result.rows[0].pending == 6
     assert result.rows[0].coverage_percent == 40.0
+    assert calls == ["test-model"]
 
 
 def test_mismatched_counts_are_rejected() -> None:

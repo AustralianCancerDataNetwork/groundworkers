@@ -8,18 +8,18 @@ from typing import Any
 
 import numpy as np
 from omop_emb import (
-    EmbeddingBackend,
     EmbeddingConceptFilter,
     EmbeddingModelRecord,
     EmbeddingReaderInterface,
     EmbeddingRole,
     MetricType,
 )
+from omop_emb.backends import EmbeddingStoreReader
 from omop_llm import ModelBackend
-from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 from groundworkers.base.concept_payload import serialise_nearest_match
-from groundworkers.base.errors import GroundworkersError
+from groundworkers.base.errors import GroundworkersError, embedding_store_error
 from groundworkers.base.results import enum_value
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,11 @@ class OmopEmbAdapter:
     def __init__(
         self,
         *,
-        backend_factory: Callable[[], EmbeddingBackend],
+        backend_factory: Callable[[], EmbeddingStoreReader],
         backend_type: str | None,
         default_model_name: str | None = None,
         model_backend_factory: Callable[[], ModelBackend] | None = None,
-        cdm_engine: Engine | None = None,
+        cdm_session_factory: Callable[[], Session] | None = None,
         faiss_cache_dir: str | None = None,
         configuration_detail: str | None = None,
     ) -> None:
@@ -48,10 +48,10 @@ class OmopEmbAdapter:
         self._backend_type = backend_type
         self._default_model_name = default_model_name
         self._model_backend_factory = model_backend_factory
-        self._cdm_engine = cdm_engine
+        self._cdm_session_factory = cdm_session_factory
         self._faiss_cache_dir = faiss_cache_dir
         self._configuration_detail = configuration_detail
-        self._backend: EmbeddingBackend | None = None
+        self._backend: EmbeddingStoreReader | None = None
         self._model_backend: ModelBackend | None = None
         self._reader_cache: dict[tuple[str, str, str], EmbeddingReaderInterface] = {}
         self._reader_cache_lock = threading.Lock()
@@ -104,8 +104,12 @@ class OmopEmbAdapter:
 
         with self._reader_cache_lock:
             self._reader_cache.clear()
+            backend = self._backend
             self._backend = None
             self._model_backend = None
+        close_backend = getattr(backend, "close", None)
+        if callable(close_backend):
+            close_backend()
 
     def resolve_model_name(self, model_name: str | None = None) -> str:
         """Resolve a caller-supplied or configured registered model name."""
@@ -117,14 +121,10 @@ class OmopEmbAdapter:
 
         try:
             backend = self._get_backend()
-            records = EmbeddingReaderInterface.list_registered_models(backend=backend)
+            records = backend.get_registered_models()
             models: list[dict[str, Any]] = []
             for record in records:
-                metric_type = record.metric_type or MetricType.COSINE
-                concept_count = backend.get_embedding_count(
-                    model_name=record.model_name,
-                    metric_type=metric_type,
-                )
+                concept_count = backend.get_embedding_count(model_name=record.model_name)
                 models.append(
                     {
                         "model_name": record.model_name,
@@ -147,8 +147,12 @@ class OmopEmbAdapter:
         except GroundworkersError as exc:
             detail = exc.message
         except Exception as exc:
+            translated = embedding_store_error(exc)
+            if translated is not None:
+                detail = translated.message
+            else:
             # Broad except: converted to a safe status category.
-            detail = f"Embedding store inspection failed with {type(exc).__name__}."
+                detail = f"Embedding store inspection failed with {type(exc).__name__}."
         return {
             "available": False,
             "backend_type": self._backend_type,
@@ -181,6 +185,9 @@ class OmopEmbAdapter:
                 "NOT_FOUND",
                 f"Concept {concept_id} is not present in the embedding index",
             ) from exc
+        except Exception as exc:
+            _raise_embedding_store_error(exc)
+            raise
         if concept_id not in vectors:
             raise GroundworkersError(
                 "NOT_FOUND",
@@ -239,6 +246,7 @@ class OmopEmbAdapter:
                 faiss_index_config=record.index_config,
             )
         except Exception as exc:
+            _raise_embedding_store_error(exc)
             logger.exception(
                 "Embedding search failed for model %r",
                 record.model_name,
@@ -275,6 +283,7 @@ class OmopEmbAdapter:
                 "The configured embedding model returned invalid vectors.",
             ) from exc
         except Exception as exc:
+            _raise_embedding_store_error(exc)
             logger.exception(
                 "Embedding encode failed for model %r",
                 record.model_name,
@@ -324,6 +333,7 @@ class OmopEmbAdapter:
                 faiss_index_config=record.index_config,
             )
         except Exception as exc:
+            _raise_embedding_store_error(exc)
             logger.exception(
                 "Async embedding search failed for model %r",
                 record.model_name,
@@ -393,6 +403,7 @@ class OmopEmbAdapter:
         except GroundworkersError:
             raise
         except Exception as exc:
+            _raise_embedding_store_error(exc)
             logger.exception(
                 "Async batch embedding search failed for model %r",
                 record.model_name,
@@ -454,11 +465,14 @@ class OmopEmbAdapter:
             "vector": row.tolist(),
         }
 
-    def _get_backend(self) -> EmbeddingBackend:
+    def _get_backend(self) -> EmbeddingStoreReader:
         if self._backend is None:
             try:
                 self._backend = self._backend_factory()
             except Exception as exc:
+                translated = embedding_store_error(exc)
+                if translated is not None:
+                    raise translated from exc
                 raise GroundworkersError(
                     "BACKEND_UNAVAIL",
                     "The configured embedding store is unavailable.",
@@ -468,10 +482,13 @@ class OmopEmbAdapter:
     def _resolve_model_record(self, model_name: str | None) -> EmbeddingModelRecord:
         backend = self._get_backend()
         requested_name = model_name or self._default_model_name
-        records = EmbeddingReaderInterface.list_registered_models(
-            backend=backend,
-            model_name=requested_name,
-        )
+        try:
+            records = backend.get_registered_models(model_name=requested_name)
+        except Exception as exc:
+            translated = embedding_store_error(exc)
+            if translated is not None:
+                raise translated from exc
+            raise
         if requested_name is not None:
             if not records:
                 raise GroundworkersError(
@@ -500,14 +517,18 @@ class OmopEmbAdapter:
             if cached is not None:
                 return cached
 
-            reader = EmbeddingReaderInterface(
-                model=record.model_name,
-                backend=self._get_backend(),
-                metric_type=metric_type,
-                omop_cdm_engine=self._cdm_engine,
-                provider_type=provider_type,
-                faiss_cache_dir=self._faiss_cache_dir,
-            )
+            try:
+                reader = EmbeddingReaderInterface(
+                    model=record.model_name,
+                    backend=self._get_backend(),
+                    metric_type=metric_type,
+                    cdm_session_factory=self._cdm_session_factory,
+                    provider_type=provider_type,
+                    faiss_cache_dir=self._faiss_cache_dir,
+                )
+            except Exception as exc:
+                _raise_embedding_store_error(exc)
+                raise
             self._reader_cache[cache_key] = reader
             return reader
 
@@ -555,7 +576,7 @@ class OmopEmbAdapter:
         )
 
     @staticmethod
-    def _backend_type_from_backend(backend: EmbeddingBackend) -> str | None:
+    def _backend_type_from_backend(backend: EmbeddingStoreReader) -> str | None:
         return enum_value(getattr(backend, "backend_type", None))
 
     @staticmethod
@@ -571,3 +592,9 @@ def _embedding_array(vectors: object, *, expected_rows: int) -> np.ndarray:
     if result.shape[0] != expected_rows:
         raise RuntimeError(f"Expected {expected_rows} embeddings, got {result.shape[0]}")
     return result
+
+
+def _raise_embedding_store_error(exc: BaseException) -> None:
+    translated = embedding_store_error(exc)
+    if translated is not None:
+        raise translated from exc

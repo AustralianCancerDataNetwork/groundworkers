@@ -68,17 +68,13 @@ class DatabaseTarget:
     database_entry_name: str
     connection_name: str
     safe_url: str
-    cdm_schema: str
-    vocabulary_schema: str
+    cdm_schema: str | None
+    vocabulary_schema: str | None
     connection_url: str = field(repr=False)
     role: str = "cdm"
-    # The schema omop-emb's registry and storage tables live in, when this target
-    # touches them. Distinct from cdm_schema, which is never None and falls back
-    # to a dialect default; None here means "no override, use the search path".
-    embedding_schema: str | None = None
     expected_embedding_model_name: str | None = None
-    embedding_safe_url: str | None = None
-    embedding_connection_url: str | None = field(default=None, repr=False)
+    resolved_vector_store: Any | None = field(default=None, repr=False)
+    resolved_cdm_database: Any | None = field(default=None, repr=False)
 
     def __repr__(self) -> str:
         return (
@@ -97,7 +93,14 @@ class ConnectionFailureKind(StrEnum):
     TIMEOUT = "timeout"
     AUTHENTICATION = "authentication"
     DATABASE_MISSING = "database_missing"
+    SCHEMA_MISSING = "schema_missing"
+    TABLE_MISSING = "table_missing"
     DRIVER_MISSING = "driver_missing"
+    LEGACY_REGISTRY = "legacy_registry"
+    MISPLACED_REGISTRY = "misplaced_registry"
+    MISSING_STORAGE_TABLE = "missing_storage_table"
+    MODEL_REGISTRATION_CONFLICT = "model_registration_conflict"
+    READ_ONLY_STORE = "read_only_store"
     QUERY = "query_failure"
     OTHER = "other"
 

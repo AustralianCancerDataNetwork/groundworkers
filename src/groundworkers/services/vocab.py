@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from oa_configurator import Role, physical_schema_of
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
     Concept_Ancestor,
@@ -24,7 +25,6 @@ from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.sql import (
     NormalizationProfile,
-    effective_schema,
     normalization_expression,
     normalization_key_expression,
     normalized_key,
@@ -129,7 +129,7 @@ class VocabService:
 
     def __init__(self, cdm: CDMAdapter) -> None:
         self._cdm = cdm
-        self._domain_names = DomainNameResolver(cdm.engine)
+        self._domain_names = DomainNameResolver(cdm.vocab_engine)
         self._fts_name_sidecar: bool | None = None
         self._fts_synonym_sidecar: bool | None = None
 
@@ -149,9 +149,10 @@ class VocabService:
         """
         if self._fts_name_sidecar is not None:
             return
-        schema = effective_schema(self._cdm.engine)
+        engine = self._cdm.vocab_engine
+        schema = physical_schema_of(engine, schema_tag=Role.VOCAB)
         try:
-            inspector = sa_inspect(self._cdm.engine)
+            inspector = sa_inspect(engine)
             concept_cols = {
                 c["name"] for c in inspector.get_columns("concept", schema=schema)
             }
@@ -172,8 +173,8 @@ class VocabService:
                 schema,
                 exc_info=True,
             )
-            self._fts_name_sidecar = False
-            self._fts_synonym_sidecar = False
+            self._fts_name_sidecar = None
+            self._fts_synonym_sidecar = None
 
     @property
     def fts_available(self) -> bool:
@@ -413,7 +414,7 @@ class VocabService:
 
             with self._cdm.session() as session:
                 if (
-                    self._cdm.engine.dialect.name == "postgresql"
+                    self._cdm.vocab_engine.dialect.name == "postgresql"
                     and plan != "unindexed_scan"
                 ):
                     session.execute(
@@ -527,7 +528,7 @@ class VocabService:
         include_synonyms: bool,
         allow_unindexed_scan: bool,
     ) -> str:
-        engine = self._cdm.engine
+        engine = self._cdm.vocab_engine
         indexed = engine.dialect.name == "postgresql" and self._has_normalized_index(
             "concept", "concept_name"
         )
@@ -549,7 +550,7 @@ class VocabService:
         )
 
     def _has_normalized_index(self, table: str, column_name: str) -> bool:
-        engine = self._cdm.engine
+        engine = self._cdm.vocab_engine
         key = (engine, table, column_name)
         now = time.monotonic()
         with _NORMALIZED_INDEX_CACHE_LOCK:
@@ -564,12 +565,21 @@ class VocabService:
             with engine.connect() as connection:
                 found = normalized_index_matches(
                     connection,
-                    effective_schema(connection),
+                    physical_schema_of(connection, schema_tag=Role.VOCAB),
                     table,
                     column_name,
                 )
-        except Exception:
-            found = False
+        except Exception as exc:
+            logger.warning(
+                "Could not check normalized-name index %s.%s; search availability is unknown.",
+                table,
+                column_name,
+                exc_info=True,
+            )
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL",
+                f"Could not check the normalized-name index for {table}.{column_name} ({type(exc).__name__}).",
+            ) from exc
         with _NORMALIZED_INDEX_CACHE_LOCK:
             _NORMALIZED_INDEX_CACHE[key] = (found, now)
         return found

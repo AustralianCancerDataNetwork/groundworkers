@@ -9,7 +9,8 @@ from oa_configurator import (
     Resolver,
     safe_endpoint,  # type: ignore[import-untyped]
 )
-from omop_emb import EmbeddingBackend, MetricType
+from omop_emb import EmbeddingBackend
+from omop_emb.backends import EmbeddingStoreReader
 from omop_llm import (
     ModelBackend,
     build_model_backend_from_resolved,
@@ -63,9 +64,9 @@ def initialize_embedding_store(
             groundworkers.vector_store_name
         )
         if initializer is None:
-            from omop_emb.backends import initialize_resolved_vector_store
+            from omop_emb.backends import open_vector_store_writer
 
-            initializer = initialize_resolved_vector_store
+            initializer = open_vector_store_writer
         backend = initializer(resolved)
         try:
             records = backend.get_registered_models()
@@ -82,16 +83,12 @@ def initialize_embedding_store(
                     index_type=required_enum_value(record.index_type),
                     has_embeddings=backend.has_any_embeddings(
                         model_name=record.model_name,
-                        metric_type=record.metric_type or MetricType.COSINE,
-                        _model_record=record,
                     ),
                 )
                 for record in records
             )
         finally:
-            engine = getattr(backend, "emb_engine", None)
-            if engine is not None:
-                engine.dispose()
+            backend.close()
     except Exception as exc:
         return EmbeddingStoreSnapshot(
             state=EmbeddingStoreState.UNREACHABLE,
@@ -172,7 +169,7 @@ def load_embedding_configuration(
 
 
 def probe_embedding_store(
-    backend_factory: Callable[[], EmbeddingBackend] | None,
+    backend_factory: Callable[[], EmbeddingStoreReader] | None,
     *,
     backend_type: str | None,
 ) -> EmbeddingStoreSnapshot:
@@ -189,11 +186,8 @@ def probe_embedding_store(
         records = backend.get_registered_models()
         models = []
         for record in records:
-            metric = record.metric_type or MetricType.COSINE
             has_embeddings = backend.has_any_embeddings(
                 model_name=record.model_name,
-                metric_type=metric,
-                _model_record=record,
             )
             models.append(
                 RegisteredEmbeddingModel(

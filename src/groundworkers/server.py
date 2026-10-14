@@ -23,8 +23,9 @@ load_environment()
 from oa_configurator import ConfigurationError
 
 from groundworkers.app import GroundworkersApp, build_application
+from groundworkers.base.errors import scrub_error_message
 from groundworkers.base.server import GroundworkersMCPServer
-from groundworkers.bootstrap import build_app_config
+from groundworkers.bootstrap import DatabaseUnavailableError, build_app_config
 from groundworkers.config import AppConfig, GroundworkersConfig
 from groundworkers.services.semantic_projection.service import SemanticProjectionService
 from groundworkers.tools.concept_tools import register_concept_tools
@@ -293,10 +294,17 @@ def _configuration_failure(
         detail = f"Configuration file not found at {selected}."
     elif "Malformed TOML" in str(exc):
         detail = f"Configuration at {selected} is not valid TOML."
-    elif isinstance(exc, ConfigurationError):
+    elif isinstance(exc, DatabaseUnavailableError):
+        detail = " ".join(scrub_error_message(str(exc)).splitlines()).strip()
+    elif isinstance(exc, (ConfigurationError, ValueError)):
         detail = f"Configuration at {selected} is incomplete or invalid."
+        first_line = scrub_error_message(str(exc).splitlines()[0]).strip()
+        if first_line:
+            detail += f" {first_line}"
     else:
         detail = f"Configuration at {selected} could not be loaded."
+    if isinstance(exc, DatabaseUnavailableError):
+        return detail
     return f"{detail} Run '{recovery}' to choose or repair it."
 
 

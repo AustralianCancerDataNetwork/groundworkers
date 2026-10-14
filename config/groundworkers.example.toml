@@ -1,4 +1,4 @@
-# groundworkers example config — oa-configurator 1.x StackConfig format
+# groundworkers example config — oa-configurator 2.0 StackConfig format
 #
 # Copy to a path selected by the setup console and fill in your values.
 # Full reference: https://oa-configurator.readthedocs.io (or run omop-config --help)
@@ -33,19 +33,19 @@ database_name = "cava"
 # Databases — logical roles over those connections
 # ---------------------------------------------------------------------------
 
-# kind = "cdm" bundles the CDM, vocabulary, and results roles. vocab_connection
-# and vocab_schema fall back to the primary connection and schema when unset.
+# kind = "cdm" bundles the CDM, vocabulary, and results roles. The role schema
+# fields fall back to the primary schema when unset. Omit these fields for SQLite.
 [databases.cdm_db]
 kind         = "cdm"
 connection   = "cdm_main"
-schema_name  = "public"
+cdm_schema   = "public"
 vocab_schema = "public"
 
-# The embedding store's database. kind = "generic": no CDM role-splitting.
+# The embedding store's database. Keep its schema distinct from the CDM schema.
 [databases.emb_db]
 kind        = "generic"
 connection  = "cdm_main"
-schema_name = "public"
+schema_name = "groundworkers"
 
 # ---------------------------------------------------------------------------
 # Providers and models — endpoints, then the named models served through them

@@ -50,8 +50,8 @@ CASES = {
                 "cdm",
                 {
                     "cdm_db_name": "warehouse_cdm",
-                    "schema_name": "main",
-                    "vocab_schema": "main",
+                    "cdm_schema": None,
+                    "vocab_schema": None,
                 },
             ),
         ),
@@ -179,7 +179,7 @@ def test_provider_satisfies_the_hooked_contract(tmp_path: Path, name: str) -> No
 
     def advance_revision(service):
         # Another operator writes the file after this provider prepared its plan.
-        save_stack_config(build_cdm_stack(schema_name="elsewhere"), service._path)
+        save_stack_config(build_cdm_stack(cdm_schema="elsewhere"), service._path)
 
     assert_mutation_service_conformance(
         _factory(tmp_path, f"{name}-hooked"),

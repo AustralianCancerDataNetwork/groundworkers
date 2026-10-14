@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
-from omop_emb.storage.embedding_bundle import ExportMetadata
-
 from groundworkers.application.setup.models import (
     ArtifactCompatibility,
     ArtifactDiscovery,
@@ -99,9 +97,10 @@ def _inspect_bundle(path: Path) -> ArtifactMetadata:
     # Imported lazily: reading exported bundles is an optional capability behind the
     # `embedding-artifacts` extra, and a core install must still import this module.
     import h5py
+    from omop_emb.storage.embedding_bundle import BundleMetadata
 
     with h5py.File(path, "r") as bundle:
-        metadata = ExportMetadata.from_h5_attrs(bundle.attrs)
+        metadata = BundleMetadata.from_h5_attrs(bundle.attrs)
         vocabularies = _optional_csv(bundle.attrs.get("groundworkers_vocabularies"))
         standard_only = _optional_bool(bundle.attrs.get("groundworkers_standard_only"))
         valid_only = _optional_bool(bundle.attrs.get("groundworkers_valid_only"))
@@ -109,7 +108,11 @@ def _inspect_bundle(path: Path) -> ArtifactMetadata:
         path=path,
         model_name=metadata.model_name,
         dimensions=metadata.dimensions,
-        metric=metadata.metric_type.value,
+        metric=(
+            metadata.index_config.metric_type.value
+            if metadata.index_config.metric_type is not None
+            else "cosine"
+        ),
         provider=metadata.provider_type,
         row_count=metadata.row_count,
         vocabularies=vocabularies,

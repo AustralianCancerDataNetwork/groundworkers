@@ -12,9 +12,16 @@ from pathlib import Path
 
 import sqlalchemy as sa
 from groundskeeping.contracts import Command, CommandPlan, CommandStep
-from oa_configurator import Resolver
+from oa_configurator import (
+    ResolvedCDMDatabase,
+    Resolver,
+    Role,
+    physical_schema_of,
+    qualified,
+)
 from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Synonym
-from sqlalchemy import text
+from omop_alchemy.config import create_cdm_engines
+from sqlalchemy import Column, Index, MetaData, String, Table, func
 from sqlalchemy.engine import Connection
 
 from groundworkers.application.setup.configuration import load_configuration
@@ -31,7 +38,6 @@ from groundworkers.application.setup.models import (
 )
 from groundworkers.base.sql import (
     normalization_key_expression,
-    quote_identifier,
 )
 from groundworkers.config import GroundworkersConfig
 
@@ -123,30 +129,35 @@ def start_performance_run(
 @contextmanager
 def _postgres_cdm(
     snapshot: ConfigurationSnapshot, *, purpose: str
-) -> Iterator[tuple[Connection, str | None, str]]:
-    """Yield a transaction on the PostgreSQL CDM, its schema, and a table prefix."""
+) -> Iterator[tuple[Connection, str | None]]:
+    """Yield a transaction on the PostgreSQL vocabulary role and its schema."""
 
     if snapshot.stack is None:
         raise ValueError("A usable stack configuration is required.")
     config = GroundworkersConfig.validate_candidate(snapshot.stack)
     database = Resolver(snapshot.stack).resolve_database(config.cdm_db)
-    engine = database.create_engine()
+    if not isinstance(database, ResolvedCDMDatabase):
+        raise TypeError("Groundworkers cdm_db must resolve to a CDM database.")
+    primary_engine, vocab_engine = create_cdm_engines(
+        database, register_claims=False
+    )
     try:
-        if engine.dialect.name != "postgresql":
+        if vocab_engine.dialect.name != "postgresql":
             raise ValueError(f"{purpose} require a PostgreSQL CDM database.")
-        schema = getattr(database, "schema_name", None)
-        prefix = f"{quote_identifier(engine, schema)}." if schema else ""
-        with engine.begin() as connection:
-            yield connection, schema, prefix
+        schema = database.schema_for_role(Role.VOCAB)
+        with vocab_engine.begin() as connection:
+            yield connection, schema
     finally:
-        engine.dispose()
+        primary_engine.dispose()
+        if vocab_engine is not primary_engine:
+            vocab_engine.dispose()
 
 
 def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
     """Create the optional PostgreSQL trigram indexes Groundworkers can use."""
 
-    with _postgres_cdm(snapshot, purpose="Trigram indexes") as (connection, _, prefix):
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+    with _postgres_cdm(snapshot, purpose="Trigram indexes") as (connection, _schema):
+        connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         for table, column, index_name in (
             ("concept", "concept_name", "idx_concept_lower_name_trgm"),
             (
@@ -155,13 +166,19 @@ def populate_trigram_indexes(snapshot: ConfigurationSnapshot) -> None:
                 "idx_concept_synonym_lower_name_trgm",
             ),
         ):
-            connection.execute(
-                text(
-                    f"CREATE INDEX IF NOT EXISTS {quote_identifier(connection, index_name)} "
-                    f"ON {prefix}{quote_identifier(connection, table)} USING gin "
-                    f"(lower({quote_identifier(connection, column)}) gin_trgm_ops)"
-                )
+            light_table = Table(
+                table,
+                MetaData(),
+                Column(column, String),
+                schema=Role.VOCAB.value,
             )
+            index = Index(
+                index_name,
+                func.lower(light_table.c[column]).label("lower_name"),
+                postgresql_using="gin",
+                postgresql_ops={"lower_name": "gin_trgm_ops"},
+            )
+            connection.execute(sa.schema.CreateIndex(index, if_not_exists=True))
 
 
 def populate_normalized_indexes(snapshot: ConfigurationSnapshot) -> None:
@@ -176,7 +193,6 @@ def populate_normalized_indexes(snapshot: ConfigurationSnapshot) -> None:
     with _postgres_cdm(snapshot, purpose="Normalized-name indexes") as (
         connection,
         schema,
-        prefix,
     ):
         for table, column, _label, index_name in GROUNDWORKERS_NORMALIZED_INDEX_TARGETS:
             model_table = model_tables[table]
@@ -207,8 +223,14 @@ def populate_normalized_indexes(snapshot: ConfigurationSnapshot) -> None:
                 sa.schema.DropIndex(index, if_exists=True)
             )
             connection.execute(sa.schema.CreateIndex(index))
-            qualified = f"{prefix}{quote_identifier(connection, table)}"
-            connection.exec_driver_sql(f"ANALYZE {qualified}")
+            table_name = qualified(
+                connection,
+                table,
+                physical_schema=physical_schema_of(
+                    connection, schema_tag=Role.VOCAB
+                ),
+            )
+            connection.exec_driver_sql(f"ANALYZE {table_name}")
 
 
 def _main(argv: Sequence[str] | None = None) -> int:

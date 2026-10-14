@@ -14,6 +14,11 @@ ErrorCode = Literal[
     "FORMAT_BINARY_DECODE",
     "FORMAT_UNRECOGNISED",
     "MISSING_DEPENDENCY",
+    "LEGACY_REGISTRY",
+    "MISPLACED_REGISTRY",
+    "MISSING_STORAGE_TABLE",
+    "MODEL_REGISTRATION_CONFLICT",
+    "READ_ONLY_STORE",
     "INTERNAL_ERROR",
 ]
 
@@ -78,10 +83,62 @@ class GroundworkersError(Exception):
         return {"error": True, "code": self.code, "message": self.message}
 
 
+def embedding_store_error(exc: BaseException) -> GroundworkersError | None:
+    """Translate known omop-emb 3.0 store failures into public tool errors."""
+
+    try:
+        from omop_emb.model_registry.model_registry_orm import MIGRATION_COMMAND
+        from omop_emb.utils.errors import (
+            LegacyRegistryError,
+            MisplacedRegistryError,
+            MissingStorageTableError,
+            ModelRegistrationConflictError,
+            ReadOnlyStoreError,
+        )
+    except ImportError:
+        return None
+
+    if isinstance(exc, LegacyRegistryError):
+        message = str(exc).lower()
+        if "recognis" in message or "recogniz" in message or "partial" in message:
+            return GroundworkersError("LEGACY_REGISTRY", str(exc))
+        return GroundworkersError(
+            "LEGACY_REGISTRY",
+            "This embedding store predates omop-emb 3.0. The migration script is "
+            "tracked in oa-configurator issue #40; once it ships, run: "
+            f"{MIGRATION_COMMAND}",
+        )
+    if isinstance(exc, MisplacedRegistryError):
+        return GroundworkersError(
+            "MISPLACED_REGISTRY",
+            "The omop-emb registry is outside the schema resolved for the 'registry' "
+            "tag. Correct the vector-store schema configuration or move the registry "
+            "to the resolved schema.",
+        )
+    if isinstance(exc, MissingStorageTableError):
+        return GroundworkersError(
+            "MISSING_STORAGE_TABLE",
+            "The embedding registry refers to a model whose storage table is missing.",
+        )
+    if isinstance(exc, ModelRegistrationConflictError):
+        field = getattr(exc, "conflict_field", "model metadata")
+        return GroundworkersError(
+            "MODEL_REGISTRATION_CONFLICT",
+            f"The model registration conflicts on {field}. Only one store per model "
+            "per database is supported; reuse the existing store or choose another database.",
+        )
+    if isinstance(exc, ReadOnlyStoreError):
+        return GroundworkersError(
+            "READ_ONLY_STORE", "This embedding store is read-only; write operations are refused."
+        )
+    return None
+
+
 __all__ = [
     "ERROR_CODES",
     "ErrorCode",
     "GroundworkersError",
+    "embedding_store_error",
     "internal_error_response",
     "scrub_error_message",
 ]

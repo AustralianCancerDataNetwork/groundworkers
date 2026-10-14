@@ -40,8 +40,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
@@ -72,7 +70,7 @@ structured_output = true
     # Graph/grounding policy comes from Groundworkers' own configuration, not from
     # omop-graph's internal package config.
     assert graph.cdm_database_name == "cdm_db"
-    assert graph.vocabulary_schema == "main"
+    assert graph.vocabulary_schema is None
     assert graph.grounding_max_depth == 4
     assert graph.min_fulltext_overlap == 0.25
     assert provider is not None
@@ -96,8 +94,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 """,
         encoding="utf-8",
     )
@@ -377,8 +373,6 @@ database_name = ":memory:"
 [databases.cdm_db]
 kind = "cdm"
 connection = "main"
-schema_name = "main"
-vocab_schema = "main"
 
 [tools.groundworkers]
 cdm_db = "cdm_db"
