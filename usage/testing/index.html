@@ -1487,6 +1487,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#test-lanes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test lanes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-tests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1498,10 +1509,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#test-configuration" class="md-nav__link">
+  <a href="#configuration-and-optional-provider-smoke" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Test configuration
+        Configuration and optional provider smoke
       
     </span>
   </a>
@@ -1509,10 +1520,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-is-tested" class="md-nav__link">
+  <a href="#coverage-and-skip-evidence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What is tested
+        Coverage and skip evidence
       
     </span>
   </a>
@@ -1847,6 +1858,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#test-lanes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test lanes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#running-tests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1858,10 +1880,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#test-configuration" class="md-nav__link">
+  <a href="#configuration-and-optional-provider-smoke" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Test configuration
+        Configuration and optional provider smoke
       
     </span>
   </a>
@@ -1869,10 +1891,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-is-tested" class="md-nav__link">
+  <a href="#coverage-and-skip-evidence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What is tested
+        Coverage and skip evidence
       
     </span>
   </a>
@@ -1948,52 +1970,67 @@
 
 
 <h1 id="testing">Testing</h1>
-<h2 id="running-tests">Running tests</h2>
-<div class="highlight"><pre><span></span><code><span class="c1"># all tests (unit + integration; integration tests are skipped without a live DB)</span>
-pytest
-
-<span class="c1"># unit tests only (no database required)</span>
-pytest<span class="w"> </span>tests/unit/
-
-<span class="c1"># single file</span>
-pytest<span class="w"> </span>tests/unit/test_concept_tools.py
-</code></pre></div>
-<h2 id="test-configuration">Test configuration</h2>
-<p>Integration tests that query the OMOP database require a <code>.env</code> file at the repo root (or an environment-variable equivalent):</p>
-<div class="highlight"><pre><span></span><code>OA_CONFIG_PATH=/path/to/stack.toml
-</code></pre></div>
-<p>Unit tests mock the adapter layer and run without a live database.</p>
-<h2 id="what-is-tested">What is tested</h2>
+<h2 id="test-lanes">Test lanes</h2>
+<p>Groundworkers uses distinct lanes because an isolated unit run cannot prove the database, optional parser, plugin-entry-point, or built-wheel contracts.</p>
 <table>
 <thead>
 <tr>
-<th>Area</th>
-<th>Scope</th>
+<th>Lane</th>
+<th>What it proves</th>
+<th>CI behavior</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Concept tools</td>
-<td>Deterministic concept lookup, hierarchy, relationship, path, neighborhood, classified-edge, and standard-mapping tools: correct responses, <code>NOT_FOUND</code> errors, <code>INVALID_INPUT</code> guards, and depth clamping</td>
+<td>Unit and service</td>
+<td>Deterministic policy, adapter boundaries, source planning, transport behavior, and controlled provider responses</td>
+<td>Runs without a live database or model service</td>
 </tr>
 <tr>
-<td>Resolver tools</td>
-<td><code>concept_ground</code>: empty query rejection, result ordering by score, match_kind on exact hits</td>
+<td>Optional dependency</td>
+<td>Real XLSX, DOCX, and PDF parsing plus missing-extra guidance</td>
+<td>Required format tests must pass in the all-extras CI lane; missing-extra behavior is simulated</td>
 </tr>
 <tr>
-<td>Embedding tools</td>
-<td><code>embedding_index_status</code>, <code>embedding_neighbours</code>, <code>embedding_search</code>, <code>embedding_search_batch</code>, <code>embedding_encode</code>: correct responses, clamped limits, aligned batch rows, error propagation</td>
+<td>PostgreSQL integration</td>
+<td>Seeded graph retrieval, real pgvector storage and reader behavior, model selection, filters, and embedding-tier grounding</td>
+<td>Required: every required_integration case must be collected and pass</td>
 </tr>
 <tr>
-<td>Server registry</td>
-<td><code>create_server</code> with and without each adapter; system tools always present; adapter-conditional tool registration</td>
+<td>Wheel smoke</td>
+<td>Base and optional-extra installations, package entry-point discovery, CLI startup, and successful MCP/REST planning operations</td>
+<td>Builds once and runs outside the checkout</td>
 </tr>
 <tr>
-<td>Config validation</td>
-<td>oa-configurator stack validation, Groundworkers package fields, and extra field rejection</td>
+<td>Optional live provider</td>
+<td>Real configured model-provider connectivity</td>
+<td>Opt-in developer smoke only; never substitutes for seeded embedding tests</td>
 </tr>
 </tbody>
 </table>
+<h2 id="running-tests">Running tests</h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># Hermetic suite, including real optional-format parsers</span>
+uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>-ra
+
+<span class="c1"># Unit tests only</span>
+uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit/
+
+<span class="c1"># Required PostgreSQL cases; provide a seeded test stack first</span>
+<span class="nv">GROUNDWORKERS_CONFIG_PATH</span><span class="o">=</span>/path/to/stack.toml<span class="w"> </span><span class="se">\</span>
+<span class="nv">GROUNDWORKERS_REQUIRE_INTEGRATION</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="nv">GROUNDWORKERS_TEST_DATABASE_URL</span><span class="o">=</span>postgresql+psycopg://...<span class="w"> </span><span class="se">\</span>
+uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>required_integration<span class="w"> </span>-q<span class="w"> </span>-ra
+
+<span class="c1"># Coverage for local review</span>
+<span class="nv">COVERAGE_FILE</span><span class="o">=</span>/tmp/groundworkers.coverage<span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-q<span class="w"> </span>-ra<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--cov<span class="o">=</span>groundworkers<span class="w"> </span>--cov-branch<span class="w"> </span>--cov-report<span class="o">=</span>term-missing
+</code></pre></div>
+<p>The required integration gate derives its cases from the <code>required_integration</code> marker, so every marked case is checked for collection and a passing result. Missing configuration, unavailable adapters, and absent seeded rows fail in that lane. The all-extras CI job applies the same execution check to <code>required_format</code> cases, so a missing parser cannot silently turn the format contract into a skip. Without the corresponding <code>GROUNDWORKERS_REQUIRE_*</code> flag, PostgreSQL and optional-format fixtures remain opt-in and skip with a reason.</p>
+<h2 id="configuration-and-optional-provider-smoke">Configuration and optional provider smoke</h2>
+<p>Set GROUNDWORKERS_CONFIG_PATH (or GROUNDWORKERS_CONFIG) to the explicit Groundworkers stack file for integration tests. OA_CONFIG_PATH selects the oa-configurator default stack, but does not by itself opt the graph integration tests into a required run. PostgreSQL CI sets both paths and seeds a compact fixture before pytest starts.</p>
+<p>The external-provider smoke tests are separate from seeded deterministic embedding tests. To run them locally, set GROUNDWORKERS_RUN_EMBEDDING_INTEGRATION=1, GROUNDWORKERS_CONFIG_PATH, and GROUNDWORKERS_TEST_CONCEPT_ID; they require a configured provider and a concept with stored vectors.</p>
+<h2 id="coverage-and-skip-evidence">Coverage and skip evidence</h2>
+<p>CI publishes coverage.xml and pytest.xml from the hermetic all-extras run. The JUnit report carries named skip reasons. PostgreSQL CI separately enforces the required test list, so optional local skips cannot satisfy that gate. Coverage percentages are review evidence, not a global pass threshold. Prioritize unexecuted behavior at database, provider, transport, and packaging boundaries.</p>
 
 
 
