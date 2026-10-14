@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from datetime import date
 
-from oa_configurator import Resolver, load_stack_config
+from oa_configurator import Resolver, Role, load_stack_config
 from omop_alchemy.cdm.model.vocabulary import (  # noqa: F401
     Concept,
     Concept_Ancestor,
@@ -45,6 +45,12 @@ def seed() -> None:
     cdm = Resolver(
         load_stack_config(os.environ["GROUNDWORKERS_CONFIG_PATH"])
     ).resolve_database("test_cdm_db")
+    primary_schema = cdm.schema_for_role(Role.PRIMARY)
+    vocab_schema = cdm.schema_for_role(Role.VOCAB)
+    quote = engine.dialect.identifier_preparer.quote
+    with engine.begin() as connection:
+        for schema in {primary_schema, vocab_schema, "embeddings"}:
+            connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {quote(schema)}"))
     bootstrap(cdm, create=True)
 
     concepts = [
@@ -105,6 +111,7 @@ def seed() -> None:
         (201829, 201827, "Is a"),
         (201832, 201826, "Maps to"),
         (201833, 201826, "Maps to"),
+        (201837, 201826, "Maps to"),
     ]
     ancestors = [
         (201826, 201826, 0, 0),
@@ -124,7 +131,9 @@ def seed() -> None:
         # at domain/vocabulary/class rows, while those rows point at concepts.
         # The real vocabulary loader handles this cycle; this tiny fixture uses
         # the PostgreSQL test superuser to load the same compact data safely.
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        connection.execute(text("SET LOCAL search_path TO "
+                                 f"{quote(primary_schema)}, {quote(vocab_schema)}, public"))
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public"))
         connection.execute(text("SET session_replication_role = replica"))
         try:
             connection.execute(
@@ -250,6 +259,22 @@ def seed() -> None:
                     }
                     for concept_id, concept_name, domain_id, vocabulary_id, concept_class_id, standard_concept, concept_code in concepts
                 ],
+            )
+            # Exact-label decoys make both candidate filters observable in
+            # PostgreSQL integration tests. The first is active but non-standard;
+            # the second is standard but invalidated.
+            connection.execute(
+                text(
+                    "INSERT INTO concept "
+                    "(concept_id, concept_name, domain_id, vocabulary_id, concept_class_id, "
+                    "standard_concept, concept_code, valid_start_date, valid_end_date, invalid_reason) "
+                    "VALUES "
+                    "(201837, 'Active nonstandard fixture source', 'Condition', 'LOCAL', "
+                    "'Clinical Finding', NULL, 'ACTIVE-NONSTANDARD', :start, :end, NULL), "
+                    "(201838, 'Type 2 diabetes mellitus', 'Condition', 'SNOMED', "
+                    "'Clinical Finding', 'S', 'INVALID-STANDARD', :start, :end, 'D')"
+                ),
+                {"start": start, "end": end},
             )
             connection.execute(
                 text(

@@ -42,7 +42,7 @@ def _load_integration_adapter():
     return adapter
 
 
-@pytest.mark.integration
+@pytest.mark.optional_integration
 def test_index_status_returns_at_least_one_model():
     adapter = _load_integration_adapter()
 
@@ -59,7 +59,7 @@ def _get_test_concept_id() -> int:
     return int(value)
 
 
-@pytest.mark.integration
+@pytest.mark.optional_integration
 def test_get_neighbours_returns_sorted_results():
     adapter = _load_integration_adapter()
     status = adapter.index_status()
@@ -71,11 +71,12 @@ def test_get_neighbours_returns_sorted_results():
         model_name=status["models"][0]["model_name"],
     )
 
+    assert result["results"], "configured embedding smoke test returned no neighbours"
     similarities = [item["similarity"] for item in result["results"]]
     assert similarities == sorted(similarities, reverse=True)
 
 
-@pytest.mark.integration
+@pytest.mark.optional_integration
 def test_get_neighbours_excludes_query_concept():
     adapter = _load_integration_adapter()
     status = adapter.index_status()
@@ -87,10 +88,11 @@ def test_get_neighbours_excludes_query_concept():
         model_name=status["models"][0]["model_name"],
     )
 
+    assert result["results"], "configured embedding smoke test returned no neighbours"
     assert all(item["concept_id"] != concept_id for item in result["results"])
 
 
-@pytest.mark.integration
+@pytest.mark.optional_integration
 def test_get_neighbours_unknown_concept_raises_not_found():
     adapter = _load_integration_adapter()
     status = adapter.index_status()

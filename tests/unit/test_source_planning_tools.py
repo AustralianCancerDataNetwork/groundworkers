@@ -2,6 +2,7 @@ import json
 
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.source_planning import SourcePlanningService
+from groundworkers.services.source_planning.assisted import AssistedColumnRoleClassifier
 from groundworkers.tools.source_planning_tools import (
     register_source_planning_resources,
     register_source_planning_tools,
@@ -67,6 +68,41 @@ def test_source_plan_assisted_returns_backend_unavail_without_llm() -> None:
 
     assert result["error"] is True
     assert result["code"] == "BACKEND_UNAVAIL"
+
+
+def test_source_plan_assisted_runs_real_service_and_classifier() -> None:
+    class FixedModel:
+        def complete_structured(self, _prompt, _schema, **_kwargs):
+            return {
+                "decisions": [
+                    {"header": "unknown_a", "role": "values", "confidence": 0.93}
+                ]
+            }
+
+        async def async_complete_structured(self, _prompt, _schema, **_kwargs):
+            return {
+                "decisions": [
+                    {"header": "unknown_a", "role": "values", "confidence": 0.93}
+                ]
+            }
+
+    service = SourcePlanningService(
+        assisted_classifier=AssistedColumnRoleClassifier(FixedModel())
+    )
+    server = GroundworkersMCPServer("assisted")
+    register_source_planning_tools(server, service)
+
+    result = server.call(
+        "source_plan_assisted",
+        content="unknown_a,unknown_b\nA,B\n",
+        filename="diagnoses.csv",
+        include_intermediate=True,
+    )
+
+    assert result["llm_tier_used"] is True
+    annotation = result["annotated_tables"][0]["column_annotations"]["unknown_a"]
+    assert annotation["role"] == "values"
+    assert annotation["detection_tier"] == "LLM"
 
 
 def test_source_planning_resources_are_registered_and_json_readable() -> None:

@@ -35,7 +35,7 @@ jobs:
           --password postgres \
           --database-name test_db \
           --test-only false
-        uv run omop-config databases add cdm test_cdm_db --connection pg_test --cdm-schema public
+        uv run omop-config databases add cdm test_cdm_db --connection pg_test --cdm-schema gw_primary --vocab-schema gw_vocab
         uv run omop-config databases add generic test_vector_db --connection pg_test --schema-name embeddings
         uv run omop-config vector-stores add test_embeddings \
           --backend-type pgvector \
@@ -44,3 +44,49 @@ jobs:
           --cdm-db test_cdm_db \
           --vector-store-name test_embeddings
         uv run python -m tests.support.seed_postgres_fixture
+  test-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Run hermetic suite with coverage and skip reasons
+        run: |
+          uv sync --frozen --all-extras --dev
+          export GROUNDWORKERS_REQUIRE_FORMAT_TESTS=1
+          echo "GROUNDWORKERS_REQUIRE_FORMAT_TESTS=1" >> "$GITHUB_ENV"
+          COVERAGE_FILE="$RUNNER_TEMP/groundworkers.coverage" uv run pytest -q -ra \
+            --cov=groundworkers --cov-branch \
+            --cov-report=xml:"$RUNNER_TEMP/coverage.xml" \
+            --junitxml="$RUNNER_TEMP/pytest.xml"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groundworkers-test-evidence
+          path: |
+            ${{ runner.temp }}/coverage.xml
+            ${{ runner.temp }}/pytest.xml
+          if-no-files-found: warn
+  wheel-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Build and smoke-test base and optional wheel installs
+        run: |
+          uv build --wheel
+          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          wheel="$(pwd)/$wheel"
+          uv venv "$RUNNER_TEMP/gw-wheel-base" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/gw-wheel-base/bin/python" "$wheel"
+          mkdir -p "$RUNNER_TEMP/gw-wheel-run"
+          cd "$RUNNER_TEMP/gw-wheel-run"
+          "$RUNNER_TEMP/gw-wheel-base/bin/python" "$GITHUB_WORKSPACE/tests/support/wheel_smoke.py" base
+          uv venv "$RUNNER_TEMP/gw-wheel-extras" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/gw-wheel-extras/bin/python" "$wheel[all_source,tui]" httpx
+          "$RUNNER_TEMP/gw-wheel-extras/bin/python" "$GITHUB_WORKSPACE/tests/support/wheel_smoke.py" extras

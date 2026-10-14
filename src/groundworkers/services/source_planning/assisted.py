@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from groundworkers.adapters.llm import LLMAdapter
 from groundworkers.base.errors import GroundworkersError
@@ -31,6 +31,8 @@ Respond with raw JSON only.
 
 
 class AssistedColumnDecision(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     header: str
     role: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
@@ -40,6 +42,8 @@ class AssistedColumnDecision(BaseModel):
 
 
 class AssistedClassificationResult(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     decisions: list[AssistedColumnDecision] = Field(default_factory=list)
 
 
