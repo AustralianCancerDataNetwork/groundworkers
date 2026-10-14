@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from oa_configurator import CrossDatabaseStatementError
 from omop_alchemy.cdm.model.vocabulary import Domain
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
@@ -69,7 +70,9 @@ class DomainNameResolver:
                     ).all()
         except Exception as exc:
             logger.warning("Could not read the domain table; domain names unresolved.", exc_info=True)
-            if self._engine is not None and _is_missing_domain_table(exc):
+            if self._engine is not None and (
+                isinstance(exc, CrossDatabaseStatementError) or _is_missing_domain_table(exc)
+            ):
                 raise RuntimeError(
                     "Engine mode cannot route vocabulary queries. If this deployment "
                     "keeps the vocabulary on its own database, pass "
