@@ -1,43 +1,37 @@
 # Initial local setup
 
-This guide sets up a local Groundworkers runtime against an existing OMOP CDM database. The vocabulary tables must already be populated; Groundworkers does not load vocabulary data.
+Use this guide to connect Groundworkers to an existing OMOP CDM database and start a local service. The vocabulary tables must already be populated; Groundworkers does not load vocabulary data.
 
-The minimum useful configuration is a CDM database. Graph indexes, embeddings, and a chat model add capabilities but are independent of the core vocabulary service.
+Start with the CDM connection. You can add graph indexes, embeddings, a chat model, and plugins as you need them. A chat model is not required for vocabulary lookup or lexical grounding.
 
-### Current Status
+## Before you start
 
-The TUI is offered for convenience and should be considered experimental - we don't persist state centrally so you will probably notice that you need to re-test connections if you move around the interface.
+You need Python 3.12 or newer, the database connection details, and access to the CDM and vocabulary schemas. If the vocabulary is stored separately from the clinical tables, configure its connection and schema too.
 
-The examples below show the most thoroughly validated workflow at this time. FAISS and sqlite options for storage and anything other than ollama configuration are all yours to experiment with.
-
-### Known TODOs
-
-- **Plugin-backed optional capabilities:** Finalise the drafted plugin contract for adding backends without expanding the core composition root for every integration. A plugin should declare its configuration schema and adapter/service factories through an explicit entry point. Groundworkers should retain lifecycle, error, and transport policy. Backend-specific assumptions must remain inside the plugin rather than leaking into generic services.
-- **Async concurrency hardening:** Model-facing MCP tools use omop-llm's native async completion, embedding, and availability APIs. Before increasing request concurrency, cover lazy initialization, provider connection limits, cancellation, and shared-backend safety with load tests.
-- **Curated REST workflows:** Extend REST around stable, application-level workflows rather than mirroring every MCP tool. New endpoints need typed request/response models, the same validation and error semantics as the underlying services, explicit limits for expensive operations, and a deployment-level authentication decision before exposure outside a trusted network.
-
-### Key Dependency Details
-
-- **FastAPI** provides the curated REST transport, including request validation, exception mapping, OpenAPI generation, and application lifecycle hooks. REST is selected explicitly with `--transport rest`; it is not served alongside MCP by default. Business logic belongs in services, not route handlers.
-- **FastMCP**, supplied by the official `mcp[cli]` package, provides MCP tool, prompt, and resource registration plus stdio, SSE, and streamable-HTTP transports. Groundworkers preserves each handler's signature and docstring for schema discovery and registers model-facing handlers as native async tools.
-- **omop-llm** is the provider-neutral model API. MCP-facing provider calls use its async completion, embedding, and availability methods so a cached provider client remains attached to the transport's persistent event loop. The synchronous methods remain available to direct Python callers.
-- **omop-emb and omop-graph** remain synchronous storage and graph dependencies. Their database and vector operations must stay outside the event-loop thread until those packages expose supported async contracts.
-
-### Maintenance tasks
-
-Long running tasks (like embedding population) will be spawned and polled, and you can review progress on the `Runs` tab. These tasks should persist even if you close and re-open groundworkers because they are spawned as maintenance tasks. This is all best-effort at this time, with a primary goal of supporting a centralised configuration workflow only, not being an actual groundworkers interface for real agentive work.
-
-Open **Runs** to follow progress, inspect a safe log tail, cancel active work, retry a safe failed step, or export commands. Postflight is shown only for plans that actually define postflight checks.
+The setup console helps you edit configuration, test connections, and run preparation tasks. It does not run your agent conversations or mapping jobs. Configuration is saved to a shared TOML file; maintenance runs have their own saved history. Connection and model checks may need to be rerun after reopening the console or changing a service.
 
 ## 1. Install
 
-Install the setup console and the optional backends you plan to use:
+In a new working directory, create and activate a virtual environment. These activation commands are for macOS and Linux:
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+```
+
+Install Groundworkers with the setup console:
+
+```bash
+uv pip install "groundworkers[tui]"
+```
+
+If you plan to store embeddings in PostgreSQL, include its backend support:
 
 ```bash
 uv pip install "groundworkers[tui,embedding-pgvector]"
 ```
 
-The `tui` extra is needed for the setup console. Embedding backend selection is via extras either `embedding-faiss` / `embedding-pgvector`. Use the `all_source` extra for XLSX, PDF, and DOCX source-planning inputs.
+Other extras include `embedding-faiss` for FAISS sidecar acceleration and `all_source` for XLSX, PDF, and DOCX source-planning inputs. See [Installation](usage/installation.md) for the available extras.
 
 ## 2. Open the setup console
 
@@ -45,55 +39,69 @@ The `tui` extra is needed for the setup console. Embedding backend selection is 
 groundworkers tui
 ```
 
-To work with a specific file:
+The default configuration file is `~/.config/omop/config.toml`, unless `OA_CONFIG_PATH` selects another file. To choose a file explicitly:
 
 ```bash
 groundworkers tui --config-path /path/to/config.toml
 ```
 
-The console shows required CDM readiness separately from optional graph, embedding, chat, and integration status. Before applying a change, review the redacted configuration diff.
+The console can help you choose a location and create or repair the configuration. Review the redacted diff before applying changes. Use the same configuration path when you later start the service.
+
+**Overview** shows CDM readiness separately from optional graph, embedding, chat, and integration status. An unconfigured optional feature does not mean the CDM service has failed.
 
 ## 3. Configure the CDM
 
-Configure the physical connection and the logical CDM database. The setup flow writes the shared `[connections.*]`, `[databases.*]`, and `[tools.groundworkers]` entries; Groundworkers references those entries by name.
+Choose **Overview → Configure CDM**, or open **Database**. Configure the physical connection and the logical CDM database, including the vocabulary location. The setup flow writes the shared `[connections.*]`, `[databases.*]`, and `[tools.groundworkers]` entries. Groundworkers refers to these entries by name.
 
-Run **Test connections** or **Overview → Verify all**. A connected CDM with populated vocabulary tables is the minimum runtime needed for concept lookup, search, grounding, mapping, source planning, knowledge packs, and system status.
+Run **Test connections** in Database or **Verify all** in Overview. A working CDM connection with populated vocabulary tables supports concept lookup, lexical search and grounding, and mapping tools. Some searches and graph operations also need the preparation described below.
+
+See [Configuration](usage/configuration.md) for the shared configuration layout and named references.
 
 ## 4. Prepare graph and search support
 
-Open **Graph → Prepare graph** when readiness reports missing relationship, full-text, or functional indexes. The operation runs as a durable maintenance task. Use **Performance** to inspect index readiness and start supported index maintenance.
+Open **Graph → Prepare graph** when readiness reports missing relationship, full-text, or functional indexes. Review the proposed commands before starting. **Performance** shows index readiness and offers further index maintenance.
 
-Graph preparation is not required for every CDM-only operation, but `concept_ground` and several concept and mapping tools use graph-backed operations when available.
+Preparation runs as a background maintenance task; follow it in **Runs**. The database account used for preparation needs permission to create the required indexes and supporting objects. Normal service queries remain read-only.
+
+You can use basic vocabulary operations before preparing every index. Prepare the search and graph support needed by the tools you intend to use, then rerun the checks.
 
 ## 5. Add embeddings (optional)
 
-Embedding search needs all three of these pieces:
+Embedding search needs a named embedding model, a named vector store, and vectors for the concepts you want to search. The query model must be compatible with the stored vectors.
 
-- a named embedding model;
-- a named vector store;
-- populated vectors for the intended vocabulary scope.
+1. **Configure the store.** Use Database to select or create the vector-store configuration.
+2. **Configure the model.** In Embeddings, choose **Configure model**. Supply the provider details and select a model already registered in the store or a new model from the provider.
+3. **Initialize and check.** Use **Initialize embedding store** if needed, then **Check model** to check the store registration and test whether the provider can encode text with that model.
+4. **Choose the scope and populate.** Refresh coverage, select the vocabularies you need, and choose **Populate**. Review the scope, run limit, and commands before starting.
+5. **Check the result.** Follow the task in Runs, then refresh coverage to see what is available.
 
-Configure the vector store under **Database**, configure the model under **Embeddings**, initialize the store, and run the population task. Population is explicit and does not start during a query. A run limit caps one maintenance run; it does not decide whether the run is a backfill.
+Store initialization and population write to the embedding store. Population starts only when requested; a search never triggers it. A run limit caps the amount of work in one run. Coverage and the population plan show which concepts still need vectors.
+
+An embedding model and a chat model are separate choices and can use different providers. Configuring one does not enable the other.
 
 ## 6. Add a chat model (optional)
 
-Configure a provider and a structured-output chat model in **Chat Model**. Chat enables text preprocessing, structured-field domain classification, and assisted source planning. Credentials are redacted in reviews and diagnostics.
+Open **Chat Model**, configure the provider, and run **Test provider**. Use **Select chat model** to choose a model that supports structured output. The separate **Chat** section checks the selected model's chat and structured-output capabilities.
+
+Chat enables text preparation and structured-field domain classification. Assisted source planning also needs `source_planning_llm_assisted_enabled` to be enabled; it is enabled by default. Provider support comes from `omop-llm`; use the console checks to verify your chosen endpoint and model. Credentials are redacted in configuration reviews and diagnostics.
 
 ## 7. Start or inspect the service
 
-After setup, inspect the active runtime:
+After setup, inspect what Groundworkers will expose for your configuration:
 
 ```bash
 groundworkers --config-path /path/to/config.toml --describe
 ```
 
-Start MCP over stdio for a client that launches Groundworkers:
+This lists registered tools, prompts, resources, plugins, and redacted configuration details. Use the console's connection and model checks to verify that the configured services are reachable too.
+
+For an agent client that launches Groundworkers, use MCP over stdio:
 
 ```bash
 groundworkers --config-path /path/to/config.toml --transport stdio
 ```
 
-Start a shared Streamable HTTP service:
+To run an MCP service that clients can connect to over HTTP:
 
 ```bash
 groundworkers \
@@ -103,7 +111,7 @@ groundworkers \
   --port 8000
 ```
 
-REST is a separate explicit transport:
+REST runs as a separate transport, with selected mapping and source-planning endpoints:
 
 ```bash
 groundworkers \
@@ -113,7 +121,13 @@ groundworkers \
   --port 8080
 ```
 
-The `--describe` output shows the exact active tools, prompts, resources, plugins, and safe configuration diagnostics. Optional surfaces are omitted when their prerequisites are unavailable.
+These HTTP examples listen on the local machine. See [Integrations](usage/integrations.md) for client setup and the available interfaces. Restart a running service after changing its configuration or installed plugins.
+
+## Optional plugins and guidance
+
+Installed Groundworkers plugins can add tools, prompts, resources, and setup pages. Install them into the same Python environment as Groundworkers, then reopen the console or restart the service. Use `--describe` to check what was registered; plugins with readiness support also report configuration or dependency problems in the console.
+
+For prompt packs, see [Working with prompts](usage/prompt-handling.md). Bundled knowledge packs are available without a separate plugin; local knowledge-pack paths and the optional `semantic_projection_enabled` setting are described in [Configuration](usage/configuration.md).
 
 ## Configuration managed elsewhere
 
@@ -125,10 +139,12 @@ groundworkers tui \
   --config-read-only
 ```
 
-Change the authoritative configuration source, then reopen the console to verify the result.
+Change the authoritative configuration source, then reopen the console to verify the result. This flag disables configuration edits; it does not make database preparation tasks read-only.
 
-## Durable maintenance runs
+## Maintenance runs
 
-Graph and embedding preparation tasks appear in **Runs**. From there you can follow progress, inspect a safe log tail, cancel an active task, retry a supported failure, or export commands.
+Graph preparation and embedding population run in separate background processes. You can close and reopen the console while they continue. In **Runs**, follow progress, inspect a redacted log tail, cancel active work, retry a supported failed step, or export commands. Postflight results appear for tasks that define those checks.
 
-Set `GROUNDWORKERS_STATE_HOME` to a persistent directory when running in a container. This keeps maintenance state across process restarts. The fallback is `$XDG_STATE_HOME/groundworkers` or the platform state directory.
+Run history is saved on disk. Groundworkers uses `GROUNDWORKERS_STATE_HOME`, then `XDG_STATE_HOME`, as the state base directory and appends `groundworkers`. If neither is set, it uses `~/.local/state/groundworkers`.
+
+In a container, set the state base to a mounted persistent directory to retain history across container replacement. An interrupted worker does not resume merely because its history survives; inspect its status in Runs before retrying.

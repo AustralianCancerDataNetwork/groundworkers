@@ -31,6 +31,8 @@ nav:
   - Home: index.md
   - Understand Groundworkers:
       - Concepts and capability choices: concepts.md
+      - Working with prompts: usage/prompt-handling.md
+  - Plugins: plugins.md
   - Getting Started:
       - Installation: usage/installation.md
       - Initial local setup: from-scratch.md

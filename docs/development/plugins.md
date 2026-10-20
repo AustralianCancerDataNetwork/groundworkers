@@ -1,5 +1,8 @@
 # Plugin architecture
 
+For an overview and examples, start with [Plugins](../plugins.md). This guide
+covers the implementation contract for plugin authors.
+
 ## What a plugin is
 
 Groundworkers plugins are independently installed packages that add an adapter, service, and MCP surface without adding plugin-specific imports to Groundworkers. They register one ready-to-use plugin object under the `groundworkers.plugins` entry-point group.

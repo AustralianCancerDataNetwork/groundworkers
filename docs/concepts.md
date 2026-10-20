@@ -1,24 +1,20 @@
 # Concepts and capability choices
 
-Groundworkers is a read-only capability layer for working with OMOP vocabularies and source metadata. It combines deterministic vocabulary and graph operations with optional retrieval and model-assisted steps, then makes those capabilities available through MCP, REST, or direct Python.
+Groundworkers provides read-only tools for working with OMOP vocabularies and source metadata. It combines deterministic vocabulary and graph operations with optional retrieval and model-assisted steps, available through MCP, REST, or direct Python.
 
-The important distinction is between the work a capability performs and the transport used to call it. MCP, REST, and Python use the same runtime and, where a service exists, the same service implementation.
+MCP, REST, and Python are different ways to call the same runtime. Where a service exists, they share its implementation.
 
 ## The main workflow
 
-Most mapping-oriented work follows this shape:
+Mapping usually starts with source text or fields. Text preparation or domain classification can help narrow the search. Retrieval finds candidate concepts; grounding tries to resolve the input using ranked rules. Mapping brings the candidates, evidence, and graph context together for a caller or reviewer to choose a mapping. Optional semantic projection then uses the grounded concept and source context to produce CDM rows.
 
 ```mermaid
-flowchart LR
-    SOURCE[Source text or fields] --> PREP[Optional text or domain preparation]
-    PREP --> RETRIEVE[Retrieve OMOP candidates]
-    RETRIEVE --> GROUND[Ground or assemble evidence]
-    GROUND --> REVIEW[Caller or reviewer selects a mapping]
-    REVIEW --> CONTEXT[Add graph and mapping context]
-    CONTEXT --> PROJECT[Optional semantic projection]
+flowchart TD
+    SOURCE["Source text or fields"] -->|Retrieval and grounding| CANDIDATES["Candidate concepts and evidence"]
+    CANDIDATES -->|Caller or reviewer chooses| SELECTED["Selected concept or concepts"]
+    SELECTED -. Optional semantic projection .-> ROWS["CDM rows"]
+    SOURCE -. Source context .-> ROWS
 ```
-
-These stages are deliberately separate. Retrieval produces candidates; grounding applies a ranked resolution policy; mapping gathers evidence and context for a decision; semantic projection turns an already-grounded concept plus source context into CDM rows.
 
 ## Grounding, mapping, and retrieval
 
@@ -37,15 +33,34 @@ Use the search tools when you want to choose the strategy yourself and inspect i
 
 Grounding is a ranked, policy-driven attempt to resolve free text to concepts. `concept_ground` runs its configured tiers in order and stops at the first tier that produces results. It reports the matched tier and whether embedding retrieval was used. Domain, vocabulary, ancestry, standardness, and activity constraints narrow the search.
 
+```mermaid
+flowchart TD
+    INPUT["Text and constraints"] --> SEARCH["Search the next configured tier"]
+    SEARCH --> MATCH{"Any matches?"}
+    MATCH -->|Yes: stop searching| RESULT["Return candidates<br/>and the matched tier"]
+    MATCH -->|No| MORE{"More tiers?"}
+    MORE -->|Yes| SEARCH
+    MORE -->|No| EMPTY["Return no candidates"]
+```
+
 Grounding is not proof that the first result is the correct mapping. A caller that needs reviewable evidence should use `concept_candidate_bundle`, inspect the candidate union, and add `concept_mapping_context` for the selected concept.
 
 ### Mapping
 
 Mapping is the broader decision workflow around a source term. Mapping tools combine retrieval channels, navigate non-standard concepts to standard targets, find broader standard ancestors, assemble graph context, follow `Maps to value` relationships, and evaluate predictions against references. They are useful when the caller must preserve evidence or ask a human or another model to make the final choice.
 
+```mermaid
+flowchart TD
+    CANDIDATES["Candidates from<br/>multiple searches"] --> REVIEW["Caller or reviewer<br/>assesses the evidence"]
+    SOURCE["Source meaning<br/>and domain rules"] --> REVIEW
+    GRAPH["Standard targets<br/>and graph context"] --> REVIEW
+    REVIEW --> DECISION["Mapping to one or more concepts<br/>with supporting evidence"]
+    REVIEW -->|Insufficient evidence| OPEN["Leave unresolved"]
+```
+
 ## Deterministic and model-assisted capabilities
 
-Groundworkers does not treat every capability as an LLM task.
+Most vocabulary and graph operations run without an LLM. Some text preparation and classification tasks use a configured model.
 
 | Capability | Deterministic? | Additional infrastructure |
 |---|---:|---|
@@ -63,15 +78,21 @@ An embedding model and a chat model are separate configuration references. A dep
 
 ## Source planning and knowledge packs
 
-Source planning is stateless analysis before ingestion. It decomposes an input artifact, normalizes its structure, annotates columns, and returns neutral planning artifacts such as column roles, domain hints, warnings, and an ingestion strategy. It does not own session state or decide how a particular orchestration job is persisted. `groundcrew` is one consumer of this worker-side capability.
+Source planning analyses an input before ingestion. It decomposes the input, normalizes its structure, annotates columns, and returns results such as column roles, domain hints, warnings, and an ingestion strategy. The caller manages session state and job persistence. `groundcrew` uses this capability.
 
-The deterministic `source_plan` path uses format and header evidence. `source_plan_assisted` is an explicit second step that can use the configured chat model when deterministic classification is not strong enough. The result records whether the assisted tier was used.
+The deterministic `source_plan` path uses format and header evidence. Call `source_plan_assisted` as a separate step when that evidence is insufficient; it can use the configured chat model. The result records whether the assisted tier was used.
 
 Knowledge packs are a separate discovery mechanism. Bundled baseline packs and optional site or localisation packs contain reusable guidance and rules. `knowledge_catalogue` finds packs applicable to a source system, domain, or section; `knowledge_pack` loads the selected pack. Discovery can happen before or after source planning.
 
+## Prompt guidance and user decisions
+
+An agent can use workflow prompts to organise a task and elicitation prompts to ask for missing information. Domain rules and tool results help it assess the answers. Answering a question may resolve one decision while leaving other work open.
+
+See [Working with prompts](usage/prompt-handling.md) for choosing guidance, handling unanswered questions, and requesting more explanation when needed.
+
 ## Semantic projection
 
-Grounding answers “which concept does this source item refer to?” Projection answers “given that concept and this source context, which CDM row or rows should be emitted?” It is useful for sibling-field modifiers, value-carried family history, deterministic suppression, and multi-row output definitions. Projection never chooses the concept and never calls an LLM. It is opt-in because a deployment must deliberately choose to expose the definition catalogue.
+Grounding answers “which concept does this source item refer to?” Projection answers “given that concept and this source context, which CDM row or rows should be emitted?” It is useful for sibling-field modifiers, value-carried family history, deterministic suppression, and multi-row output definitions. Projection never chooses the concept and never calls an LLM. It must be enabled explicitly to expose the definition catalogue.
 
 ## Choose an interface
 
@@ -85,7 +106,7 @@ Use `groundworkers --describe` to inspect the active MCP tools, prompts, resourc
 
 ## Relationship to companion packages
 
-Groundworkers composes several focused packages rather than replacing them:
+Groundworkers uses these packages:
 
 - `omop-alchemy` provides OMOP CDM models and database configuration;
 - `omop-graph` provides graph-backed concept traversal and resolver primitives;
