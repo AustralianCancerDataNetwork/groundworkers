@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
@@ -114,6 +114,51 @@ class PluginReadinessResult:
             "ready": self.ready,
             "summary": self.summary,
             "fields": [field.as_dict() for field in self.fields],
+        }
+
+
+class PluginLintSeverity(StrEnum):
+    """Severity levels for plugin configuration lint findings."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
+@dataclass(frozen=True)
+class PluginLintDiagnostic:
+    """One actionable, safe-to-display configuration finding."""
+
+    code: str
+    severity: PluginLintSeverity
+    message: str
+    path: str | None = None
+
+    def as_dict(self) -> dict[str, str | None]:
+        result = asdict(self)
+        result["severity"] = self.severity.value
+        return result
+
+
+@dataclass(frozen=True)
+class PluginLintReport:
+    """Structured result shared by plugin authors and host front ends."""
+
+    plugin: str
+    diagnostics: tuple[PluginLintDiagnostic, ...] = ()
+
+    @property
+    def valid(self) -> bool:
+        return all(
+            item.severity is not PluginLintSeverity.ERROR
+            for item in self.diagnostics
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "plugin": self.plugin,
+            "valid": self.valid,
+            "diagnostics": [item.as_dict() for item in self.diagnostics],
         }
 
 
@@ -340,6 +385,75 @@ class GroundworkersPluginReadiness(Protocol):
         """Inspect current dependencies without mutating them."""
 
         ...
+
+
+@runtime_checkable
+class GroundworkersPluginLinter(Protocol):
+    """Optional, side-effect-free validation of plugin configuration."""
+
+    def lint_config(
+        self, config: PackageConfigBase | None
+    ) -> PluginLintReport:
+        """Return findings without building plugin runtime state."""
+
+        ...
+
+
+def lint_plugin_config(
+    plugin: GroundworkersPlugin,
+    config: PackageConfigBase | None,
+) -> PluginLintReport | None:
+    """Call a plugin's optional linter; return ``None`` when unsupported."""
+
+    if not isinstance(plugin, GroundworkersPluginLinter):
+        return None
+    try:
+        report = plugin.lint_config(config)
+    except Exception as exc:
+        logger.error(
+            "Groundworkers plugin %s config lint failed (%s).",
+            plugin.name,
+            type(exc).__name__,
+        )
+        return PluginLintReport(
+            plugin=plugin.name,
+            diagnostics=(
+                PluginLintDiagnostic(
+                    code="plugin_linter.failed",
+                    severity=PluginLintSeverity.ERROR,
+                    message="Plugin configuration linting failed; review host logs.",
+                ),
+            ),
+        )
+    valid_report = (
+        isinstance(report, PluginLintReport)
+        and report.plugin == plugin.name
+        and isinstance(report.diagnostics, tuple)
+        and all(
+            isinstance(item, PluginLintDiagnostic)
+            and bool(item.code)
+            and isinstance(item.severity, PluginLintSeverity)
+            and bool(item.message)
+            and (item.path is None or isinstance(item.path, str))
+            for item in report.diagnostics
+        )
+    )
+    if not valid_report:
+        logger.error(
+            "Groundworkers plugin %s returned an invalid config lint report.",
+            plugin.name,
+        )
+        return PluginLintReport(
+            plugin=plugin.name,
+            diagnostics=(
+                PluginLintDiagnostic(
+                    code="plugin_linter.invalid_report",
+                    severity=PluginLintSeverity.ERROR,
+                    message="Plugin returned an invalid configuration lint report.",
+                ),
+            ),
+        )
+    return report
 
 
 def discover_plugins() -> list[GroundworkersPlugin]:

@@ -26,11 +26,16 @@ from groundworkers.app import build_application, verify_plugin_readiness
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.plugins import (
+    GroundworkersPluginLinter,
     PluginContext,
+    PluginLintDiagnostic,
+    PluginLintReport,
+    PluginLintSeverity,
     PluginReadinessField,
     PluginReadinessResult,
     PluginReadinessState,
     discover_plugins,
+    lint_plugin_config,
     validate_plugin_identities,
 )
 from groundworkers.server import create_server
@@ -81,6 +86,37 @@ class FakeReadinessPlugin(FakePlugin):
                 ),
             ),
         )
+
+
+class FakeLinterPlugin(FakePlugin):
+    def lint_config(self, config: PackageConfigBase | None) -> PluginLintReport:
+        assert isinstance(config, FakePluginConfig)
+        return PluginLintReport(
+            plugin=self.name,
+            diagnostics=(
+                PluginLintDiagnostic(
+                    "fake.setting.warning",
+                    PluginLintSeverity.WARNING,
+                    "The setting is unusual.",
+                    "tools.fake_plugin.greeting",
+                ),
+            ),
+        )
+
+
+class FailingLinterPlugin(FakeLinterPlugin):
+    def lint_config(self, config: PackageConfigBase | None) -> PluginLintReport:
+        raise RuntimeError("secret-token-must-not-be-logged")
+
+
+class InvalidReportLinterPlugin(FakeLinterPlugin):
+    def lint_config(self, config: PackageConfigBase | None) -> PluginLintReport:
+        return PluginLintReport(plugin="another_plugin")
+
+
+class MalformedReportLinterPlugin(FakeLinterPlugin):
+    def lint_config(self, config: PackageConfigBase | None) -> PluginLintReport:
+        return PluginLintReport(plugin=self.name, diagnostics=("invalid",))
 
 
 def _embedding_stack(tmp_path: Path, extra: dict | None = None):
@@ -271,6 +307,51 @@ def test_optional_readiness_contract_is_headless_and_transport_stable(
         ],
     }
     assert PluginReadinessResult.__module__ == "groundworkers.plugins"
+
+
+def test_optional_plugin_linter_is_discovered_and_returns_stable_report() -> None:
+    plugin = FakeLinterPlugin()
+
+    report = lint_plugin_config(plugin, FakePluginConfig())
+
+    assert isinstance(plugin, GroundworkersPluginLinter)
+    assert report is not None
+    assert report.as_dict() == {
+        "plugin": "fake_plugin",
+        "valid": True,
+        "diagnostics": [
+            {
+                "code": "fake.setting.warning",
+                "severity": "warning",
+                "message": "The setting is unusual.",
+                "path": "tools.fake_plugin.greeting",
+            }
+        ],
+    }
+
+
+def test_linter_dispatch_skips_plugins_without_the_optional_protocol() -> None:
+    assert lint_plugin_config(FakePlugin(), FakePluginConfig()) is None
+
+
+@pytest.mark.parametrize(
+    ("plugin", "code"),
+    [
+        (FailingLinterPlugin(), "plugin_linter.failed"),
+        (InvalidReportLinterPlugin(), "plugin_linter.invalid_report"),
+        (MalformedReportLinterPlugin(), "plugin_linter.invalid_report"),
+    ],
+)
+def test_linter_dispatch_returns_safe_error_for_broken_plugin(
+    plugin: FakePlugin, code: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    report = lint_plugin_config(plugin, FakePluginConfig())
+
+    assert report is not None
+    assert not report.valid
+    assert report.diagnostics[0].code == code
+    assert "secret-token" not in report.diagnostics[0].message
+    assert "secret-token" not in caplog.text
 
 
 def test_readiness_reports_unconfigured_when_plugin_cannot_build() -> None:

@@ -208,6 +208,22 @@ Verification is read-only and returns a `PluginReadinessResult` containing a sta
 
 The contract is headless: it contains no Groundskeeping types. Groundworkers uses the same result for generic setup-console rendering, while a plugin may return `result.as_dict()` from its own MCP status tool. Plugins own dependency- specific checks; the host only builds current plugin state, handles unavailable configuration safely, and maps readiness states to existing Groundskeeping status, table, empty, action, and detail contracts.
 
+## Configuration linting
+
+A plugin may implement the runtime-checkable `GroundworkersPluginLinter` protocol when its settings need checks beyond the configuration schema. The hook is `lint_config(config) -> PluginLintReport`; it receives the plugin's validated `PackageConfigBase` instance, or `None` when the plugin has no config class. It runs without calling `build()`, so it can check configuration-dependent files or cross-field rules without constructing runtime services.
+
+Return a report with the plugin name and zero or more `PluginLintDiagnostic` values. Each finding has a stable code, `error` / `warning` / `info` severity, concise message, and optional configuration path. Errors make `report.valid` false; warnings and informational findings do not. Keep diagnostics safe for display: do not include secret values, full connection strings, or raw exception text.
+
+Headless consumers call `lint_plugin_config(plugin, config)`. It returns `None` when the optional protocol is not implemented. If a linter raises or returns a malformed report, Groundworkers logs a safe error summary and returns a generic error finding.
+
+Run the installed plugin checks from the command line:
+
+```bash
+groundworkers lint-plugins --config-path /path/to/config.toml
+```
+
+The command prints a JSON report and exits with status 1 if any linter reports an error. Plugins without the optional hook appear under `skipped`; only plugins with the hook have their settings passed through their package schema and linter. It does not build the Groundworkers runtime or connect to OMOP services. This command covers plugin configuration only; prompt packs and Groundworkers knowledge packs should be validated by their owning subsystems.
+
 
 ## Lifecycle and diagnostics
 
