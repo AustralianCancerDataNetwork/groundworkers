@@ -333,6 +333,24 @@ def test_wrap_graph_error_classifies_primary_database_outage_before_setup_text()
     assert "database is unavailable" in wrapped.message
 
 
+def test_edges_are_not_filtered_by_domain(monkeypatch):
+    # Procedure attributes cross domains (Has method -> Observation, Has dir
+    # proc site -> Spec Anatomic Site); a same-domain filter hides them all.
+    captured: dict[str, object] = {}
+
+    class FakeKnowledgeGraph:
+        def edges(self, concept_ids, **kwargs):
+            captured.update(kwargs)
+            return ()
+
+    adapter = OmopGraphAdapter(_engine_with_graph_tables())
+    monkeypatch.setattr(adapter, "_get_kg", lambda: FakeKnowledgeGraph())
+
+    adapter.edges(40482788, direction="out", active_only=True)
+
+    assert captured["within_domain"] is False
+
+
 def _engine_with_graph_tables():
     from omop_alchemy.cdm.model.vocabulary import Concept
     from omop_graph.extensions.omop_alchemy import RelationshipMapping

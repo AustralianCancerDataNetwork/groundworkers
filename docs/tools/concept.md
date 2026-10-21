@@ -83,7 +83,7 @@ Returns descendants of a concept up to `max_depth` hops (default 3, max 10).
 
 ## `concept_relationships`
 
-Returns all direct relationships (edges) for one concept, grouped by direction.
+Returns all direct relationships (edges) for one concept, grouped by direction. Edges are not filtered by domain, so cross-domain attribute edges (a Procedure's `Has method` → Observation, `Has dir proc site` → Spec Anatomic Site) are included.
 
 ```json
 {"concept_id": 4119419}
@@ -227,6 +227,7 @@ Returns a bounded multi-hop neighborhood around one concept.
 All parameters except `concept_id` are optional.
 
 - `predicate_kinds` restricts traversal to specific relationship families.
+- Edges are followed across domains (unlike `concept_path`'s `within_domain=true` default), so procedure attributes are reachable.
 - `max_depth` is clamped to `1..4`.
 - `max_nodes` is clamped to `10..500`.
 
@@ -265,7 +266,7 @@ Use this when you want a local relationship subgraph without committing to a sin
 
 ## `concept_associations`
 
-Enumerates classified `ASSOCIATION` edges such as therapeutic links between a regimen and its component drugs, or relationships between a drug and an indication. Use it when you need to discover associated concepts from one seed; `concept_neighbors` and `concept_relationships` do not provide this same classified association view.
+Enumerates classified `ASSOCIATION` edges such as therapeutic links between a regimen and its component drugs, or relationships between a drug and an indication. Use it when you need to discover associated concepts from one seed, filtered by subkind and with standard flags; `concept_relationships` lists every edge kind unfiltered. SNOMED defining attributes (finding and procedure sites, method, device, substance) are `ATTRIBUTE`, not `ASSOCIATION`: use `concept_neighbors` with `predicate_kinds: ["ATTRIBUTE"]` for those.
 
 ```json
 {

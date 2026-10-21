@@ -28,6 +28,10 @@
 
 Start with [Concepts and capability choices](concepts.md) for the mental model, then choose an integration path.
 
+For agent-assisted tasks, [Working with prompts](usage/prompt-handling.md) explains how workflow guidance, user questions, domain knowledge, and tools fit together, and what to review before relying on a result.
+
+[Plugins](plugins.md) explains how specialist packages extend Groundworkers, the interface they implement, and where to find the plugin catalogue and examples.
+
 ## At a glance
 
 ```mermaid

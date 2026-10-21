@@ -7,6 +7,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+from pathlib import Path
 from typing import Literal, cast, get_args
 
 from groundworkers._env import (
@@ -20,7 +22,7 @@ from groundworkers._env import (
 # keeping ordinary ``import groundworkers`` side-effect free.
 load_environment()
 
-from oa_configurator import ConfigurationError
+from oa_configurator import ConfigurationError, load_stack_config
 
 from groundworkers.app import GroundworkersApp, build_application
 from groundworkers.base.errors import scrub_error_message
@@ -116,7 +118,9 @@ def create_server(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the groundworkers MCP server")
+    parser = argparse.ArgumentParser(
+        description="Run Groundworkers or check installed plugin configuration."
+    )
     parser.add_argument(
         "--config-path",
         help="Path to the shared OMOP stack config TOML. Defaults to OA_CONFIG_PATH or ~/.config/omop/config.toml.",
@@ -157,8 +161,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["serve", "tui"],
-        help="Optional command. Use 'tui' for the setup TUI.",
+        choices=["serve", "tui", "lint-plugins"],
+        help="Optional command: 'tui' opens setup; 'lint-plugins' checks plugin settings.",
     )
     return parser.parse_args(argv)
 
@@ -182,8 +186,13 @@ def main(argv: list[str] | None = None) -> None:
         else:
             _launch_groundworkers_tui(config_path=args.config_path)
         return
+    if args.command == "lint-plugins":
+        _lint_plugins(args.config_path)
+        return
     if args.config_path is None:
         _require_usable_config_path()
+    else:
+        _set_explicit_config_path(args.config_path)
     try:
         config = build_app_config(config_path=args.config_path)
     except (ConfigurationError, FileNotFoundError, OSError, TypeError, ValueError) as exc:
@@ -226,6 +235,81 @@ def main(argv: list[str] | None = None) -> None:
     host = args.host or config.groundworkers.mcp_host
     port = args.port or config.groundworkers.mcp_port
     server.run(transport=cast(MCPTransport, transport), host=host, port=port)
+
+
+def _lint_plugins(config_path: str | None) -> None:
+    """Run installed plugin linters without building runtime services."""
+
+    from groundworkers.plugins import (
+        GroundworkersPluginLinter,
+        PluginLintDiagnostic,
+        PluginLintReport,
+        PluginLintSeverity,
+        discover_plugins,
+        lint_plugin_config,
+    )
+
+    if config_path is None:
+        _require_usable_config_path()
+    else:
+        _set_explicit_config_path(config_path)
+    try:
+        stack = load_stack_config(config_path)
+    except (ConfigurationError, FileNotFoundError, OSError, TypeError, ValueError) as exc:
+        raise SystemExit(
+            _configuration_failure(exc, config_path=config_path)
+        ) from None
+
+    reports: list[PluginLintReport] = []
+    skipped: list[str] = []
+    for plugin in discover_plugins():
+        if not isinstance(plugin, GroundworkersPluginLinter):
+            skipped.append(plugin.name)
+            continue
+
+        config = None
+        if plugin.config_cls is not None:
+            try:
+                config = plugin.config_cls.validate_candidate(stack)
+            except ConfigurationError:
+                reports.append(
+                    PluginLintReport(
+                        plugin=plugin.name,
+                        diagnostics=(
+                            PluginLintDiagnostic(
+                                code="plugin.config_invalid",
+                                severity=PluginLintSeverity.ERROR,
+                                message=(
+                                    "Plugin configuration is invalid; review the "
+                                    "corresponding tools section in the stack config."
+                                ),
+                                path=f"tools.{plugin.name}",
+                            ),
+                        ),
+                    )
+                )
+                continue
+
+        report = lint_plugin_config(plugin, config)
+        if report is not None:
+            reports.append(report)
+
+    valid = all(report.valid for report in reports)
+    result = {
+        "valid": valid,
+        "checked": len(reports),
+        "skipped": sorted(skipped),
+        "reports": [report.as_dict() for report in reports],
+    }
+    print(json.dumps(result, indent=2))
+    if not valid:
+        raise SystemExit(1)
+
+
+def _set_explicit_config_path(config_path: str) -> None:
+    """Make relative plugin-owned paths resolve beside the selected stack file."""
+
+    os.environ[ENV_CONFIG_PATH] = str(Path(config_path).expanduser().resolve())
 
 
 def _require_usable_config_path() -> None:

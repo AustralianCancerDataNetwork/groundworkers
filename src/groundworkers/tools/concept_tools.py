@@ -75,7 +75,12 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
 
     @server.tool("concept_relationships")
     def concept_relationships(concept_id: int) -> dict[str, Any]:
-        """Returns all relationships for a concept grouped by direction (inbound/outbound)."""
+        """Returns all relationships for a concept grouped by direction (inbound/outbound).
+
+        Edges are not filtered by domain, so cross-domain attribute edges are
+        included: e.g. a Procedure's "Has method" (-> Observation), "Has dir
+        proc site" (-> Spec Anatomic Site) and "Has dir device" (-> Device).
+        """
         if concept_id <= 0:
             return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
         try:
@@ -168,12 +173,16 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
         the edges connecting them.  This reaches across all relationship types
         simultaneously — hierarchy, identity, attribute, composition, and
         association — unlike concept_ancestors / concept_descendants which only
-        follow the parent/child hierarchy.
+        follow the parent/child hierarchy.  Edges are followed across domains
+        (unlike concept_path's within_domain=True default), so a Procedure's
+        attributes — method, procedure site, device, substance — are reached.
 
         Use this to discover what is conceptually related to a concept without
         knowing in advance which relationship types connect them.  Typical uses:
           - finding associated anatomical sites, morphologies, or procedures
             for a clinical finding
+          - listing a procedure's method, site, device, and substance
+            attributes (predicate_kinds=["ATTRIBUTE"], max_depth=1)
           - mapping a drug concept to its ingredient, dose forms, and routes
           - exploring OMOP concept class membership and equivalence clusters
 
@@ -222,10 +231,12 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
         Each edge carries the related concept and its standard_concept flag, so a
         regimen resolves straight to its standard RxNorm ingredients in one call.
 
-        Why this is a separate tool: concept_neighbors and concept_relationships do
-        NOT surface ASSOCIATION edges (the graph's edge view omits them), and
-        concept_path only reaches them between two already-known concepts. Use this
-        to *enumerate* what a concept is clinically associated with.
+        Why this is a separate tool: concept_relationships lists every edge kind
+        unfiltered, and concept_path only reaches associations between two
+        already-known concepts. Use this to *enumerate* just what a concept is
+        clinically associated with, filtered by subkind, with standard flags.
+        Defining attributes such as finding and procedure sites are ATTRIBUTE,
+        not ASSOCIATION — use concept_neighbors(predicate_kinds=["ATTRIBUTE"]).
 
         direction: "out" (default; edges where this concept is the subject), "in", or "both".
         predicate_subkinds: optional filter on the classification subkind, e.g. ["Therapeutic"].

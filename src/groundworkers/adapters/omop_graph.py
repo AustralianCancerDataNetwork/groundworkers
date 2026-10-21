@@ -200,6 +200,8 @@ class OmopGraphAdapter:
         """Return normalized edges for one concept (no concept-name enrichment).
 
         Each edge: ``{subject_id, object_id, predicate_id, predicate_kind, valid}``.
+        Edges are not filtered by domain: attribute and mapping edges usually
+        cross domains (Procedure -> Spec Anatomic Site, Condition -> Observation).
         """
         try:
             raw = self._get_kg().edges(
@@ -207,6 +209,7 @@ class OmopGraphAdapter:
                 direction=direction,
                 predicate_kinds=predicate_kinds,
                 active_only=active_only,
+                within_domain=False,
             )
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
