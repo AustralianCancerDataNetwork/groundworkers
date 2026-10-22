@@ -2,9 +2,25 @@
 
 ## The fundamental rule
 
-The `domain_id` of the **target standard concept** determines which CDM table a record is written to — not the domain implied by the source code, source vocabulary, or source table structure.
+For an entity concept field, route the record using the `domain_id` of the
+selected, active standard mapping target. Do not infer the destination table
+from the source vocabulary, source code, source table, or caller hint when a
+valid standard target is available.
 
-A source item coded as a procedure that maps to an RxNorm Ingredient goes to `DRUG_EXPOSURE`, not `PROCEDURE_OCCURRENCE`. A source item that looks like a diagnosis but maps to a LOINC measurement concept goes to `MEASUREMENT`. The target concept is authoritative.
+For example, if a source item coded as a procedure maps to an active standard
+Drug concept, the entity belongs in `DRUG_EXPOSURE`. If an item that looks like
+a diagnosis maps to an active standard Measurement concept, it belongs in
+`MEASUREMENT`. The selected entity target's domain determines the table.
+
+Check that a proposed target is both standard (`standard_concept = 'S'`) and
+active before using its domain for routing. A target that is retired, updated,
+or a classification concept (`standard_concept = 'C'`) is not a valid entity
+target.
+
+If mapping produces multiple targets, or no valid standard target, do not
+silently choose a table based on one candidate. Preserve the source item and
+mapping evidence, flag the unresolved or multi-target decision, and use the
+fallback rule below only when a record still needs to be written.
 
 ## Domain → CDM table mapping
 
@@ -20,21 +36,30 @@ A source item coded as a procedure that maps to an RxNorm Ingredient goes to `DR
 | Visit | VISIT_OCCURRENCE |
 | Provider | PROVIDER |
 
-## Scope: the entity concept only
+## Scope: entity concepts versus value concepts
 
-This rule routes on the domain of the **entity** concept — the one going into
-`measurement_concept_id`, `observation_concept_id`, `condition_concept_id`, etc.
-It does not apply to `value_as_concept_id` or other subordinate value fields.
-A value concept may legitimately come from a different domain than the record
-it lives in — e.g. a Condition-domain concept (a plain diagnosis) used as
-`value_as_concept_id` on an OBSERVATION row for a history-of or family-history
-pattern (see `history-of-event`). Do not re-route a record to a different CDM
-table because its value concept's domain differs from the entity concept's
-domain — only the entity concept's domain decides the table.
+This routing rule applies to the entity concept field — the concept that
+identifies the record, such as `condition_concept_id`,
+`measurement_concept_id`, or `observation_concept_id`.
+
+It does not route on `value_as_concept_id` or another subordinate value field.
+A value concept may have a different domain from the entity and the CDM table.
+For example, personal history may be represented by the Observation-domain
+`History of event` concept in `observation_concept_id`, with a Condition- or
+Procedure-domain concept in `value_as_concept_id`. Family history may instead
+use a pre-coordinated family-history concept in `observation_concept_id`.
+
+Do not create a Condition or Procedure row, or change the table, solely because
+a history value has that domain. Preserve the history, family relationship,
+negation, and temporal meaning represented by the source and mapping pattern.
 
 ## Unmapped source items (concept_id = 0)
 
-When no valid standard concept mapping exists, set `*_concept_id = 0` (not NULL). The record still belongs in a CDM table — route using the best available domain signal (source vocabulary, source table, or caller context). Document the zero-mapping so it surfaces in data quality review.
+If no active standard target is available, use `*_concept_id = 0` rather than
+NULL or an inactive/non-standard fallback. When a record must still be placed
+in a CDM table, use the best available domain signal from the source vocabulary,
+source table, and caller context. Treat that as a fallback decision, document
+it, and preserve the original source value for review.
 
 Do not omit a record solely because no mapping was found. The source value is preserved in `*_source_value` and the zero-mapped record remains queryable.
 

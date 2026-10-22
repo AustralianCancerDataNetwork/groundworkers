@@ -1,5 +1,5 @@
-# Standard concept preference rules
-# Consumed by the post-filter mechanism to rank or reject candidates.
+# Standard concept eligibility rules and provisional domain preferences.
+# These rules are currently declarative; see guidance.md for the resolution policy.
 
 active_concept_required:
   # Concepts must be active — not deprecated or replaced.
@@ -27,6 +27,10 @@ vocab_preference:
   - domain: Condition
     prefer: [SNOMED]
     over: [ICD10CM, ICD9CM, ICD10, MedDRA]
+    note: >
+      Tie-breaker only among active standard concepts representing the same
+      meaning at the required specificity. ICDO3 also has standard Condition
+      combinations; do not replace them automatically with SNOMED.
 
   - domain: Drug
     prefer: [RxNorm]
@@ -36,15 +40,18 @@ vocab_preference:
       RxNorm concept exists for the same clinical drug at the same precision level.
 
   - domain: Measurement
-    prefer: [LOINC]
-    secondary: [SNOMED]
+    note: >
+      No blanket ranking. Choose based on whether the source represents a
+      survey item, clinical assessment, finding, or score; verify the candidate
+      domain and preserve the source representation.
 
   - domain: Procedure
-    prefer: [SNOMED]
-    secondary: [CPT4]
     note: >
-      CPT4 is preferred for US procedural billing/claims context.
-      SNOMED preferred for clinical EHR data and non-US sources.
+      No blanket ranking. Standard source concepts in CPT4, HCPCS, ICD10PCS,
+      and ICD9Proc may map to themselves. Use SNOMED only when it is the
+      appropriate representation, not as an automatic replacement.
 
   - domain: Observation
-    prefer: [SNOMED, LOINC]
+    note: >
+      No blanket ranking. Distinguish survey items, observations, history
+      patterns, and other recorded entities by their meaning and target field.
