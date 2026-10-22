@@ -701,7 +701,7 @@ def test_embedding_coverage_refresh_shows_loading_state(
 ) -> None:
     pytest.importorskip("groundskeeping")
 
-    from time import sleep
+    from threading import Event
 
     from groundskeeping.app import OperatorApp
 
@@ -710,8 +710,12 @@ def test_embedding_coverage_refresh_shows_loading_state(
     config_path = tmp_path / "config.toml"
     _write_embedding_stack(config_path)
 
+    refresh_started = Event()
+    release_refresh = Event()
+
     def slow_refresh(*_args, **_kwargs):
-        sleep(0.4)
+        refresh_started.set()
+        release_refresh.wait(timeout=5)
 
     monkeypatch.setattr(
         "groundworkers.tui.pages.setup.load_embedding_coverage_report",
@@ -731,20 +735,27 @@ def test_embedding_coverage_refresh_shows_loading_state(
 
             assert str(app.query_one("#view-action-0").label) == "Check model"
             await pilot.click("#view-action-1")
-            # Button events and worker startup are scheduled independently of
-            # the test driver. Wait for the synchronous loading view to become
-            # visible, but keep the deadline below slow_refresh's 0.4 seconds.
-            for _ in range(20):
-                if app.query_one("#result-loading").styles.display == "block":
-                    break
-                await pilot.pause(0.01)
+            try:
+                for _ in range(200):
+                    if (
+                        refresh_started.is_set()
+                        and app.query_one("#result-loading").styles.display == "block"
+                    ):
+                        break
+                    await pilot.pause(0.01)
 
-            assert app.query_one("#result-loading").styles.display == "block"
-            assert app.query_one("#result-table").styles.display == "none"
-            assert "Counting CDM vocabularies" in str(
-                app.query_one("#result-summary").render()
-            )
-            assert app.query_one("#context-panel").border_title == "Vocabulary coverage"
+                assert refresh_started.is_set()
+                assert app.query_one("#result-loading").styles.display == "block"
+                assert app.query_one("#result-table").styles.display == "none"
+                assert "Counting CDM vocabularies" in str(
+                    app.query_one("#result-summary").render()
+                )
+                assert (
+                    app.query_one("#context-panel").border_title
+                    == "Vocabulary coverage"
+                )
+            finally:
+                release_refresh.set()
 
     asyncio.run(run_check())
 

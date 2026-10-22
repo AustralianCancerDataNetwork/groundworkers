@@ -315,7 +315,7 @@ def test_normalize_prompt_returns_single_user_message():
 
 def test_normalize_prompt_content_contains_text():
     result = _prompt_server().call_prompt("normalize_clinical_term", text="MI")
-    assert "'MI'" in result[0]["content"]["text"]
+    assert 'Term (JSON string): "MI"' in result[0]["content"]["text"]
 
 
 def test_normalize_prompt_system_folded_into_user_content():
