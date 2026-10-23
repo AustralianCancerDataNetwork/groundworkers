@@ -403,9 +403,81 @@ def test_embedding_tier_requires_a_query_encoder() -> None:
     # the only remaining difference between the two adapters.
     without_encoder._embedding_configured = True
     with_encoder._embedding_configured = True
+    without_encoder._kg = object()  # type: ignore[assignment]
+    with_encoder._kg = object()  # type: ignore[assignment]
 
     assert without_encoder.embedding_resolver_active is False
     assert with_encoder.embedding_resolver_active is True
+
+
+def _fresh_configured_grounding_service(monkeypatch, *, configuration_error=None):
+    adapter = OmopGraphAdapter(
+        create_engine("sqlite:///:memory:"),
+        embedding_backend_factory=lambda: object(),  # type: ignore[arg-type]
+        resolved_embedding_model=object(),  # type: ignore[arg-type]
+        model_backend_factory=lambda: object(),  # type: ignore[arg-type]
+    )
+    setup_calls = 0
+    tiers: list[tuple[str, ...]] = []
+
+    def initialize_graph():
+        nonlocal setup_calls
+        setup_calls += 1
+        adapter._embedding_configured = configuration_error is None
+        adapter._embedding_configuration_error = configuration_error
+        return object()
+
+    def run_ground_tier(tier, _query, *, constraints, limit):
+        tiers.append(tuple(type(resolver).__name__ for resolver in tier))
+        return []
+
+    async def async_run_ground_tier(tier, _query, *, constraints, limit):
+        tiers.append(tuple(type(resolver).__name__ for resolver in tier))
+        return []
+
+    monkeypatch.setattr(adapter, "_get_kg", initialize_graph)
+    monkeypatch.setattr(adapter, "run_ground_tier", run_ground_tier)
+    monkeypatch.setattr(adapter, "async_run_ground_tier", async_run_ground_tier)
+    monkeypatch.setattr(adapter, "concept_views", lambda _concept_ids: {})
+    return ConceptGroundingService(GraphService(adapter)), tiers, lambda: setup_calls
+
+
+def test_first_grounding_call_plans_embedding_after_cold_graph_setup(monkeypatch) -> None:
+    service, tiers, setup_calls = _fresh_configured_grounding_service(monkeypatch)
+
+    service.ground("rare condition", limit=5, domain=None, vocabulary_id=None)
+
+    assert setup_calls() == 1
+    assert ("EmbeddingResolver",) in tiers
+
+
+def test_first_async_grounding_call_plans_embedding_after_cold_graph_setup(
+    monkeypatch,
+) -> None:
+    service, tiers, setup_calls = _fresh_configured_grounding_service(monkeypatch)
+
+    import asyncio
+
+    asyncio.run(
+        service.async_ground("rare condition", limit=5, domain=None, vocabulary_id=None)
+    )
+
+    assert setup_calls() == 1
+    assert ("EmbeddingResolver",) in tiers
+
+
+def test_embedding_configuration_failure_is_reported_with_lexical_fallback(
+    monkeypatch,
+) -> None:
+    detail = "Embedding configuration failed with RuntimeError; lexical grounding remains available."
+    service, tiers, _ = _fresh_configured_grounding_service(
+        monkeypatch, configuration_error=detail
+    )
+
+    result = service.ground("rare condition", limit=5, domain=None, vocabulary_id=None)
+
+    assert all("EmbeddingResolver" not in tier for tier in tiers)
+    assert result["grounding_explanation"]["embedding_tier_detail"] == detail
 
 
 def test_encode_query_without_a_model_backend_reports_tier_unavailable() -> None:

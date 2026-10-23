@@ -104,7 +104,8 @@ class ConceptGroundingService:
                 "active_only": active_only,
                 # Set when the embedding tier was planned but could not run, so a
                 # degraded lexical-only answer is never presented as a complete one.
-                "embedding_tier_detail": result.get("embedding_tier_detail"),
+                "embedding_tier_detail": result.get("embedding_tier_detail")
+                or getattr(self._graph, "embedding_configuration_error", None),
             },
         }
 
@@ -168,7 +169,8 @@ class ConceptGroundingService:
                 "parent_ids_source": "explicit" if parent_ids is not None else "none",
                 "standard_only": standard_only,
                 "active_only": active_only,
-                "embedding_tier_detail": result.get("embedding_tier_detail"),
+                "embedding_tier_detail": result.get("embedding_tier_detail")
+                or getattr(self._graph, "embedding_configuration_error", None),
             },
         }
 
