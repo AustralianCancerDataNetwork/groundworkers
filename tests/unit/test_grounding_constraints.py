@@ -480,6 +480,29 @@ def test_embedding_configuration_failure_is_reported_with_lexical_fallback(
     assert result["grounding_explanation"]["embedding_tier_detail"] == detail
 
 
+def test_embedding_configuration_failure_is_not_reported_when_embedding_disabled(
+    monkeypatch,
+) -> None:
+    service, _, _ = _fresh_configured_grounding_service(
+        monkeypatch,
+        configuration_error="Embedding configuration failed with RuntimeError; "
+        "lexical grounding remains available.",
+    )
+    # Set up the graph first, so the configuration error is already recorded and
+    # only include_embedding=False can be what keeps it out of the explanation.
+    assert service._graph.embedding_resolver_active is False
+
+    result = service.ground(
+        "rare condition",
+        limit=5,
+        domain=None,
+        vocabulary_id=None,
+        include_embedding=False,
+    )
+
+    assert result["grounding_explanation"]["embedding_tier_detail"] is None
+
+
 def test_encode_query_without_a_model_backend_reports_tier_unavailable() -> None:
     adapter = OmopGraphAdapter(create_engine("sqlite:///:memory:"))
 
