@@ -5,12 +5,11 @@ mapping of label → OMOP domain string for any label that can be confidently
 classified.  Labels that yield null or an unrecognised domain are omitted so that
 callers fall through to the next resolution tier (keyword heuristics).
 
-Valid domains returned: Measurement, Condition, Observation, Procedure, Drug,
-Device, Metadata, Identifier.
-
-"Metadata" and "Identifier" are groundcrew-internal sentinel values, not OMOP
-CDM domains.  The ingester treats them as skip signals and does not create
-SourceItems for those rows.
+Valid outputs are ``groundworkers.omop_domains.DOMAIN_CLASSIFY_OUTPUTS``: the
+clinical ``CLASSIFIABLE_DOMAINS`` plus the ``NON_CLINICAL`` labels "Metadata" and
+"Identifier". The non-clinical labels are not OMOP CDM domains; they mark fields
+that describe data collection or only link records. groundcrew's ingester treats
+them as skip signals and does not create SourceItems for those rows.
 
 TODO: this isn't actually asking about domain_id, it is asking about target CDM table,
 and is a pre-cursor to semantic projection. This is likely fine with the shorter list
@@ -20,19 +19,9 @@ required here...
 from __future__ import annotations
 
 from groundworkers.adapters.llm import LLMAdapter
+from groundworkers.omop_domains import DOMAIN_CLASSIFY_OUTPUTS
 
-_VALID_DOMAINS = frozenset(
-    {
-        "Measurement",
-        "Condition",
-        "Observation",
-        "Procedure",
-        "Drug",
-        "Device",
-        "Metadata",
-        "Identifier",
-    }
-)
+_VALID_DOMAINS = DOMAIN_CLASSIFY_OUTPUTS
 
 _DOMAIN_SYSTEM = """\
 You are a clinical data analyst assigning domains to data dictionary fields.

@@ -25,6 +25,7 @@ def register_domain_tools(server: GroundworkersMCPServer, domain_service: Domain
         Valid domains: Measurement, Condition, Observation, Procedure, Drug, Device,
         Metadata, Identifier.
 
+        "Metadata" and "Identifier" are non-clinical labels, not OMOP domains.
         "Metadata" signals administrative/operational fields (examiner initials, site
         codes, form completion data, data-entry timestamps) that describe the data
         collection process rather than the subject's clinical state.
