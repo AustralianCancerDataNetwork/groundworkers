@@ -6597,11 +6597,11 @@ the same bounded values.</p>
 mapping of label → OMOP domain string for any label that can be confidently
 classified.  Labels that yield null or an unrecognised domain are omitted so that
 callers fall through to the next resolution tier (keyword heuristics).</p>
-<p>Valid domains returned: Measurement, Condition, Observation, Procedure, Drug,
-Device, Metadata, Identifier.</p>
-<p>"Metadata" and "Identifier" are groundcrew-internal sentinel values, not OMOP
-CDM domains.  The ingester treats them as skip signals and does not create
-SourceItems for those rows.</p>
+<p>Valid outputs are <code>groundworkers.omop_domains.DOMAIN_CLASSIFY_OUTPUTS</code>: the
+clinical <code>CLASSIFIABLE_DOMAINS</code> plus the <code>NON_CLINICAL</code> labels "Metadata" and
+"Identifier". The non-clinical labels are not OMOP CDM domains; they mark fields
+that describe data collection or only link records. groundcrew's ingester treats
+them as skip signals and does not create SourceItems for those rows.</p>
 <p>TODO: this isn't actually asking about domain_id, it is asking about target CDM table,
 and is a pre-cursor to semantic projection. This is likely fine with the shorter list
 of domains, but it could end up being very confusing if that is not clear - some thought
