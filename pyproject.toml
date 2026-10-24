@@ -76,6 +76,9 @@ groundworkers = "groundworkers.server:main"
 [project.entry-points."omop.config"]
 groundworkers = "groundworkers.config:GroundworkersConfig"
 
+[project.entry-points."ohdsi_prompt_registry.packs"]
+groundworkers = "groundworkers.prompt_packs"
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"

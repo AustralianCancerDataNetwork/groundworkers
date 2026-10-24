@@ -1,0 +1,20 @@
+label: Human-readable label or preferred term.
+codes: Primary code value to ground.
+values: Allowed values or packed value-set column.
+annotation: Supplementary cross-reference or external annotation.
+entity: Entity or subject column.
+attribute: Stable source field or variable identifier.
+section: Form, module, section, or grouping column.
+subsection: Sub-grouping within a section.
+source_vocab: Declared coding system or source vocabulary column.
+description: Long-form descriptive text or definition.
+mapping_context: Reference context for mapping, not directly groundable.
+data_type: Declared source data type metadata.
+field_type_ctrl: Source control or field-type metadata.
+local_pk: Local row identifier or primary key.
+pii_flag: Column marking personally identifying information.
+required: Column indicating a field is required.
+frequency: Frequency or cadence metadata.
+pipeline_meta: Pipeline metadata retained for traceability.
+irrelevant: Structurally retained but not relevant to grounding.
+
