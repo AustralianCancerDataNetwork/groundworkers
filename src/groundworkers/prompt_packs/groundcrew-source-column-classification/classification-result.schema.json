@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.groundcrew/schemas/source-column-classification-result.schema.json",
+  "title": "Groundcrew source-column classification result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decisions"],
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/decision"}
+    }
+  },
+  "$defs": {
+    "role": {
+      "enum": [
+        "label",
+        "codes",
+        "values",
+        "annotation",
+        "entity",
+        "attribute",
+        "section",
+        "subsection",
+        "source_vocab",
+        "description",
+        "mapping_context",
+        "data_type",
+        "field_type_ctrl",
+        "local_pk",
+        "pii_flag",
+        "required",
+        "frequency",
+        "pipeline_meta",
+        "irrelevant"
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["header", "role", "confidence", "inferred_vocab", "packed_value", "notes"],
+      "properties": {
+        "header": {"type": "string", "minLength": 1},
+        "role": {
+          "oneOf": [
+            {"$ref": "#/$defs/role"},
+            {"type": "null"}
+          ]
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "inferred_vocab": {"type": ["string", "null"]},
+        "packed_value": {"type": "boolean"},
+        "notes": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"role": {"type": "null"}}, "required": ["role"]},
+          "then": {
+            "properties": {
+              "confidence": {"maximum": 0.79},
+              "inferred_vocab": {"type": "null"},
+              "packed_value": {"const": false}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"role": {"const": "values"}}, "required": ["role"]},
+          "then": {},
+          "else": {"properties": {"packed_value": {"const": false}}}
+        }
+      ]
+    }
+  }
+}
+

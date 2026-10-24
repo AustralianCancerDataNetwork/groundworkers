@@ -1,0 +1,68 @@
+classification_request:
+  table_name: local_data_dictionary
+  headers: [var_key, display_text, coding_system, code_value, allowed_responses, status]
+  original_headers: [Var Key, Display Text, Coding System, Code Value, Allowed Responses, Status]
+  sample_rows:
+    - var_key: diabetes_history
+      display_text: History of diabetes
+      coding_system: ICD10CM
+      code_value: E11.9
+      allowed_responses: "0, No | 1, Yes"
+      status: Active
+    - var_key: hba1c
+      display_text: HbA1c result
+      coding_system: LOINC
+      code_value: 4548-4
+      allowed_responses: ""
+      status: Active
+  deterministic_annotations:
+    display_text:
+      role: label
+      detection_tier: B
+      confidence: 0.9
+      inferred_vocab: null
+      packed_value: false
+      notes: Header contains a strong label token.
+    coding_system:
+      role: source_vocab
+      detection_tier: B
+      confidence: 0.9
+      inferred_vocab: null
+      packed_value: false
+      notes: Header identifies a coding-system column.
+    allowed_responses:
+      role: values
+      detection_tier: B
+      confidence: 0.75
+      inferred_vocab: null
+      packed_value: true
+      notes: Header and cell syntax suggest a packed value set.
+  candidate_headers: [var_key, code_value, allowed_responses, status]
+
+classification_result:
+  decisions:
+    - header: var_key
+      role: attribute
+      confidence: 0.94
+      inferred_vocab: null
+      packed_value: false
+      notes: Values are stable source variable identifiers paired with display labels.
+    - header: code_value
+      role: codes
+      confidence: 0.98
+      inferred_vocab: null
+      packed_value: false
+      notes: Values are terminology codes paired row-wise with an explicit coding-system column.
+    - header: allowed_responses
+      role: values
+      confidence: 0.96
+      inferred_vocab: null
+      packed_value: true
+      notes: Cells hold multiple encoded choices that require downstream expansion.
+    - header: status
+      role: null
+      confidence: 0.45
+      inferred_vocab: null
+      packed_value: false
+      notes: The samples do not distinguish operational row status from clinical mapping context.
+

@@ -1,0 +1,60 @@
+name: groundcrew-source-column-classification
+title: Groundcrew source-column classification
+version: "0.2"
+shareability: private
+scope_summary: >
+  Reviews uncertain normalized source columns against Groundworkers' source-planning
+  role vocabulary without overriding strong deterministic annotations.
+
+applicability:
+  always: false
+  tags: [groundcrew, ingestion, source-planning, column-classification]
+
+see_also:
+  - source-planning://column-roles
+  - source-planning://canonical-headers
+
+documents:
+  instructions:
+    path: instructions.md
+    mime_type: text/markdown
+    description: >
+      Groundcrew-specific workflow for reviewing source-planning column roles.
+  role_catalogue:
+    path: role-catalogue.yaml
+    mime_type: application/json
+    description: >
+      The Groundworkers ColumnRole vocabulary and its intent, kept identical to the code by tests.
+  examples:
+    path: examples.yaml
+    mime_type: application/json
+    description: >
+      Valid baseline and review examples for uncertain source columns.
+
+schemas:
+  classification_request:
+    path: classification-request.schema.json
+    description: >
+      Normalized table context, deterministic annotations, and candidate headers.
+  classification_result:
+    path: classification-result.schema.json
+    description: >
+      Conservative role decisions compatible with assisted source planning.
+
+prompts:
+  classify_columns:
+    document: instructions
+    title: Classify Groundcrew source columns
+    description: Review uncertain source columns against the source-planning role vocabulary.
+    arguments:
+      classification_request:
+        description: A JSON Groundcrew source-column classification request.
+        required: false
+
+render: {}
+
+requires_tools:
+  - source_plan
+  - source_plan_assisted
+
+tool_prefix: gsc

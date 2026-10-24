@@ -44,6 +44,14 @@ groundworkers
 groundworkers --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
+Explore the configured MCP tools, prompts, and resources interactively with the official MCP Inspector:
+
+```bash
+make inspector
+```
+
+This launches Groundworkers over stdio using the active shared OMOP configuration and opens the Inspector UI. It requires Node.js 22.19 or newer and `uv`; the first run downloads the Inspector package through `npx`.
+
 REST is a separate, curated interface:
 
 ```bash
