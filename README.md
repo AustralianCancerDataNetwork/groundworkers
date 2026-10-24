@@ -77,6 +77,23 @@ bundle = app.services.mapping.concept_candidate_bundle(
 
 The `mapping` service in this example requires a configured CDM database. Embedding-backed channels require an embedding model and vector store; text, domain classification, and assisted source planning require a configured chat model. Use `groundworkers --describe` to see what the current deployment exposes.
 
+## Contract owners
+
+Owned here
+
+| Contract | Where it is defined | Who consumes it |
+|---|---|---|
+| Source-planning roles and column review pack | [Models](src/groundworkers/services/source_planning/models.py); [pack manifest](src/groundworkers/prompt_packs/groundcrew-source-column-classification/manifest.yaml) | Groundcrew and source-planning clients |
+| Domain routing and classifier outputs | [omop_domains.py](src/groundworkers/omop_domains.py) | Groundcrew's domain review pack and the domain-routing knowledge pack |
+| Mapping conventions | [Standard-concept guidance](src/groundworkers/knowledge/packs/core/standard-concept-preference/guidance.md), [drug guidance](src/groundworkers/knowledge/packs/core/drug-concept-granularity/guidance.md), [history-of guidance](src/groundworkers/knowledge/packs/core/history-of-event/guidance.md) | Agents reading knowledge packs; guidance is advisory |
+| Plugin interfaces | [plugins.py](src/groundworkers/plugins.py) | Registry and other Groundworkers plugins |
+
+Consumed from elsewhere
+
+| Contract | Owner repo | How this repo conforms |
+|---|---|---|
+| Registry pack format | [ohdsi-prompt-registry](https://github.com/AustralianCancerDataNetwork/ohdsi-prompt-registry#contract-owners) | Pack entry point in [pyproject.toml](pyproject.toml); discovery and validation in [test_prompt_packs.py](tests/unit/test_prompt_packs.py) |
+
 ## Companion repositories
 
 - [groundcrew](https://github.com/AustralianCancerDataNetwork/groundcrew) owns session state and orchestration.
