@@ -108,7 +108,17 @@ class OmopGraphAdapter:
         failure this property exists to prevent.
         """
 
+        try:
+            self._get_kg()
+        except GroundworkersError:
+            return False
         return self._embedding_configured and self._model_backend_factory is not None
+
+    @property
+    def embedding_configuration_error(self) -> str | None:
+        """Safe detail when embedding setup fell back to a lexical-only graph."""
+
+        return self._embedding_configuration_error
 
     def is_available(self) -> bool:
         try:

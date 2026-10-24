@@ -102,9 +102,9 @@ class ConceptGroundingService:
                 "parent_ids_source": "explicit" if parent_ids is not None else "none",
                 "standard_only": standard_only,
                 "active_only": active_only,
-                # Set when the embedding tier was planned but could not run, so a
-                # degraded lexical-only answer is never presented as a complete one.
-                "embedding_tier_detail": result.get("embedding_tier_detail"),
+                "embedding_tier_detail": self._embedding_tier_detail(
+                    result, include_embedding=include_embedding
+                ),
             },
         }
 
@@ -168,9 +168,27 @@ class ConceptGroundingService:
                 "parent_ids_source": "explicit" if parent_ids is not None else "none",
                 "standard_only": standard_only,
                 "active_only": active_only,
-                "embedding_tier_detail": result.get("embedding_tier_detail"),
+                "embedding_tier_detail": self._embedding_tier_detail(
+                    result, include_embedding=include_embedding
+                ),
             },
         }
+
+    def _embedding_tier_detail(
+        self, result: dict[str, Any], *, include_embedding: bool
+    ) -> str | None:
+        """Why a requested embedding tier did not contribute, if it did not.
+
+        Covers both ways a degraded lexical-only answer can arise, so it is never
+        presented as a complete one: the tier was planned but could not encode the
+        query, or embedding setup failed and the tier was never planned. A caller
+        that turned embeddings off gets neither, since nothing it asked for failed.
+        """
+        if not include_embedding:
+            return None
+        return result.get("embedding_tier_detail") or getattr(
+            self._graph, "embedding_configuration_error", None
+        )
 
     def _resolve_domain(self, domain: str | None) -> str | None:
         """Canonicalise the requested domain, rejecting one that cannot exist.

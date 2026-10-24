@@ -114,6 +114,10 @@ class GraphService:
     def embedding_resolver_active(self) -> bool:
         return self._adapter.embedding_resolver_active
 
+    @property
+    def embedding_configuration_error(self) -> str | None:
+        return getattr(self._adapter, "embedding_configuration_error", None)
+
     # ------------------------------------------------------------------
     # Hierarchy traversal
     # ------------------------------------------------------------------
