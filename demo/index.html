@@ -2014,39 +2014,184 @@
 
 
 <h1 id="demo">Demo</h1>
-<p>A recorded session of Claude Code using the Groundworkers MCP server against a local OMOP
-vocabulary. The recording is one terminal session split into four parts. Each player starts at
-its part and pauses where the next one begins, and plays at 1.5× speed. Use the player controls
-to pause, seek or change speed.</p>
+<p>This is a real Claude Code session with the Groundworkers MCP server plugged into a local OMOP vocabulary.</p>
 <h2 id="basic-lookups">Basic lookups</h2>
-<p>Claude Code starts with only the Groundworkers MCP server loaded and answers two vocabulary
-questions:</p>
-<ul>
-<li>Find the standard OMOP concept for "heart attack".</li>
-<li>Which drugs make up the FOLFOX regimen, as OMOP standard RxNorm ingredients?</li>
-</ul>
-<div class="asciicast" data-src="../static/demo.cast" data-start-at="81.6" data-poster-at="120.5"></div>
+<p>In this video you see groundworkers load with no system memory or project settings - only groundworkers tools loaded. </p>
+<p>Simple lookup questions:</p>
+<ol>
+<li><em>Find the standard OMOP concept for ‘heart attack’</em></li>
+<li><em>Which drugs make up the FOLFOX regimen, as OMOP standard RxNorm ingredients?</em></li>
+</ol>
+<div class="asciicast" data-src="../static/demo.short.cast" data-start-at="40.9" data-poster-at="58.9"></div>
 
+<p><em>Sped up: 39 s real time, 18 s playbacks.</em></p>
+<table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>concept_id</th>
+<th>Vocabulary</th>
+<th>Athena</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Myocardial infarction ("heart attack")</td>
+<td>4329847</td>
+<td>SNOMED</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/4329847">Open</a></td>
+</tr>
+<tr>
+<td>FOLFOX (regimen)</td>
+<td>35806596</td>
+<td>HemOnc</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/35806596">Open</a></td>
+</tr>
+<tr>
+<td>fluorouracil</td>
+<td>955632</td>
+<td>RxNorm Ingredient</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/955632">Open</a></td>
+</tr>
+<tr>
+<td>leucovorin</td>
+<td>1388796</td>
+<td>RxNorm Ingredient</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/1388796">Open</a></td>
+</tr>
+<tr>
+<td>oxaliplatin</td>
+<td>1318011</td>
+<td>RxNorm Ingredient</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/1318011">Open</a></td>
+</tr>
+</tbody>
+</table>
 <h2 id="colorectal-cancer-concept-set">Colorectal cancer concept set</h2>
-<p>A longer, multi-step task:</p>
-<ul>
-<li>Build a colorectal cancer concept set, grouped by anatomical region, excluding non-malignant
-  disease and non-solid tumours.</li>
-<li>Audit the ascending colon group for completeness.</li>
-<li>Cross-check it by mapping SNOMED morphology back to ICD-O-3.</li>
-</ul>
-<div class="asciicast" data-src="../static/demo.cast" data-start-at="120.8"></div>
+<p>Complex vocabulary inference:</p>
+<ol>
+<li><strong>Initial concept set request:</strong> <em>I would like a concept set covering colorectal cancer. This concept set should be split into groups covering each of the major relevant anatomical regions. Exclude non-malignant disease and non-solid tumors</em></li>
+<li><strong>Use topography clues to ask groundworkers to check completeness of the set:</strong> <em>Let's audit the concept set specific to the ascending colon to check for completeness</em></li>
+<li><strong>Add in morphology-based verification as well:</strong> <em>Could we use the snomed morphology property to map backwards to ICDO3 and provide additional confirmation that way as well?</em></li>
+</ol>
+<div class="asciicast" data-src="../static/demo.short.cast" data-start-at="59.1"></div>
 
+<p><em>Sped up: 6 min 10 s real time, 2 min 1 s playback. Only the waiting is compressed (spinner and counter updates while the model and tool calls run).</em></p>
+<table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>concept_id</th>
+<th>Why look at it</th>
+<th>Athena</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Malignant tumor of large intestine</td>
+<td>443396</td>
+<td>The parent the whole concept set is built from (2,329 descendants)</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/443396">Open</a></td>
+</tr>
+<tr>
+<td>Neoplasm of ascending colon</td>
+<td>4130997</td>
+<td>The audit parent: everything under it is diffed against the ascending colon group</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/4130997">Open</a></td>
+</tr>
+<tr>
+<td>Large cell neuroendocrine carcinoma of ascending colon</td>
+<td>44502762</td>
+<td>ICD-O-3 outlier: standard, but not a descendant of 443396 because not all ICD-O-3 concepts attach to the SNOMED hierarchy</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/44502762">Open</a></td>
+</tr>
+<tr>
+<td>Primary malignant neuroendocrine neoplasm of ascending colon</td>
+<td>761001</td>
+<td>SNOMED outlier: sits under the ascending colon parent but not under 443396, so the hierarchy alone misses it</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/761001">Open</a></td>
+</tr>
+<tr>
+<td>Well-differentiated neuroendocrine tumor of ascending colon</td>
+<td>1077457</td>
+<td>Judgement call: it is the "Maps to" target of benign-carcinoid source codes, so it mixes behaviours</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/1077457">Open</a></td>
+</tr>
+</tbody>
+</table>
 <h2 id="data-dictionary-mapping">Data dictionary mapping</h2>
-<p>A short colorectal registry data dictionary is shown as a table, planned with <code>source_plan</code>, and
-then each field is mapped to a standard OMOP concept, returned as one table.</p>
-<div class="asciicast" data-src="../static/demo.cast" data-start-at="491.1"></div>
+<p>A toy data dictionary decomposition showing handling of real mapping problems beyond label:concept translation.</p>
+<div class="asciicast" data-src="../static/demo.short.cast" data-start-at="180.3"></div>
 
+<p><em>Sped up: 1 min 27 s real time, 16 s playback</em></p>
+<table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>concept_id</th>
+<th>Why look at it</th>
+<th>Athena</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Family history of clinical finding</td>
+<td>4167217</td>
+<td>The observation concept for <code>fhx_crc</code>; the condition goes in <code>value_as_concept_id</code></td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/4167217">Open</a></td>
+</tr>
+<tr>
+<td>Malignant colorectal neoplasm</td>
+<td>37168850</td>
+<td>The value used for <code>fhx_crc</code></td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/37168850">Open</a></td>
+</tr>
+<tr>
+<td>Malignant tumor of intestine</td>
+<td>443398</td>
+<td>The literal reading of "bowel cancer", which also includes the small intestine</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/443398">Open</a></td>
+</tr>
+<tr>
+<td>Current smoker</td>
+<td>40766945</td>
+<td>A LOINC question item used for <code>smoking</code>, with Yes/No answers as values</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/40766945">Open</a></td>
+</tr>
+<tr>
+<td>Smokes cigarette daily</td>
+<td>1450766</td>
+<td>The narrowest SNOMED alternative, since no plain "Current smoker" concept exists</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/1450766">Open</a></td>
+</tr>
+<tr>
+<td>Body mass index</td>
+<td>4245997</td>
+<td>The exact match for <code>bmi</code>; a LOINC concept was chosen instead, so pick one and be consistent</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/4245997">Open</a></td>
+</tr>
+<tr>
+<td>capecitabine</td>
+<td>1337620</td>
+<td><code>chemo_agent_2</code>, mapped at Ingredient level (a FOLFOX/CAPOX component)</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/1337620">Open</a></td>
+</tr>
+<tr>
+<td>Colonoscopy</td>
+<td>4249893</td>
+<td>An exact match for <code>colonoscopy</code> (a Procedure)</td>
+<td><a href="https://athena.ohdsi.org/search-terms/terms/4249893">Open</a></td>
+</tr>
+</tbody>
+</table>
 <h2 id="setup-tui">Setup TUI</h2>
-<p>Before the session above, the Groundworkers setup TUI (<code>groundworkers tui</code>) walks through the
-CDM database connection, checks each configured backend, including embedding coverage, and shows
-the plugin settings pages such as UMLS.</p>
-<div class="asciicast" data-src="../static/demo.cast" data-start-at="0" data-poster-at="38"></div>
+<p>This part was recorded before the session above, and it's what you'd see on day one. Run
+<code>groundworkers tui</code> and it walks you through connecting your CDM database, checks that each
+backend is working (including how much of the vocabulary has embeddings), and lets you tweak
+plugin settings such as UMLS.</p>
+<div class="asciicast" data-src="../static/demo.short.cast" data-start-at="0" data-poster-at="19"></div>
+
+<p><em>Sped up: 1 min 22 s real time, 41 s in the recording. The setup waits are compressed.</em></p>
 
 
 
