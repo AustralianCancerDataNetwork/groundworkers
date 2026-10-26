@@ -29,6 +29,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Demo: demo.md
   - Understand Groundworkers:
       - Concepts and capability choices: concepts.md
       - Working with prompts: usage/prompt-handling.md
@@ -100,6 +101,11 @@ markdown_extensions:
   - tables
   - pymdownx.highlight
 
+extra_css:
+  - https://cdn.jsdelivr.net/npm/asciinema-player@3.17.0/dist/bundle/asciinema-player.css
+
 extra_javascript:
   - https://unpkg.com/mermaid@10/dist/mermaid.min.js
   - js/mermaid-init.js
+  - https://cdn.jsdelivr.net/npm/asciinema-player@3.17.0/dist/bundle/asciinema-player.min.js
+  - js/asciinema-init.js
