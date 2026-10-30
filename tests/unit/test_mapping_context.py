@@ -21,6 +21,9 @@ class StubMappingService:
     def concept_shared_standard_ancestor(self, concept_ids: list[int], **kwargs):
         return {"concept_ids": concept_ids, "kwargs": kwargs}
 
+    def concept_relationship_neighborhood(self, concept_ids: list[int], **kwargs):
+        return {"concept_ids": concept_ids, "kwargs": kwargs}
+
 
 class StubGroundingService:
     def ground(self, query: str, **kwargs):
@@ -46,6 +49,31 @@ def test_mapping_context_delegates_to_the_host_service():
     assert context.concept_shared_standard_ancestor([1, 2], max_depth=8) == {
         "concept_ids": [1, 2],
         "kwargs": {"max_depth": 8},
+    }
+    assert context.concept_relationship_neighborhood(
+        [1, 2], relationship_ids=["Tradename of"], max_depth=2
+    ) == {
+        "concept_ids": [1, 2],
+        "kwargs": {
+            "relationship_ids": ["Tradename of"],
+            "max_depth": 2,
+            "max_nodes": 200,
+        },
+    }
+
+
+def test_mapping_context_passes_shared_ancestor_constraints():
+    context = MappingContext(mapping_service=StubMappingService())
+    result = context.concept_shared_standard_ancestor(
+        [1, 2],
+        max_depth=0,
+        concept_class_ids=["Clinical Drug"],
+        vocabulary_ids=["RxNorm"],
+    )
+    assert result["kwargs"] == {
+        "max_depth": 0,
+        "concept_class_ids": ["Clinical Drug"],
+        "vocabulary_ids": ["RxNorm"],
     }
 
 

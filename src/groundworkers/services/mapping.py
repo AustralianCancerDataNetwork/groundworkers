@@ -4,8 +4,18 @@ from collections import Counter
 from typing import Any
 
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
+from groundworkers.base.ancestry import (
+    SharedAncestorRequest,
+    validate_ancestor_depth,
+    validate_ancestor_limit,
+)
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.sql import NormalizationProfile
+from groundworkers.services.ancestry import (
+    ancestor_path_evidence,
+    resolve_nearest_target,
+    resolve_shared_ancestor,
+)
 from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
 from groundworkers.services.vocab import (
@@ -20,88 +30,6 @@ MAX_CANDIDATES_PER_CHANNEL = 20
 MAX_CANDIDATE_UNION = 100
 _SYNC_EMBEDDING = object()
 _SYNC_GROUNDING = object()
-
-
-def _shared_ancestor_failure(concept_ids: list[int], reason: str) -> dict[str, Any]:
-    return {
-        "found": False,
-        "concept_ids": concept_ids,
-        "selected_ancestor": None,
-        "selection_reason": reason,
-    }
-
-
-def _standard_ancestors_for(
-    graph: GraphService, concept_id: int, max_depth: int
-) -> tuple[str | None, dict[int, dict[str, Any]]]:
-    concept = graph.get_concept(concept_id)
-    if concept is None:
-        raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
-
-    domain = concept.get("domain_id")
-    ancestors = (
-        {concept_id: {**concept, "depth": 0}}
-        if concept.get("standard_concept")
-        else {}
-    )
-    ancestors.update(
-        {
-            int(row["concept_id"]): row
-            for row in graph.get_ancestors(concept_id, max_depth)
-            if row.get("standard_concept") and row.get("domain_id") == domain
-        }
-    )
-    return domain, ancestors
-
-
-def _shared_standard_ancestor(
-    graph: GraphService | None, concept_ids: list[int], max_depth: int
-) -> dict[str, Any]:
-    """Return the unique nearest same-domain standard ancestor, if any.
-
-    Concepts themselves count at depth zero. When equally near ancestors tie,
-    leave selection unresolved rather than depending on graph row ordering.
-    """
-
-    if graph is None:
-        raise GroundworkersError(
-            "BACKEND_UNAVAIL", "omop_graph backend is not configured"
-        )
-    ids = list(dict.fromkeys(concept_ids))
-    if len(ids) < 2:
-        return _shared_ancestor_failure(ids, "fewer_than_two_concepts")
-
-    ancestry = [
-        _standard_ancestors_for(graph, concept_id, max_depth) for concept_id in ids
-    ]
-    domains = {domain for domain, _ in ancestry}
-    if None in domains or len(domains) != 1:
-        return _shared_ancestor_failure(ids, "incompatible_domains")
-
-    maps = [ancestors for _, ancestors in ancestry]
-    shared_ids = set.intersection(*(set(ancestors) for ancestors in maps))
-    if not shared_ids:
-        return _shared_ancestor_failure(ids, "no_shared_standard_ancestor")
-
-    ranked = sorted(
-        (
-            max(ancestors[ancestor_id]["depth"] for ancestors in maps),
-            ancestor_id,
-        )
-        for ancestor_id in shared_ids
-    )
-    nearest_depth, nearest_id = ranked[0]
-    if len(ranked) > 1 and ranked[1][0] == nearest_depth:
-        return _shared_ancestor_failure(ids, "multiple_nearest_shared_ancestors")
-
-    selected = dict(maps[0][nearest_id])
-    selected["depth"] = nearest_depth
-    return {
-        "found": True,
-        "concept_ids": ids,
-        "selected_ancestor": selected,
-        "selection_reason": "nearest_shared_standard_ancestor",
-    }
 
 
 class MappingService:
@@ -401,11 +329,18 @@ class MappingService:
         if include_hierarchy_context and self._graph is not None:
             for row in candidate_union[: min(5, len(candidate_union))]:
                 try:
-                    row["ancestor_preview"] = self._graph.get_ancestors(
-                        row["concept_id"], 2
-                    )[:3]
-                except Exception:
+                    ancestors = self._graph.get_ancestors(row["concept_id"], 2)
+                    row["ancestor_preview"] = ancestors[:3]
+                    row["ancestor_preview_scope"] = {
+                        "max_depth": 2,
+                        "limit": 3,
+                        "total": len(ancestors),
+                        "truncated": len(ancestors) > 3,
+                        "distance_metric": "min_levels_of_separation",
+                    }
+                except GroundworkersError as exc:
                     row["ancestor_preview"] = []
+                    row["ancestor_preview_error"] = exc.to_dict()
         elif include_hierarchy_context:
             warnings.append("graph service unavailable; hierarchy context omitted")
 
@@ -506,6 +441,9 @@ class MappingService:
             raise GroundworkersError(
                 "BACKEND_UNAVAIL", "omop_graph backend is not configured"
             )
+        max_depth = validate_ancestor_depth(max_depth)
+        if concept_id is not None and (type(concept_id) is not int or concept_id <= 0):
+            raise ValueError("concept_id must be a positive integer")
         if (query is None) == (concept_id is None):
             raise ValueError("exactly one of query or concept_id must be provided")
 
@@ -530,6 +468,8 @@ class MappingService:
                 return {
                     "query": query.strip(),
                     "found": False,
+                    "status": "no_match",
+                    "seed_selection_policy": "rank_1_grounded_candidate",
                     "seed_candidates": [],
                     "selected_parent": None,
                     "selection_reason": "no_candidates",
@@ -564,65 +504,139 @@ class MappingService:
             }
             selection_reason = "direct_concept_input"
 
-        warnings: list[str] = []
-        if selection_reason == "exact_standard_match":
-            selected_parent = seed_concept
-            alternatives: list[dict[str, Any]] = []
-        else:
-            ancestors = self._graph.get_ancestors(seed_concept["concept_id"], max_depth)
-            standard_ancestors = [a for a in ancestors if a.get("standard_concept")]
-            selected_parent = standard_ancestors[0] if standard_ancestors else None
-            alternatives = standard_ancestors[1 : min(5, len(standard_ancestors))]
-
-            if selected_parent is None:
-                # No standard ancestor. Before giving up, follow "Maps to": a
-                # non-standard concept with no ancestry usually still has one, and
-                # returning nothing would discard a resolvable seed.
-                mapped = self._graph.map_to_standard(
-                    seed_concept["vocabulary_id"], seed_concept["concept_code"]
-                )
-                mapped_standards = mapped.get("standard_concepts", [])
-                if mapped_standards:
-                    selected_parent = mapped_standards[0]
-                    alternatives = mapped_standards[1:5]
-                    selection_reason = "maps_to_standard"
-                else:
-                    selection_reason = "no_standard_ancestor"
-                    warnings.append(
-                        "No standard ancestor within max_depth and no 'Maps to' "
-                        "target; the seed concept is not standardizable by this route."
-                    )
-
-        path_payload = []
-        if (
-            selected_parent
-            and selected_parent["concept_id"] != seed_concept["concept_id"]
-        ):
-            path_info = self._graph.find_path(
-                seed_concept["concept_id"],
-                selected_parent["concept_id"],
-                max_depth,
-                within_domain=True,
-            )
-            path_payload = path_info.get("paths", [])
-
+        decision = resolve_nearest_target(self._graph, seed_concept, max_depth, selection_reason)
+        path = ancestor_path_evidence(self._graph, seed_concept, decision, max_depth)
+        warnings = decision.warnings + path.pop("warnings")
         return {
             "query": query.strip() if query is not None else None,
             "concept_id": concept_id,
-            "found": selected_parent is not None,
-            "seed_candidates": [seed],
-            "selected_parent": selected_parent,
-            "selection_reason": selection_reason,
-            "path_to_parent": path_payload,
-            "alternative_parents": alternatives,
-            "warnings": warnings,
+            "found": decision.selected is not None,
+            "status": decision.status,
+            "nearest_candidate_count": decision.nearest_count,
+            "seed_selection_policy": "rank_1_grounded_candidate" if query is not None else "explicit_concept_id",
+            "seed_candidates": results if query is not None else [seed],
+            "ancestry_source": "concept_ancestor", "distance_metric": "min_levels_of_separation",
+            "max_depth": max_depth, "evidence_route": decision.evidence_route,
+            "selected_parent": decision.selected, "selection_reason": decision.reason,
+            "alternative_parents": decision.alternatives, "warnings": warnings, **path,
         }
 
     def concept_shared_standard_ancestor(
-        self, concept_ids: list[int], *, max_depth: int = 5
+        self,
+        concept_ids: list[int],
+        *,
+        max_depth: int = 5,
+        concept_class_ids: list[str] | None = None,
+        vocabulary_ids: list[str] | None = None,
+        limit: int = 10,
+        offset: int = 0,
     ) -> dict[str, Any]:
-        """Return a unique nearest common standard ancestor, when one exists."""
-        return _shared_standard_ancestor(self._graph, concept_ids, max_depth)
+        """Select over complete stored ancestry; pagination never affects selection."""
+        request = SharedAncestorRequest(
+            concept_ids=concept_ids,
+            max_depth=max_depth,
+            concept_class_ids=concept_class_ids,
+            vocabulary_ids=vocabulary_ids,
+            limit=limit,
+            offset=offset,
+        )
+        if self._graph is None:
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+            )
+        return resolve_shared_ancestor(self._graph, request)
+
+    def concept_relationship_neighborhood(
+        self,
+        concept_ids: list[int],
+        *,
+        relationship_ids: list[str],
+        max_depth: int = 3,
+        max_nodes: int = 200,
+    ) -> dict[str, Any]:
+        """Return bounded active paths over an explicit set of relationships."""
+        if self._graph is None:
+            raise GroundworkersError(
+                "BACKEND_UNAVAIL", "omop_graph backend is not configured"
+            )
+        seeds = list(dict.fromkeys(concept_ids))
+        if not seeds or any(concept_id <= 0 for concept_id in seeds):
+            raise ValueError("concept_ids must contain positive concept IDs")
+        relationships = {value.strip() for value in relationship_ids if value.strip()}
+        if not relationships:
+            raise ValueError("relationship_ids must contain non-empty values")
+
+        safe_depth = max(1, min(max_depth, 3))
+        safe_nodes = max(10, min(max_nodes, 500))
+        edge_cache: dict[int, dict[str, Any]] = {}
+        reached_by_seed: dict[int, dict[int, int]] = {}
+        traversed_edges: dict[tuple[int, int, str], dict[str, Any]] = {}
+        truncated_seeds: list[int] = []
+
+        for seed in seeds:
+            depths = {seed: 0}
+            frontier = {seed}
+            for depth in range(1, safe_depth + 1):
+                next_frontier: set[int] = set()
+                for current_id in frontier:
+                    if current_id not in edge_cache:
+                        edge_cache[current_id] = self._graph.get_edges(current_id)
+                    groups = edge_cache[current_id]
+                    for edge in groups.get("outbound", []):
+                        relationship_id = edge.get("relationship_id")
+                        if not edge.get("valid") or relationship_id not in relationships:
+                            continue
+                        neighbor_id = edge.get("target_concept_id")
+                        if not isinstance(neighbor_id, int) or neighbor_id <= 0:
+                            continue
+                        traversed_edges[(current_id, neighbor_id, relationship_id)] = {
+                            "subject_id": current_id,
+                            "object_id": neighbor_id,
+                            "relationship_id": relationship_id,
+                        }
+                        if neighbor_id in depths:
+                            continue
+                        if len(depths) >= safe_nodes:
+                            if seed not in truncated_seeds:
+                                truncated_seeds.append(seed)
+                            continue
+                        depths[neighbor_id] = depth
+                        next_frontier.add(neighbor_id)
+                frontier = next_frontier
+                if not frontier:
+                    break
+            reached_by_seed[seed] = depths
+
+        all_ids = tuple(
+            dict.fromkeys(
+                concept_id
+                for depths in reached_by_seed.values()
+                for concept_id in depths
+            )
+        )
+        views = self._graph.concept_views(all_ids)
+        nodes = [
+            views[concept_id]
+            for concept_id in all_ids
+            if concept_id in views
+        ]
+        return {
+            "seed_concept_ids": seeds,
+            "reached_by_seed": {
+                str(seed): [
+                    {"concept_id": concept_id, "depth": depth}
+                    for concept_id, depth in sorted(
+                        depths.items(), key=lambda item: (item[1], item[0])
+                    )
+                ]
+                for seed, depths in reached_by_seed.items()
+            },
+            "nodes": nodes,
+            "edges": list(traversed_edges.values()),
+            "truncated_seeds": truncated_seeds,
+            "max_depth": safe_depth,
+            "max_nodes_per_seed": safe_nodes,
+        }
 
     async def async_concept_nearest_standard_ancestor(
         self,
@@ -672,6 +686,7 @@ class MappingService:
         include_neighbors: bool = True,
         include_embedding_neighbors: bool = False,
         ancestor_limit: int = 5,
+        ancestor_max_depth: int = 5,
         descendant_limit: int = 10,
         neighbor_limit: int = 15,
         embedding_neighbor_limit: int = 10,
@@ -694,9 +709,18 @@ class MappingService:
                 concept["concept_code"],
             )
         if include_ancestors:
-            result["ancestors"] = self._graph.get_ancestors(
-                concept_id, max(1, min(ancestor_limit, 10))
-            )[:ancestor_limit]
+            ancestor_limit = validate_ancestor_limit(ancestor_limit)
+            ancestor_max_depth = validate_ancestor_depth(ancestor_max_depth)
+            ancestors = self._graph.get_ancestors(concept_id, ancestor_max_depth)
+            result["ancestors"] = ancestors[:ancestor_limit]
+            result["ancestor_scope"] = {
+                "max_depth": ancestor_max_depth,
+                "limit": ancestor_limit,
+                "total": len(ancestors),
+                "truncated": len(ancestors) > ancestor_limit,
+                "distance_metric": "min_levels_of_separation",
+                "include_self": False,
+            }
         if include_descendants:
             result["descendants"] = self._graph.get_descendants(
                 concept_id, max(1, min(descendant_limit, 10))

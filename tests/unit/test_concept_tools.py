@@ -1,5 +1,3 @@
-
-
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.concept_tools import register_concept_tools
@@ -323,13 +321,13 @@ def test_concept_descendants_clamps_max_depth_to_ten():
     assert adapter.calls == [("get_descendants", {"concept_id": 321, "max_depth": 10})]
 
 
-def test_concept_ancestors_clamps_max_depth_to_twenty():
+def test_concept_ancestors_rejects_out_of_range_depth():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    server.call("concept_ancestors", concept_id=123, max_depth=999)
-
-    assert adapter.calls == [("get_ancestors", {"concept_id": 123, "max_depth": 20})]
+    result = server.call("concept_ancestors", concept_id=123, max_depth=999)
+    assert result["code"] == "INVALID_INPUT"
+    assert adapter.calls == []
 
 
 def test_concept_get_rejects_non_positive_id():
@@ -368,6 +366,7 @@ def test_concept_by_code_always_returns_list_shape():
 # ---------------------------------------------------------------------------
 # concept_ground — updated interface
 # ---------------------------------------------------------------------------
+
 
 def test_concept_ground_empty_query_returns_invalid_input():
     adapter = StubGraphAdapter()
@@ -481,6 +480,7 @@ def test_concept_ground_without_parent_ids_passes_none_to_adapter():
 # concept_neighbors
 # ---------------------------------------------------------------------------
 
+
 def test_concept_neighbors_returns_expected_shape():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
@@ -572,6 +572,7 @@ def test_concept_neighbors_include_edges_false_passes_through():
 # Existing edge/path/map tests (unchanged)
 # ---------------------------------------------------------------------------
 
+
 def test_concept_relationships_unknown_concept_returns_not_found():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
@@ -583,7 +584,13 @@ def test_concept_relationships_unknown_concept_returns_not_found():
     assert adapter.calls == [("get_edges", (999,))]
 
 
-_VALID_PREDICATE_KINDS = {"HIERARCHY", "IDENTITY", "COMPOSITION", "ASSOCIATION", "ATTRIBUTE"}
+_VALID_PREDICATE_KINDS = {
+    "HIERARCHY",
+    "IDENTITY",
+    "COMPOSITION",
+    "ASSOCIATION",
+    "ATTRIBUTE",
+}
 
 
 def test_concept_relationships_known_concept_returns_edge_structure():
@@ -645,6 +652,7 @@ def test_concept_map_to_standard_returns_source_and_standard_concepts():
 
 
 # --- concept_associations ---
+
 
 def test_concept_associations_returns_expected_shape():
     adapter = StubGraphAdapter()
@@ -712,6 +720,7 @@ def test_concept_associations_unknown_concept_returns_not_found():
 
 
 # --- concept_extended_inheritance (distinct from strict concept_ancestor traversal) ---
+
 
 def test_concept_extended_inheritance_uses_its_own_method_not_ancestors():
     adapter = StubGraphAdapter()

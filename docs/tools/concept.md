@@ -50,7 +50,7 @@ Returns concepts matching a vocabulary ID and concept code pair.
 
 ## `concept_ancestors`
 
-Returns ancestors of a concept up to `max_depth` hops (default 5, max 20).
+Returns stored non-self ancestors up to minimum separation `max_depth` (default 5, allowed 0..20).
 
 ```json
 {"concept_id": 4119419, "max_depth": 3}
@@ -68,6 +68,13 @@ Returns ancestors of a concept up to `max_depth` hops (default 5, max 20).
 ```
 
 ---
+
+Ancestry is read directly from the stored OMOP closure, with non-self
+zero-separation ancestors retained. `max_depth` accepts 0..20 and measures stored
+minimum separation; invalid values are rejected. The response preserves
+`ancestors` and reports `ancestry_source`, `distance_metric`, effective `max_depth`
+and `include_self=false`. A zero-distance link does not imply interchangeability.
+Parent/child primitives and descendant traversal keep their existing semantics.
 
 ## `concept_descendants`
 

@@ -272,12 +272,44 @@ class MappingContext:
         )
 
     def concept_shared_standard_ancestor(
-        self, concept_ids: list[int], *, max_depth: int = 5
+        self,
+        concept_ids: list[int],
+        *,
+        max_depth: int = 5,
+        concept_class_ids: list[str] | None = None,
+        vocabulary_ids: list[str] | None = None,
+        limit: int = 10,
+        offset: int = 0,
     ) -> dict[str, Any]:
-        """Find a unique nearest common standard ancestor."""
-
+        """Find a nearest common standard ancestor within optional constraints."""
+        constraints = {}
+        if concept_class_ids is not None:
+            constraints["concept_class_ids"] = concept_class_ids
+        if vocabulary_ids is not None:
+            constraints["vocabulary_ids"] = vocabulary_ids
+        if limit != 10:
+            constraints["limit"] = limit
+        if offset != 0:
+            constraints["offset"] = offset
         return self._require_mapping_service().concept_shared_standard_ancestor(
-            concept_ids, max_depth=max_depth
+            concept_ids, max_depth=max_depth, **constraints
+        )
+
+    def concept_relationship_neighborhood(
+        self,
+        concept_ids: list[int],
+        *,
+        relationship_ids: list[str],
+        max_depth: int = 3,
+        max_nodes: int = 200,
+    ) -> dict[str, Any]:
+        """Traverse selected active vocabulary relationships read-only."""
+
+        return self._require_mapping_service().concept_relationship_neighborhood(
+            concept_ids,
+            relationship_ids=relationship_ids,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
         )
 
     def ground(self, query: str, **kwargs: Any) -> dict[str, Any]:

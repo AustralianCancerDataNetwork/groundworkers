@@ -19,6 +19,7 @@ from sqlalchemy import Text, cast, select
 
 from groundworkers.adapters.cdm import CDMAdapter
 from groundworkers.adapters.omop_graph import EmbeddingTierUnavailable, OmopGraphAdapter
+from groundworkers.base.ancestry import validate_ancestor_depth
 from groundworkers.base.concept_payload import project_payload
 from groundworkers.base.errors import GroundworkersError
 
@@ -69,7 +70,9 @@ class GraphService:
 
     # Predicate-kind presets for equivalency path queries.
     _IDENTITY_KINDS: frozenset = frozenset({PredicateKind.IDENTITY})
-    _IDENTITY_AND_HIERARCHY_KINDS: frozenset = frozenset({PredicateKind.IDENTITY, PredicateKind.HIERARCHY})
+    _IDENTITY_AND_HIERARCHY_KINDS: frozenset = frozenset(
+        {PredicateKind.IDENTITY, PredicateKind.HIERARCHY}
+    )
 
     # DB-classification predicate kinds (as stored in relationship_mapping).
     _ASSOCIATION_KIND = "Association"
@@ -122,13 +125,50 @@ class GraphService:
     # Hierarchy traversal
     # ------------------------------------------------------------------
 
-    def get_ancestors(self, concept_id: int, max_depth: int) -> list[dict[str, Any]]:
-        if self._adapter.get_concept(concept_id) is None:
-            raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
-        queue: deque[tuple[int, int]] = deque(
-            (parent_id, 1) for parent_id in self._adapter.parents(concept_id)
+    def get_stored_ancestor_maps(
+        self, concept_ids: Sequence[int], max_depth: int
+    ) -> dict[int, dict[int, dict[str, Any]]]:
+        """Batch stored ancestry with true minimum distances and explicit self."""
+        max_depth = validate_ancestor_depth(max_depth)
+        ids = tuple(dict.fromkeys(concept_ids))
+        rows = self._adapter.ancestor_rows(ids, max_separation=max_depth)
+        all_ids = tuple(
+            dict.fromkeys((*ids, *(row["ancestor_concept_id"] for row in rows)))
         )
-        return self._walk_hierarchy(queue=queue, neighbour_getter=self._adapter.parents, max_depth=max_depth)
+        views = self._adapter.concept_views(all_ids, strict=True)
+        missing = set(ids) - views.keys()
+        if missing:
+            raise GroundworkersError(
+                "NOT_FOUND", f"Concepts not found: {sorted(missing)}"
+            )
+        maps = {cid: {cid: {**views[cid], "depth": 0}} for cid in ids}
+        for row in rows:
+            ancestor_id = row["ancestor_concept_id"]
+            if ancestor_id not in views:
+                raise GroundworkersError(
+                    "QUERY_ERROR",
+                    f"Ancestor metadata missing for concept {ancestor_id}",
+                )
+            maps[row["descendant_concept_id"]][ancestor_id] = {
+                **views[ancestor_id],
+                "depth": row["min_levels_of_separation"],
+            }
+        return maps
+
+    def validate_ancestor_constraints(
+        self,
+        concept_class_ids: list[str] | None,
+        vocabulary_ids: list[str] | None,
+    ) -> None:
+        self._adapter.validate_ancestor_constraints(concept_class_ids, vocabulary_ids)
+
+    def get_ancestors(self, concept_id: int, max_depth: int) -> list[dict[str, Any]]:
+        """Read stored non-self ancestry, retaining distinct zero-distance rows."""
+        ancestors = self.get_stored_ancestor_maps([concept_id], max_depth)[concept_id]
+        return sorted(
+            (row for cid, row in ancestors.items() if cid != concept_id),
+            key=lambda row: (row["depth"], row["concept_id"]),
+        )
 
     def get_descendants(self, concept_id: int, max_depth: int) -> list[dict[str, Any]]:
         if self._adapter.get_concept(concept_id) is None:

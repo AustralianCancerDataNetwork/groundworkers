@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from groundworkers.base.ancestry import (
+    AncestorDepth,
+    PositiveConceptId,
+    validate_ancestor_depth,
+)
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.graph import GraphService
 
 
-def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphService) -> None:
+def register_concept_tools(
+    server: GroundworkersMCPServer, graph_service: GraphService
+) -> None:
     """Register deterministic concept lookup tools against the MCP server.
 
     These tools take a known identifier (concept_id, vocabulary+code) and return
@@ -50,14 +57,32 @@ def register_concept_tools(server: GroundworkersMCPServer, graph_service: GraphS
             return exc.to_dict()
 
     @server.tool("concept_ancestors")
-    def concept_ancestors(concept_id: int, max_depth: int = 5) -> dict[str, Any]:
-        """Returns ancestor concepts for one concept_id."""
+    def concept_ancestors(
+        concept_id: PositiveConceptId, max_depth: AncestorDepth = 5
+    ) -> dict[str, Any]:
+        """Return stored non-self OMOP ancestors, including distinct zero-distance rows.
+
+        max_depth=0..20 bounds stored minimum separation, not recursive parent hops.
+        Zero separation between different IDs does not establish interchangeability.
+        """
         if concept_id <= 0:
-            return {"error": True, "code": "INVALID_INPUT", "message": "concept_id must be a positive integer"}
-        safe_depth = max(1, min(max_depth, 20))
+            return {
+                "error": True,
+                "code": "INVALID_INPUT",
+                "message": "concept_id must be a positive integer",
+            }
+        safe_depth = validate_ancestor_depth(max_depth)
         try:
             ancestors = graph_service.get_ancestors(concept_id, safe_depth)
-            return {"concept_id": concept_id, "ancestors": ancestors}
+            return {
+                "concept_id": concept_id,
+                "ancestors": ancestors,
+                "ancestry_source": "concept_ancestor",
+                "distance_metric": "min_levels_of_separation",
+                "max_depth": safe_depth,
+                "include_self": False,
+                "selection_complete": True,
+            }
         except GroundworkersError as exc:
             return exc.to_dict()
 

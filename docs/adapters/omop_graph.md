@@ -65,3 +65,42 @@ All methods that return concept data use a consistent dict shape:
 Adapter methods raise `GroundworkersError` on failure. Services propagate those errors unchanged; tools and REST routes translate them into transport-level responses.
 
 The underlying `KnowledgeGraph` is built lazily on first use rather than at server startup. If the database or graph layer is unavailable, callers receive a clear `GroundworkersError` instead of an opaque lower-level exception.
+
+## Temporary stored-ancestry primitive and upstream migration
+
+Groundworkers temporarily provides `q_ancestor_rows()` in
+`adapters/_omop_graph_ancestry.py` pending an omop-graph release. It depends only
+on SQLAlchemy and the OMOP model; it contains no Groundworkers selection policy.
+`OmopGraphAdapter.ancestor_rows()` is the stable execution boundary. It returns
+plain rows with descendant ID, ancestor ID and stored minimum/maximum separation.
+Distinct zero-separation ancestors are retained; `include_self` compares IDs.
+`max_separation=0` is supported and empty input returns no rows.
+
+The shared-ancestor service uses `GraphService.get_stored_ancestor_maps()` to batch
+ancestry and strict metadata lookup, adding self at depth zero. Ordinary parent
+and descendant walks retain their existing semantics. Eligible targets must be
+active standard concepts in the input domain. Optional `concept_class_ids` and
+`vocabulary_ids` constrain targets before nearest-common selection. Ranking uses
+the maximum stored minimum separation across inputs; distance ties abstain.
+`common_ancestors` exposes ranked alternatives on successful and tied results.
+Backend failures and missing ancestor metadata raise errors rather than becoming
+no-match results. Concept enrichment elsewhere retains its tolerant default.
+
+### Upstream path
+
+1. Move `q_ancestor_rows` and its raw-row contract to omop-graph, with tests for
+   non-self zero distances, self policy, batch input, bounds and empty input.
+2. Add an omop-graph runtime method that executes that query and returns the same
+   four fields. It must preserve stored distances rather than counting BFS hops.
+3. After releasing and pinning that dependency, replace the implementation of
+   `OmopGraphAdapter.ancestor_rows()` with delegation to the upstream method.
+   Remove the temporary module and import; no mapping-service or plugin API
+   change is required. Keep `tests/unit/test_stored_ancestry.py` as the consumer
+   contract and run it against the upstream implementation.
+4. Audit existing upstream `q_concept_potential_ancestor*` helpers separately:
+   their positive-distance filter also excludes non-self zero-separation rows.
+   Do not change those callers' behavior implicitly during migration.
+
+Drug-specific ingredient/form/strength checks and broad-match acceptance remain
+in the PBS plugin. Groundworkers makes no global preference between Clinical Drug
+and Branded Drug; callers can request classes explicitly.

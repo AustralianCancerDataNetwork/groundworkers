@@ -52,6 +52,7 @@ def test_server_registers_concept_tools_for_a_resolved_cdm_database():
     assert "concept_get" in names
     assert "concept_by_code" in names
     assert "concept_ancestors" in names
+    assert "concept_shared_standard_ancestor" in names
     assert "concept_descendants" in names
 
 

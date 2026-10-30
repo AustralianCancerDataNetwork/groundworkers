@@ -6,7 +6,10 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, get_origin, get_type_hints
+
+from mcp.types import ToolAnnotations
+from pydantic import BaseModel
 
 from groundworkers.base.errors import (
     ERROR_CODES,
@@ -51,47 +54,62 @@ class GroundworkersMCPServer:
     def __init__(self, name: str) -> None:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
+        self._tool_annotations: dict[str, ToolAnnotations | None] = {}
         self._prompts: dict[str, _RegisteredPrompt] = {}
         self._resources: dict[str, tuple[Callable[..., Any], str | None]] = {}
 
-    def tool(self, name: str | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def tool(
+        self,
+        name: str | None = None,
+        *,
+        annotations: ToolAnnotations | None = None,
+        result_model: type[BaseModel] | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             tool_name = name or _callable_name(func)
 
             if inspect.iscoroutinefunction(func):
+
                 @wraps(func)
                 async def guarded(*args: Any, **kwargs: Any) -> Any:
                     try:
                         result = await func(*args, **kwargs)
                     except GroundworkersError as exc:
-                        return exc.to_dict()
+                        result = exc.to_dict()
                     except ValueError as exc:
-                        return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                        result = GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
                     except Exception as exc:
-                        return internal_error_response(
+                        result = internal_error_response(
                             exc,
                             logger=logger,
                             boundary=f"mcp.tool.{tool_name}",
                         )
-                    return _sanitise_tool_result(result, tool_name=tool_name)
+                    return _normalise_tool_result(
+                        result, tool_name=tool_name, result_model=result_model
+                    )
             else:
+
                 @wraps(func)
                 def guarded(*args: Any, **kwargs: Any) -> Any:
                     try:
                         result = func(*args, **kwargs)
                     except GroundworkersError as exc:
-                        return exc.to_dict()
+                        result = exc.to_dict()
                     except ValueError as exc:
-                        return GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
+                        result = GroundworkersError("INVALID_INPUT", str(exc)).to_dict()
                     except Exception as exc:
-                        return internal_error_response(
+                        result = internal_error_response(
                             exc,
                             logger=logger,
                             boundary=f"mcp.tool.{tool_name}",
                         )
-                    return _sanitise_tool_result(result, tool_name=tool_name)
+                    return _normalise_tool_result(
+                        result, tool_name=tool_name, result_model=result_model
+                    )
 
+            _advertise_tool_signature(func, guarded, result_model)
             self._tools[tool_name] = guarded
+            self._tool_annotations[tool_name] = annotations
             return guarded
 
         return decorator
@@ -164,6 +182,8 @@ class GroundworkersMCPServer:
                 "signature": str(signature),
                 "doc": inspect.getdoc(func) or "",
             }
+            if (annotations := self._tool_annotations.get(name)) is not None:
+                description[name]["annotations"] = annotations.model_dump()
         return description
 
     def describe_prompts(self) -> dict[str, dict[str, Any]]:
@@ -227,7 +247,12 @@ class GroundworkersMCPServer:
             stateless_http=True,
         )
         for tool_name, func in self._tools.items():
-            app.tool(name=tool_name, description=inspect.getdoc(func) or "")(func)
+            options = {}
+            if (annotations := self._tool_annotations.get(tool_name)) is not None:
+                options["annotations"] = annotations
+            app.tool(name=tool_name, description=inspect.getdoc(func) or "", **options)(
+                func
+            )
         for prompt_name, prompt in self._prompts.items():
             if prompt.arguments is None:
                 app.prompt(
@@ -334,3 +359,52 @@ def _sanitise_tool_result(result: Any, *, tool_name: str) -> Any:
     safe = dict(result)
     safe["message"] = scrub_error_message(str(result.get("message", "Request failed.")))
     return safe
+
+
+def _normalise_tool_result(
+    result: Any,
+    *,
+    tool_name: str,
+    result_model: type[BaseModel] | None,
+) -> Any:
+    if result_model is None:
+        return _sanitise_tool_result(result, tool_name=tool_name)
+    if isinstance(result, BaseModel):
+        result = result.model_dump(mode="json")
+    result = _sanitise_tool_result(result, tool_name=tool_name)
+    try:
+        return result_model.model_validate(result).model_dump(mode="json")
+    except Exception as exc:
+        failure = internal_error_response(
+            exc, logger=logger, boundary=f"mcp.output.{tool_name}"
+        )
+        return result_model.model_validate(failure).model_dump(mode="json")
+
+
+def _advertise_tool_signature(
+    func: Callable[..., Any], guarded: Callable[..., Any], result_model: type[BaseModel] | None,
+) -> None:
+    # wraps preserves annotation strings, but FastMCP evaluates them in
+    # this wrapper's globals. Resolve Annotated aliases in the original
+    # tool namespace before advertising constrained schemas.
+    try:
+        resolved = get_type_hints(func, include_extras=True)
+    except (NameError, TypeError):
+        if result_model is not None:
+            raise
+        resolved = {}
+    if result_model is not None or any(
+        get_origin(value) is Annotated for value in resolved.values()
+    ):
+        signature = inspect.signature(func)
+        guarded.__signature__ = signature.replace(
+            parameters=[
+                param.replace(annotation=resolved.get(name, param.annotation))
+                for name, param in signature.parameters.items()
+            ],
+            return_annotation=result_model
+            or resolved.get("return", signature.return_annotation),
+        )
+        guarded.__annotations__ = resolved
+        if result_model is not None:
+            guarded.__annotations__["return"] = result_model

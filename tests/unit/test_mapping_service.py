@@ -460,66 +460,63 @@ def test_concept_nearest_standard_ancestor_raises_when_no_graph():
         assert exc.code == "BACKEND_UNAVAIL"
 
 
-def test_concept_shared_standard_ancestor_selects_unique_nearest_common_parent():
+def _shared_ancestor_graph(ancestor_rows):
     graph = Mock()
-    graph.get_concept.side_effect = lambda concept_id: {
-        "concept_id": concept_id,
-        "concept_name": f"Specific finding {concept_id}",
-        "domain_id": "Condition",
-        "standard_concept": False,
+    graph.get_stored_ancestor_maps.return_value = {
+        cid: {
+            cid: {
+                "concept_id": cid,
+                "domain_id": "Condition",
+                "standard_concept": False,
+            },
+            **{row["concept_id"]: row for row in ancestor_rows},
+        }
+        for cid in (801, 802)
     }
-    graph.get_ancestors.side_effect = lambda concept_id, _depth: [
-        {
-            "concept_id": 803,
-            "concept_name": "Shared standard finding",
-            "concept_code": "803",
-            "vocabulary_id": "SNOMED",
-            "domain_id": "Condition",
-            "concept_class_id": "Clinical Finding",
-            "standard_concept": True,
-            "depth": 1,
-        },
-        {
-            "concept_id": 804,
-            "concept_name": "More distant shared finding",
-            "domain_id": "Condition",
-            "standard_concept": True,
-            "depth": 2,
-        },
-    ] if concept_id in {801, 802} else []
+    return graph
 
+
+def test_concept_shared_standard_ancestor_selects_unique_nearest_common_parent():
+    graph = _shared_ancestor_graph(
+        [
+            {
+                "concept_id": 803,
+                "domain_id": "Condition",
+                "standard_concept": True,
+                "depth": 1,
+            },
+            {
+                "concept_id": 804,
+                "domain_id": "Condition",
+                "standard_concept": True,
+                "depth": 2,
+            },
+        ]
+    )
     result = build_service(graph).concept_shared_standard_ancestor([801, 802])
-
     assert result["found"] is True
-    assert result["selection_reason"] == "nearest_shared_standard_ancestor"
     assert result["selected_ancestor"]["concept_id"] == 803
     assert result["selected_ancestor"]["depth"] == 1
+    graph.get_stored_ancestor_maps.assert_called_once_with([801, 802], 5)
 
 
 def test_concept_shared_standard_ancestor_leaves_equal_depth_tie_unresolved():
-    graph = Mock()
-    graph.get_concept.side_effect = lambda concept_id: {
-        "concept_id": concept_id,
-        "concept_name": f"Concept {concept_id}",
-        "domain_id": "Condition",
-        "standard_concept": False,
-    }
-    graph.get_ancestors.return_value = [
-        {
-            "concept_id": ancestor_id,
-            "concept_name": f"Ancestor {ancestor_id}",
-            "domain_id": "Condition",
-            "standard_concept": True,
-            "depth": 1,
-        }
-        for ancestor_id in (803, 804)
-    ]
-
+    graph = _shared_ancestor_graph(
+        [
+            {
+                "concept_id": cid,
+                "domain_id": "Condition",
+                "standard_concept": True,
+                "depth": 1,
+            }
+            for cid in (803, 804)
+        ]
+    )
     result = build_service(graph).concept_shared_standard_ancestor([801, 802])
-
     assert result["found"] is False
     assert result["selection_reason"] == "multiple_nearest_shared_ancestors"
     assert result["selected_ancestor"] is None
+    assert [row["concept_id"] for row in result["common_ancestors"]] == [803, 804]
 
 
 def test_concept_shared_standard_ancestor_requires_graph():
@@ -529,6 +526,70 @@ def test_concept_shared_standard_ancestor_requires_graph():
 
     with pytest.raises(GWError, match="omop_graph"):
         service.concept_shared_standard_ancestor([801, 802])
+
+
+def test_concept_relationship_neighborhood_follows_only_requested_active_edges():
+    graph = Mock()
+    edge_data = {
+        801: {
+            "outbound": [
+                {
+                    "relationship_id": "Tradename of",
+                    "target_concept_id": 802,
+                    "valid": True,
+                },
+                {
+                    "relationship_id": "Has marketed form",
+                    "target_concept_id": 804,
+                    "valid": True,
+                },
+            ],
+            "inbound": [],
+        },
+        802: {
+            "outbound": [
+                {
+                    "relationship_id": "Box of",
+                    "target_concept_id": 803,
+                    "valid": True,
+                },
+                {
+                    "relationship_id": "Has quantified form",
+                    "target_concept_id": 805,
+                    "valid": False,
+                },
+            ],
+            "inbound": [],
+        },
+        803: {"outbound": [], "inbound": []},
+        804: {"outbound": [], "inbound": []},
+    }
+    graph.get_edges.side_effect = lambda concept_id: edge_data[concept_id]
+    graph.concept_views.return_value = {
+        concept_id: {"concept_id": concept_id} for concept_id in (801, 802, 803)
+    }
+    service = MappingService(StubVocabAdapter(), graph_service=graph)
+
+    result = service.concept_relationship_neighborhood(
+        [801], relationship_ids=["Tradename of", "Box of"], max_depth=3
+    )
+
+    assert result["reached_by_seed"]["801"] == [
+        {"concept_id": 801, "depth": 0},
+        {"concept_id": 802, "depth": 1},
+        {"concept_id": 803, "depth": 2},
+    ]
+    assert {edge["relationship_id"] for edge in result["edges"]} == {
+        "Tradename of",
+        "Box of",
+    }
+
+
+def test_concept_relationship_neighborhood_requires_relationship_ids():
+    service = MappingService(StubVocabAdapter(), graph_service=Mock())
+
+    with pytest.raises(ValueError, match="relationship_ids"):
+        service.concept_relationship_neighborhood([801], relationship_ids=[])
 
 
 def test_concept_mapping_context_assembles_requested_context():

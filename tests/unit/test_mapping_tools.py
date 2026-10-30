@@ -1,5 +1,3 @@
-
-
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.mapping_tools import register_mapping_tools
@@ -109,14 +107,15 @@ def test_concept_nearest_standard_ancestor_returns_groundworkers_error_dict():
     assert result == {"error": True, "code": "NOT_FOUND", "message": "missing"}
 
 
-def test_concept_mapping_context_clamps_limits_before_calling_service():
+def test_concept_mapping_context_separates_ancestor_depth_from_limit():
     service = StubMappingService()
     server = build_server(service)
 
     server.call(
         "concept_mapping_context",
         concept_id=123,
-        ancestor_limit=500,
+        ancestor_limit=50,
+        ancestor_max_depth=0,
         descendant_limit=0,
         neighbor_limit=500,
         embedding_neighbor_limit=0,
@@ -133,7 +132,8 @@ def test_concept_mapping_context_clamps_limits_before_calling_service():
                 "include_relationship_summary": True,
                 "include_neighbors": True,
                 "include_embedding_neighbors": False,
-                "ancestor_limit": 10,
+                "ancestor_limit": 50,
+                "ancestor_max_depth": 0,
                 "descendant_limit": 1,
                 "neighbor_limit": 100,
                 "embedding_neighbor_limit": 1,

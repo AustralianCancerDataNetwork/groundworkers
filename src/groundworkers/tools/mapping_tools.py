@@ -2,6 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from mcp.types import ToolAnnotations
+
+from groundworkers.base.ancestry import (
+    AncestorDepth,
+    AncestorLimit,
+    AncestorOffset,
+    ConceptIds,
+    ConstraintIds,
+    SharedAncestorResponse,
+    validate_ancestor_depth,
+)
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.base.sql import NormalizationProfile
@@ -108,6 +119,53 @@ def register_mapping_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
+    @server.tool(
+        "concept_shared_standard_ancestor",
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        ),
+        result_model=SharedAncestorResponse,
+    )
+    def concept_shared_standard_ancestor(
+        concept_ids: ConceptIds,
+        max_depth: AncestorDepth = 5,
+        concept_class_ids: ConstraintIds | None = None,
+        vocabulary_ids: ConstraintIds | None = None,
+        limit: AncestorLimit = 10,
+        offset: AncestorOffset = 0,
+    ) -> dict[str, Any]:
+        """Find common active standard ancestors of alternative candidates for one source.
+
+        Supply 2..200 positive concept IDs in the same domain (at least two distinct).
+        Class/vocabulary filters apply before selection; null means unrestricted;
+        empty or unknown filters are invalid. Exact vocabulary IDs are required:
+        RxNorm does not include RxNorm Extension. Use system_vocabulary_catalogue
+        to discover available identifiers.
+
+        max_depth=0..20 measures stored minimum separation, not parent hops.
+        Distinct zero-distance ancestors count, and each seed counts as itself.
+        Returns selected, ambiguous, no_match or incompatible_inputs. found means
+        a unique selection, not simply the existence of common ancestry.
+        limit/offset page the complete common set and never change selection.
+
+        A shared ancestor is a generalization, not proof of equivalence or clinical
+        correctness. Do not merge separate combination-drug ingredients with this
+        operation. Deterministic for a fixed vocabulary; no LLM/embeddings required.
+        """
+        result = mapping_service.concept_shared_standard_ancestor(
+            concept_ids,
+            max_depth=max_depth,
+            concept_class_ids=concept_class_ids,
+            vocabulary_ids=vocabulary_ids,
+            limit=limit,
+            offset=offset,
+        )
+        # Registration advertises and validates the typed envelope after guarding.
+        return {"data": result}
+
     @server.tool("concept_nearest_standard_ancestor")
     async def concept_nearest_standard_ancestor(
         query: str | None = None,
@@ -115,17 +173,19 @@ def register_mapping_tools(
         domain: str | None = None,
         vocabulary_id: str | None = None,
         parent_ids: list[int] | None = None,
-        max_depth: int = 5,
+        max_depth: AncestorDepth = 5,
         candidate_limit: int = 10,
     ) -> dict[str, Any]:
-        """Find the nearest standard ancestor of a concept by walking the OMOP hierarchy.
+        """Find a nearest active standard ancestor using stored OMOP separation.
 
-        Accepts either a free-text query or a concept_id. Walks up the concept_ancestor
-        hierarchy up to max_depth levels to find the closest standard ancestor.
-        Useful when a source concept is non-standard and navigate_to_standard returns
-        no direct "Maps to" mapping.
+        Accepts either a free-text query or a concept_id. Reads stored concept_ancestor
+        distances within max_depth to find a closest standard ancestor.
+        max_depth=0..20 uses stored minimum separation, including zero-distance
+        ancestry. Equal nearest-distance targets remain ambiguous. Query mode uses
+        the first ranked grounded seed and reports that seed policy explicitly.
+        A Maps-to fallback is reported separately from ancestry evidence.
         """
-        safe_depth = max(1, min(max_depth, 10))
+        safe_depth = validate_ancestor_depth(max_depth)
         safe_limit = max(1, min(candidate_limit, 20))
         try:
             return await mapping_service.async_concept_nearest_standard_ancestor(
@@ -151,7 +211,8 @@ def register_mapping_tools(
         include_relationship_summary: bool = True,
         include_neighbors: bool = True,
         include_embedding_neighbors: bool = False,
-        ancestor_limit: int = 5,
+        ancestor_limit: AncestorLimit = 5,
+        ancestor_max_depth: AncestorDepth = 5,
         descendant_limit: int = 10,
         neighbor_limit: int = 15,
         embedding_neighbor_limit: int = 10,
@@ -172,7 +233,8 @@ def register_mapping_tools(
                 include_relationship_summary=include_relationship_summary,
                 include_neighbors=include_neighbors,
                 include_embedding_neighbors=include_embedding_neighbors,
-                ancestor_limit=max(1, min(ancestor_limit, 10)),
+                ancestor_limit=ancestor_limit,
+                ancestor_max_depth=ancestor_max_depth,
                 descendant_limit=max(1, min(descendant_limit, 10)),
                 neighbor_limit=max(1, min(neighbor_limit, 100)),
                 embedding_neighbor_limit=max(1, min(embedding_neighbor_limit, 20)),

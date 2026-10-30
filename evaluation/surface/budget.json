@@ -1,0 +1,10 @@
+{
+  "max_model_visible_tool_chars": 42252,
+  "history": [
+    {
+      "date": "2026-10-30",
+      "max_model_visible_tool_chars": 42252,
+      "reason": "T0 baseline: 40240 chars across 39 tools (reference stack), plus 5% headroom. Raising this needs a dated entry here explaining why the surface grew."
+    }
+  ]
+}

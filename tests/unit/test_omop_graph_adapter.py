@@ -258,9 +258,7 @@ def test_real_knowledge_graph_constructs_with_split_sqlite_databases(
         connection="cdm_main", vocab_connection="vocab"
     )
     resolved = Resolver(stack).resolve_database("cdm_db")
-    primary_engine, vocab_engine = create_cdm_engines(
-        resolved, register_claims=False
-    )
+    primary_engine, vocab_engine = create_cdm_engines(resolved, register_claims=False)
     from omop_alchemy.cdm.model.vocabulary import (
         Concept,
         Concept_Class,
@@ -293,6 +291,33 @@ def test_real_knowledge_graph_constructs_with_split_sqlite_databases(
             DomainNameResolver(primary_engine).known_domains()
         graph = OmopGraphAdapter(session_factory)._get_kg()
         assert isinstance(graph, KnowledgeGraph)
+        from omop_alchemy.cdm.model.vocabulary import Concept_Ancestor
+
+        Concept_Ancestor.__table__.create(vocab_engine)
+        with vocab_engine.begin() as connection:
+            connection.execute(
+                Concept_Ancestor.__table__.insert(),
+                {
+                    "descendant_concept_id": 101,
+                    "ancestor_concept_id": 202,
+                    "min_levels_of_separation": 0,
+                    "max_levels_of_separation": 0,
+                },
+            )
+            connection.execute(
+                Concept_Class.__table__.insert(),
+                {
+                    "concept_class_id": "Clinical Drug",
+                    "concept_class_name": "Clinical Drug",
+                    "concept_class_concept_id": 1,
+                },
+            )
+        routed = OmopGraphAdapter(session_factory)
+        assert (
+            routed.ancestor_rows([101], max_separation=0)[0]["ancestor_concept_id"]
+            == 202
+        )
+        routed.validate_ancestor_constraints(["Clinical Drug"], None)
     finally:
         primary_engine.dispose()
         if vocab_engine is not primary_engine:

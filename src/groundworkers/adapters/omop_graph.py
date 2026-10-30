@@ -24,6 +24,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError, NoResultFound
 from sqlalchemy.orm import Session, sessionmaker
 
+from groundworkers.adapters._omop_graph_ancestry import AncestorRow, q_ancestor_rows
 from groundworkers.base.concept_payload import serialise_concept_view
 from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
@@ -163,25 +164,90 @@ class OmopGraphAdapter:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return [self._serialise_concept_view(concept_view)]
 
-    def concept_views(self, concept_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+    def concept_views(
+        self, concept_ids: Sequence[int], *, strict: bool = False
+    ) -> dict[int, dict[str, Any]]:
         """Batch-fetch normalized concept views keyed by concept_id.
 
         Returns an empty dict when no ids are supplied or the lookup fails, so
         callers can treat a missing key as "unknown concept" without special-casing
-        backend errors during enrichment.
+        backend errors during enrichment. With ``strict=True``, backend failures
+        propagate instead; ancestry selection uses that mode to avoid false no-matches.
         """
         if not concept_ids:
             return {}
         kg = self._get_kg()
         try:
             views = kg.concept_views(tuple(concept_ids), sort=False)
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise self._wrap_graph_error(exc, default_code="QUERY_ERROR") from exc
             return {}
         return {int(v.concept_id): self._serialise_concept_view(v) for v in views}
 
     # ------------------------------------------------------------------
     # Hierarchy primitives
     # ------------------------------------------------------------------
+
+    def validate_ancestor_constraints(
+        self,
+        concept_class_ids: list[str] | None,
+        vocabulary_ids: list[str] | None,
+    ) -> None:
+        """Validate exact catalogue IDs without scanning concept counts."""
+        if concept_class_ids is None and vocabulary_ids is None:
+            return
+        requested = [
+            (concept_class_ids, Concept_Class.concept_class_id, "concept classes"),
+            (vocabulary_ids, Vocabulary.vocabulary_id, "vocabularies"),
+        ]
+        unknown = []
+        try:
+            with self._cdm_session_factory() as session:
+                for values, column, label in requested:
+                    if values is None:
+                        continue
+                    known = set(
+                        session.execute(
+                            select(column).where(column.in_(values))
+                        ).scalars()
+                    )
+                    missing = set(values) - known
+                    if missing:
+                        unknown.append(f"{label}: {sorted(missing)}")
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR") from exc
+        if unknown:
+            raise ValueError(
+                "Unknown ancestry constraints (" + "; ".join(unknown) + ")"
+            )
+
+    def ancestor_rows(
+        self,
+        descendant_ids: Sequence[int],
+        *,
+        max_separation: int | None = None,
+        include_self: bool = False,
+    ) -> list[AncestorRow]:
+        """Read stored ancestry through the temporary upstream-compatible query."""
+        statement = q_ancestor_rows(
+            descendant_ids, max_separation=max_separation, include_self=include_self
+        )
+        if not descendant_ids:
+            return []
+        try:
+            with self._cdm_session_factory() as session:
+                return [
+                    AncestorRow(
+                        descendant_concept_id=row["descendant_concept_id"],
+                        ancestor_concept_id=row["ancestor_concept_id"],
+                        min_levels_of_separation=row["min_levels_of_separation"],
+                        max_levels_of_separation=row["max_levels_of_separation"],
+                    )
+                    for row in session.execute(statement).mappings()
+                ]
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR") from exc
 
     def parents(self, concept_id: int) -> tuple[int, ...]:
         try:
@@ -716,6 +782,11 @@ class OmopGraphAdapter:
         seen: set[int] = set()
         while current is not None and id(current) not in seen:
             seen.add(id(current))
+            original = getattr(current, "orig", current)
+            if getattr(original, "sqlstate", None) == "57014":
+                return GroundworkersError(
+                    "QUERY_TIMEOUT", "The ancestry or graph query timed out."
+                )
             if isinstance(current, DBAPIError):
                 return GroundworkersError(
                     "BACKEND_UNAVAIL",
