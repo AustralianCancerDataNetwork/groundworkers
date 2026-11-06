@@ -1595,6 +1595,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../adapters/ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../adapters/omop_emb/" class="md-nav__link">
         
   
@@ -1979,6 +2007,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.ancestor_rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ancestor_rows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.async_run_ground_tier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2045,6 +2084,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.relationship_edges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        relationship_edges
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.run_ground_tier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2071,6 +2121,17 @@
     <span class="md-ellipsis">
       
         traverse_neighborhood
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.validate_ancestor_constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate_ancestor_constraints
       
     </span>
   </a>
@@ -2697,6 +2758,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.ancestor_rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ancestor_rows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.async_run_ground_tier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2763,6 +2835,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.relationship_edges" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        relationship_edges
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.run_ground_tier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2789,6 +2872,17 @@
     <span class="md-ellipsis">
       
         traverse_neighborhood
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.adapters.omop_graph.OmopGraphAdapter.validate_ancestor_constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate_ancestor_constraints
       
     </span>
   </a>
@@ -3602,6 +3696,24 @@ failure this property exists to prevent.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.ancestor_rows" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">ancestor_rows</span><span class="p">(</span><span class="n">descendant_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_separation</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">include_self</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Read stored ancestry through the temporary upstream-compatible query.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.async_run_ground_tier" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">async_run_ground_tier</span><span class="p">(</span><span class="n">resolvers</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">constraints</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span></code>
 
@@ -3649,7 +3761,7 @@ when supplied in exactly the right case.</p>
 
 
 <h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.concept_views" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">concept_views</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">concept_views</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
 </h4>
 
@@ -3659,7 +3771,8 @@ when supplied in exactly the right case.</p>
         <p>Batch-fetch normalized concept views keyed by concept_id.</p>
 <p>Returns an empty dict when no ids are supplied or the lookup fails, so
 callers can treat a missing key as "unknown concept" without special-casing
-backend errors during enrichment.</p>
+backend errors during enrichment. With <code>strict=True</code>, backend failures
+propagate instead; ancestry selection uses that mode to avoid false no-matches.</p>
 
 
     </div>
@@ -3726,6 +3839,24 @@ cross domains (Procedure -&gt; Spec Anatomic Site, Condition -&gt; Observation).
 <div class="doc doc-object doc-function">
 
 
+<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.relationship_edges" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">relationship_edges</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="n">relationship_ids</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Bounded active outbound rows; upstream target is omop-graph query API.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.run_ground_tier" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">run_ground_tier</span><span class="p">(</span><span class="n">resolvers</span><span class="p">,</span> <span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">constraints</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span></code>
 
@@ -3780,6 +3911,24 @@ so the caller can fall through to the remaining lexical tiers.</p>
 <code>edges</code> are normalized (<code>{subject_id, predicate_id, predicate_kind, object_id}</code>)
 and <code>neighbor_ids</code> excludes the seed. Raises INVALID_INPUT for an unknown
 predicate-kind name.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.adapters.omop_graph.OmopGraphAdapter.validate_ancestor_constraints" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">validate_ancestor_constraints</span><span class="p">(</span><span class="n">concept_class_ids</span><span class="p">,</span> <span class="n">vocabulary_ids</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Validate exact catalogue IDs without scanning concept counts.</p>
 
 
     </div>

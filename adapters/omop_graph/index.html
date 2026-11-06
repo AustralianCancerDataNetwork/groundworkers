@@ -16,7 +16,7 @@
         <link rel="prev" href="../cdm/">
       
       
-        <link rel="next" href="../omop_emb/">
+        <link rel="next" href="../ancestry/">
       
       
         
@@ -1681,10 +1681,66 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#temporary-stored-ancestry-primitive-and-upstream-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temporary stored-ancestry primitive and upstream migration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Temporary stored-ancestry primitive and upstream migration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#upstream-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2007,6 +2063,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#temporary-stored-ancestry-primitive-and-upstream-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Temporary stored-ancestry primitive and upstream migration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Temporary stored-ancestry primitive and upstream migration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#upstream-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2172,6 +2256,41 @@
 <h2 id="error-handling">Error handling</h2>
 <p>Adapter methods raise <code>GroundworkersError</code> on failure. Services propagate those errors unchanged; tools and REST routes translate them into transport-level responses.</p>
 <p>The underlying <code>KnowledgeGraph</code> is built lazily on first use rather than at server startup. If the database or graph layer is unavailable, callers receive a clear <code>GroundworkersError</code> instead of an opaque lower-level exception.</p>
+<h2 id="temporary-stored-ancestry-primitive-and-upstream-migration">Temporary stored-ancestry primitive and upstream migration</h2>
+<p>Groundworkers temporarily provides <code>q_ancestor_rows()</code> in
+<code>adapters/_omop_graph_ancestry.py</code> pending an omop-graph release. It depends only
+on SQLAlchemy and the OMOP model; it contains no Groundworkers selection policy.
+<code>OmopGraphAdapter.ancestor_rows()</code> is the stable execution boundary. It returns
+plain rows with descendant ID, ancestor ID and stored minimum/maximum separation.
+Distinct zero-separation ancestors are retained; <code>include_self</code> compares IDs.
+<code>max_separation=0</code> is supported and empty input returns no rows.</p>
+<p>The shared-ancestor service uses <code>GraphService.get_stored_ancestor_maps()</code> to batch
+ancestry and strict metadata lookup, adding self at depth zero. Ordinary parent
+and descendant walks retain their existing semantics. Eligible targets must be
+active standard concepts in the input domain. Optional <code>concept_class_ids</code> and
+<code>vocabulary_ids</code> constrain targets before nearest-common selection. Ranking uses
+the maximum stored minimum separation across inputs; distance ties abstain.
+<code>common_ancestors</code> exposes ranked alternatives on successful and tied results.
+Backend failures and missing ancestor metadata raise errors rather than becoming
+no-match results. Concept enrichment elsewhere retains its tolerant default.</p>
+<h3 id="upstream-path">Upstream path</h3>
+<ol>
+<li>Move <code>q_ancestor_rows</code> and its raw-row contract to omop-graph, with tests for
+   non-self zero distances, self policy, batch input, bounds and empty input.</li>
+<li>Add an omop-graph runtime method that executes that query and returns the same
+   four fields. It must preserve stored distances rather than counting BFS hops.</li>
+<li>After releasing and pinning that dependency, replace the implementation of
+   <code>OmopGraphAdapter.ancestor_rows()</code> with delegation to the upstream method.
+   Remove the temporary module and import; no mapping-service or plugin API
+   change is required. Keep <code>tests/unit/test_stored_ancestry.py</code> as the consumer
+   contract and run it against the upstream implementation.</li>
+<li>Audit existing upstream <code>q_concept_potential_ancestor*</code> helpers separately:
+   their positive-distance filter also excludes non-self zero-separation rows.
+   Do not change those callers' behavior implicitly during migration.</li>
+</ol>
+<p>Drug-specific ingredient/form/strength checks and broad-match acceptance remain
+in the PBS plugin. Groundworkers makes no global preference between Clinical Drug
+and Branded Drug; callers can request classes explicitly.</p>
 
 
 

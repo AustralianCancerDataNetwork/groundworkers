@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://AustralianCancerDataNetwork.github.io/groundworkers/adapters/omop_emb/">
       
       
-        <link rel="prev" href="../omop_graph/">
+        <link rel="prev" href="../ancestry/">
       
       
         <link rel="next" href="../../reference/ref_tools/">
@@ -1592,6 +1592,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -2159,9 +2187,15 @@
 <td><code>pgvector</code></td>
 <td>a <code>[vector_stores.*]</code> entry with <code>backend_type = "pgvector"</code> and a <code>database</code> reference</td>
 </tr>
+<tr>
+<td><code>duckdbvss</code></td>
+<td>a <code>[vector_stores.*]</code> entry with <code>backend_type = "duckdbvss"</code> and a separate prebuilt DuckDB database reference</td>
+</tr>
 </tbody>
 </table>
 <p>FAISS remains a sidecar acceleration layer rather than a standalone primary backend.</p>
+<p>See <a href="../../usage/configuration/#databases-and-vector-storage">database and vector-storage configuration</a>
+for connection dialects and file-serving requirements.</p>
 <h2 id="operation-modes">Operation modes</h2>
 <h3 id="index-lookup-mode">Index lookup mode</h3>
 <p>No live model API is required.</p>
@@ -2177,7 +2211,12 @@
 <li><code>embedding_encode</code> returns a raw embedding vector</li>
 </ul>
 <h2 id="availability-model">Availability model</h2>
-<p>The underlying backend is built lazily on first use. If the backend cannot be opened, the adapter reports unavailability rather than failing application construction for callers that do not need embedding-backed operations.</p>
+<p>Configuration is validated when constructing the application. A configured
+DuckDB embedding file must already exist and be separate from the CDM file;
+invalid file configuration stops startup.</p>
+<p>The underlying backend is built lazily on first use. Failures while opening a
+validly configured backend are reported as embedding unavailability. Registered
+models and stored vectors can be inspected without a live query encoder.</p>
 <p>Representative <code>index_status()</code> shape:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;available&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>

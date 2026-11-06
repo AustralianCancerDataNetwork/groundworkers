@@ -1775,6 +1775,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../adapters/ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../adapters/omop_emb/" class="md-nav__link">
         
   
@@ -2344,7 +2372,7 @@ covers the implementation contract for plugin authors.</p>
 <h3 id="assumptions-this-table-is-making">Assumptions this table is making</h3>
 <ul>
 <li><strong>Vocabulary only, so far.</strong> Every example above reads OMOP vocabulary: concepts, concept relationships, concept embeddings, or the host's shared grounding cascade. <code>context.cdm_session_factory</code> routes vocabulary and primary roles, including on split-vocabulary deployments. Clinical/person-level queries need a database role explicitly configured for them.</li>
-<li><strong>Shared mapping access.</strong> <code>PluginContext.mapping_context</code> is an optional,read-only capability façade over the host's mapping and grounding policy. Use its operations when a plugin needs candidate bundles, text grounding, or concept context. <code>concept_shared_standard_ancestor(concept_ids, max_depth=5)</code> returns the unique nearest shared standard ancestor when one exists; raise <code>max_depth</code> to widen the hierarchy search. The underlying vocabulary, graph, and service objects are deliberately not exposed. Do not construct a second <code>omop-graph</code> or vocabulary adapter from <code>context.cdm_engine</code>. The field is <code>None</code> only when the host did not compose services for the plugin context.</li>
+<li><strong>Shared mapping access.</strong> <code>PluginContext.mapping_context</code> is an optional,read-only capability façade over the host's mapping and grounding policy. Use its operations when a plugin needs candidate bundles, text grounding, or concept context. <code>concept_shared_standard_ancestor(concept_ids, max_depth=5, concept_class_ids=None, vocabulary_ids=None, limit=10, offset=0)</code> selects from complete stored ancestry with active standard targets, optional exact catalogue constraints and explicit nearest-distance ties. Depth is stored minimum separation (0..20), including distinct zero-distance ancestors. Pagination affects display only. Empty constraints are invalid. The response retains <code>found</code>, <code>selected_ancestor</code> and <code>selection_reason</code> and adds status, evidence, constraints and complete-set counts. The same capability is exposed as an MCP tool with a typed envelope; plugin callers retain the transport-neutral dictionary. The underlying vocabulary, graph, and service objects are deliberately not exposed. Do not construct a second <code>omop-graph</code> or vocabulary adapter from <code>context.cdm_engine</code>. The field is <code>None</code> only when the host did not compose services for the plugin context.</li>
 </ul>
 <h2 id="build-and-register-a-new-plugin">Build and register a new plugin</h2>
 <p><code>build()</code> receives <code>PluginContext</code>. The context provides the resolved CDM database and primary engine, routed <code>cdm_session_factory</code>, vocabulary engine, vector store, shared lazy model backend factories, the optional read-only <code>mapping_context</code>, and a deliberately narrow resolver for independent named OA resources. Return <code>None</code> when a prerequisite is unavailable. Groundworkers then keeps serving its core capabilities and reports why the plugin was not activated.</p>

@@ -598,6 +598,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prepare-an-offline-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare an offline deployment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#shared-stack-prerequisite" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1719,6 +1730,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../adapters/ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../adapters/omop_emb/" class="md-nav__link">
         
   
@@ -1997,6 +2036,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prepare-an-offline-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prepare an offline deployment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#shared-stack-prerequisite" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2145,6 +2195,10 @@ uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </s
 <td>FAISS sidecar acceleration for embedding search</td>
 </tr>
 <tr>
+<td><code>duckdb</code></td>
+<td>Read-only DuckDB CDM/graph and DuckDBVSS embedding support</td>
+</tr>
+<tr>
 <td><code>xlsx</code></td>
 <td>XLSX source-planning input support</td>
 </tr>
@@ -2169,7 +2223,22 @@ uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </s
 <p>Examples:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;groundworkers[tui,embedding-pgvector]&quot;</span>
 pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;groundworkers[all_source]&quot;</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;groundworkers[tui,duckdb]&quot;</span>
 </code></pre></div>
+<p>Choose your CDM connection and vector storage in
+<a href="../configuration/#databases-and-vector-storage">Configuration</a>.</p>
+<h2 id="prepare-an-offline-deployment">Prepare an offline deployment</h2>
+<p>Install package extras and database extensions while the deployment environment
+has network access. Stored-vector operations can run without a live encoder;
+text-based embedding search needs access to the configured model provider.</p>
+<p>For DuckDBVSS, install VSS using the same Python environment and operating-system
+user that will run Groundworkers:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import duckdb; c = duckdb.connect(); c.install_extension(&#39;vss&#39;); c.close()&quot;</span>
+</code></pre></div>
+<p>VSS extensions are specific to the DuckDB version and platform. Use the version
+recorded with your prepared files. The embedding reader loads VSS when opening
+the store and may attempt a network installation if the extension is missing.
+Budget RAM for both the vectors and HNSW index; filtered searches may use exact scans.</p>
 <h2 id="shared-stack-prerequisite">Shared stack prerequisite</h2>
 <p><code>groundworkers</code> runs against the shared OMOP stack config managed by <code>oa-configurator</code>. In a typical setup you configure:</p>
 <div class="highlight"><pre><span></span><code>omop-config<span class="w"> </span>configure<span class="w"> </span>groundworkers

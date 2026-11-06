@@ -1595,6 +1595,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../adapters/ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../adapters/omop_emb/" class="md-nav__link">
         
   
@@ -1793,6 +1821,17 @@
   
     <nav class="md-nav" aria-label="app">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.app.build_adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_adapters
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#groundworkers.app.build_mapping_context" class="md-nav__link">
@@ -2150,6 +2189,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_ancestors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_ancestors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.services.graph.GraphService.get_associations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2165,6 +2215,17 @@
     <span class="md-ellipsis">
       
         get_extended_inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_stored_ancestor_maps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_stored_ancestor_maps
       
     </span>
   </a>
@@ -2299,6 +2360,17 @@
     <span class="md-ellipsis">
       
         async_concept_nearest_standard_ancestor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.MappingService.concept_relationship_neighborhood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_relationship_neighborhood
       
     </span>
   </a>
@@ -3436,6 +3508,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#groundworkers.app.build_adapters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_adapters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.app.build_mapping_context" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3791,6 +3874,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_ancestors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_ancestors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.services.graph.GraphService.get_associations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3806,6 +3900,17 @@
     <span class="md-ellipsis">
       
         get_extended_inheritance
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_stored_ancestor_maps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_stored_ancestor_maps
       
     </span>
   </a>
@@ -3940,6 +4045,17 @@
     <span class="md-ellipsis">
       
         async_concept_nearest_standard_ancestor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.MappingService.concept_relationship_neighborhood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_relationship_neighborhood
       
     </span>
   </a>
@@ -5035,6 +5151,24 @@
 <div class="doc doc-object doc-function">
 
 
+<h3 id="groundworkers.app.build_adapters" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">build_adapters</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">resources</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build shared adapters; a scoped owner can release their lazy store reader.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="groundworkers.app.build_mapping_context" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">build_mapping_context</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">adapters</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">services</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
@@ -5772,7 +5906,7 @@ adapter owns the backend and returns plain dicts/tuples.</p>
 
 
 <h4 id="groundworkers.services.graph.GraphService.concept_views" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">concept_views</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">concept_views</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span></code>
 
 </h4>
 
@@ -5783,6 +5917,24 @@ adapter owns the backend and returns plain dicts/tuples.</p>
 <p>Thin passthrough to the adapter's batch lookup. Returns an empty dict
 for unknown ids or on backend failure (the adapter swallows enrichment
 errors), so callers can treat a missing key as "unknown concept".</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.graph.GraphService.get_ancestors" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_ancestors</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="n">max_depth</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Read stored non-self ancestry, retaining distinct zero-distance rows.</p>
 
 
     </div>
@@ -5821,6 +5973,24 @@ errors), so callers can treat a missing key as "unknown concept".</p>
         <p>Enumerate HIERARCHY-kind relationship edges (extended inheritance).</p>
 <p>This is the raw edge-level HIERARCHY view — NOT the concept_ancestor
 closure used by get_ancestors/get_descendants. See the tool docstring.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.graph.GraphService.get_stored_ancestor_maps" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_stored_ancestor_maps</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="n">max_depth</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Batch stored ancestry with true minimum distances and explicit self.</p>
 
 
     </div>
@@ -6094,15 +6264,33 @@ optional ancestry constraints, tier ordering, and response explanation.</p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="groundworkers.services.mapping.MappingService.concept_shared_standard_ancestor" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">concept_shared_standard_ancestor</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span></code>
+<h4 id="groundworkers.services.mapping.MappingService.concept_relationship_neighborhood" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">concept_relationship_neighborhood</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">relationship_ids</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">max_nodes</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span></code>
 
 </h4>
 
 
     <div class="doc doc-contents ">
 
-        <p>Return a unique nearest common standard ancestor, when one exists.</p>
+        <p>Return reached nodes and edges over bounded active relationship traversals.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h4 id="groundworkers.services.mapping.MappingService.concept_shared_standard_ancestor" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">concept_shared_standard_ancestor</span><span class="p">(</span><span class="n">concept_ids</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">concept_class_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Select over complete stored ancestry; pagination never affects selection.</p>
 
 
     </div>

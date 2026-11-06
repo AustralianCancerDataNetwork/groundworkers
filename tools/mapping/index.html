@@ -1009,6 +1009,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#concept_shared_standard_ancestor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_shared_standard_ancestor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="concept_shared_standard_ancestor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ancestry-consistency-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ancestry consistency changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1763,6 +1791,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../adapters/ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../adapters/omop_emb/" class="md-nav__link">
         
   
@@ -2139,6 +2195,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#concept_shared_standard_ancestor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        concept_shared_standard_ancestor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="concept_shared_standard_ancestor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ancestry-consistency-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ancestry consistency changes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2308,7 +2392,7 @@
 <li><code>warnings</code></li>
 </ul>
 <h2 id="concept_nearest_standard_ancestor"><code>concept_nearest_standard_ancestor</code></h2>
-<p>Finds the nearest standard ancestor of a concept by walking the OMOP concept hierarchy. Accepts either a free-text query or an explicit <code>concept_id</code>. Useful when a source concept is too specific or non-standard and you need a broader standard parent.</p>
+<p>Finds the nearest active standard ancestor using stored OMOP separation, abstaining on equal-distance ties. Accepts either a free-text query or an explicit <code>concept_id</code>. Useful when a source concept is too specific or non-standard and you need a broader standard parent.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;left lower lobe lung adenocarcinoma&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;domain&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Condition&quot;</span><span class="p">,</span>
@@ -2408,6 +2492,46 @@
 <span class="n">bundle</span> <span class="o">=</span> <span class="n">mapping</span><span class="o">.</span><span class="n">concept_candidate_bundle</span><span class="p">(</span><span class="s2">&quot;type 2 diabetes&quot;</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="s2">&quot;Condition&quot;</span><span class="p">)</span>
 <span class="n">context</span> <span class="o">=</span> <span class="n">mapping</span><span class="o">.</span><span class="n">concept_mapping_context</span><span class="p">(</span><span class="mi">201826</span><span class="p">)</span>
 </code></pre></div>
+<h2 id="concept_shared_standard_ancestor"><code>concept_shared_standard_ancestor</code></h2>
+<p>Read-only, deterministic common-ancestor selection for alternative concept IDs
+representing one source record. It needs a configured vocabulary/graph, not an
+embedding or LLM backend. Do not use separate combination ingredients as if they
+were alternative product candidates.</p>
+<p>Supply <code>concept_ids</code> (2..200 positive strict integers, at least two distinct),
+<code>max_depth</code> (0..20, default 5), optional <code>concept_class_ids</code> / <code>vocabulary_ids</code>,
+and display <code>limit</code> (1..50, default 10) / <code>offset</code> (default 0). Filters must use
+exact installed catalogue IDs; null is unrestricted, empty/blank/unknown filters
+are invalid. RxNorm alone does not include RxNorm Extension.</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;concept_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">40166038</span><span class="p">,</span><span class="w"> </span><span class="mi">41038881</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;concept_class_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Clinical Drug&quot;</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;vocabulary_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;RxNorm&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;RxNorm Extension&quot;</span><span class="p">],</span><span class="w"> </span><span class="nt">&quot;max_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">}</span>
+</code></pre></div>
+<p>The response is <code>{error, code, message, data}</code>. On success <code>data.status</code> is
+<code>selected</code>, <code>ambiguous</code>, <code>no_match</code>, or <code>incompatible_inputs</code>. <code>found</code> indicates a
+unique selection, so it is false for an ancestry tie. Eligible targets must be
+active standard concepts in the same domain as every input. The response echoes
+constraints, complete-set counts and per-input distances for any selected target.</p>
+<p>Distances are stored minimum separation from <code>CONCEPT_ANCESTOR</code>. Include each
+seed itself at zero; retain distinct zero-separation ancestors. Such a connection
+does not prove clinical interchangeability. Nearest means the lowest maximum
+distance across all inputs. Equal nearest distances abstain. Display pagination
+never changes that computation; <code>limit=1</code> cannot force a selection. A selected
+concept is returned independently of the candidate display page.</p>
+<p>Native MCP argument/schema errors set <code>isError=true</code>. Errors from the service
+use the typed envelope with <code>error=true</code> and <code>data=null</code>. Backend failure is never
+a no-match. Text and structured payloads are normalized to the same envelope.</p>
+<h3 id="ancestry-consistency-changes">Ancestry consistency changes</h3>
+<p><code>concept_nearest_standard_ancestor</code> and hierarchy previews now use the same stored
+ancestry as <code>concept_ancestors</code>. Nearest-standard ties abstain instead of selecting
+the first row. Query mode still starts from the first grounded candidate, which
+is disclosed as <code>seed_selection_policy</code>; source-concept ambiguity remains the
+agent's responsibility. Maps-to fallback is labelled <code>evidence_route=maps_to</code>,
+with multiple targets left ambiguous. Missing relationship paths do not invalidate
+stored ancestor evidence and are reported separately.</p>
+<p><code>concept_mapping_context</code> uses <code>ancestor_limit</code> only as a display count (1..50).
+<code>ancestor_max_depth</code> independently sets stored separation (0..20, default 5).
+<code>ancestor_scope</code> reports the full count and whether the display was truncated.
+Ancestor bounds now reject invalid values rather than silently clamping them.
+For the runtime contract and bounded relationship-neighborhood behavior see
+<a href="../../adapters/ancestry/">stored ancestry and shared targets</a>.</p>
 
 
 

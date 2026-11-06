@@ -699,6 +699,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#databases-and-vector-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databases and vector storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Databases and vector storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-backed-databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-backed databases
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#typical-toml-shape" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1941,6 +1969,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../adapters/ancestry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ancestry and relationship queries
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../adapters/omop_emb/" class="md-nav__link">
         
   
@@ -2232,6 +2288,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#databases-and-vector-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Databases and vector storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Databases and vector storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-backed-databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-backed databases
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2624,6 +2708,44 @@ groundworkers<span class="w"> </span>--config-path<span class="w"> </span>/path/
 </tbody>
 </table>
 <p>Groundworkers references these entries <strong>by name</strong> and resolves them through <code>oa-configurator</code>. Its core runtime reads <code>[tools.groundworkers]</code> and the shared entries it names. Maintenance commands and installed plugins use their own package sections, as described below.</p>
+<h2 id="databases-and-vector-storage">Databases and vector storage</h2>
+<p>The CDM holds concepts, vocabulary metadata, ancestry and relationships. A vector
+store holds registered embedding models and concept vectors. Choose their
+connections separately; each has its own database reference.</p>
+<table>
+<thead>
+<tr>
+<th>Storage</th>
+<th>Connection <code>dialect</code></th>
+<th>Vector-store <code>backend_type</code> on that connection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td><code>postgresql+psycopg</code></td>
+<td><code>pgvector</code></td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td><code>sqlite</code></td>
+<td><code>sqlitevec</code></td>
+</tr>
+<tr>
+<td>DuckDB</td>
+<td><code>duckdb</code></td>
+<td><code>duckdbvss</code></td>
+</tr>
+</tbody>
+</table>
+<p>For server connections, supply host, port and credentials. File connections use
+<code>database_name</code> for the file path and need no host or credentials. Select the
+required <a href="../installation/#optional-extras">installation extras</a> for your storage.</p>
+<h3 id="file-backed-databases">File-backed databases</h3>
+<p>For a DuckDB CDM, the primary and vocabulary roles must use the same existing file. If you enable embeddings, select a separate DuckDBVSS file. Serving and readiness checks open these files read-only. Missing CDM or embedding files stop service startup without creating a database. The setup console can initialize a new embedding file and populate it through explicit preparation actions.</p>
+<p>DuckDB <code>database_name</code> values must be absolute file paths. Relative paths and <code>~</code> aliases are rejected, so launching from a different directory cannot select a different database. The setup console accepts the CDM as an existing file and offers separate embedding storage; add that connection before selecting it. A new embedding file must have an existing parent directory. Leave schemas blank for files built in their default schema.</p>
+<p>Copy the <a href="https://github.com/AustralianCancerDataNetwork/groundworkers/blob/main/config/groundworkers.duckdb.example.toml">DuckDB configuration example</a> and replace the paths and model metadata with those supplied with your files. It defines both connections, a CDM database, a generic embedding database, a <code>duckdbvss</code> store, and the <code>[tools.groundworkers]</code> references that select them. Read-only access is enforced by the runtime; no connection <code>read_only</code> TOML field is needed.</p>
+<p>See <a href="../../from-scratch/#4-prepare-graph-and-search-support">database preparation</a>, <a href="../../from-scratch/#maintenance-runs">maintenance</a> and <a href="../installation/#prepare-an-offline-deployment">offline prerequisites</a> before starting a service against prepared files.</p>
 <h2 id="typical-toml-shape">Typical TOML shape</h2>
 <p>This example includes a CDM connection, PostgreSQL embeddings, and an Ollama chat model. Replace the connection details and choose models available from your provider. The model names and grounding threshold are examples, not required defaults.</p>
 <div class="highlight"><pre><span></span><code><span class="k">[connections.cdm_main]</span>
@@ -2769,6 +2891,7 @@ groundworkers<span class="w"> </span>--config-path<span class="w"> </span>/path/
 <span class="n">vocab_schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;public&quot;</span>
 </code></pre></div>
 <p>Vocabulary reads use <code>vocab_connection</code> and <code>vocab_schema</code>. If you omit <code>vocab_connection</code>, they use the main CDM connection. Different schemas on the same connection need only separate <code>cdm_schema</code> and <code>vocab_schema</code> values.</p>
+<p>DuckDB deployments keep both roles in the same file as described under <a href="#file-backed-databases">prepared database files</a>.</p>
 <h2 id="groundworkers-settings">Groundworkers settings</h2>
 <h3 id="app_name"><code>app_name</code></h3>
 <p>Application identity used by:</p>
@@ -2977,12 +3100,20 @@ groundworkers<span class="w"> </span>--config-path<span class="w"> </span>/path/
 <p>Configuration determines which tools are registered. Registration does not establish that a database, model endpoint, or store is ready: check connections, model compatibility, and coverage separately in the console.</p>
 <h3 id="with-cdm_db-alone">With <code>cdm_db</code> alone</h3>
 <p>Concept lookup, lexical search and grounding, graph and mapping tools, deterministic source planning, knowledge packs, and system tools are available. Some search and graph operations need prepared indexes or supporting objects. No separate <code>[tools.omop_graph]</code> section is needed by the core runtime.</p>
+<p>PostgreSQL full-text search requires its prepared search objects. It is unavailable
+on DuckDB; status reports that limitation while vocabulary lookup, ancestry and
+relationship operations remain usable. For normalized search on DuckDB, supply a
+domain, vocabulary or parent scope. Full unindexed scans require explicit opt-in.</p>
 <h3 id="with-vector_store_name-alone">With <code>vector_store_name</code> alone</h3>
 <p>Stored-vector operations remain available without a live embedding model. For example, <code>embedding_neighbours</code> can find neighbours of a concept already in the store. Supply <code>model_name</code> when needed to select the stored model.</p>
 <p>Live text encoding, text-based embedding search, and the graph's embedding grounding tier need <code>embedding_model_name</code> as well.</p>
 <h3 id="with-embedding_model_name-and-vector_store_name">With <code>embedding_model_name</code> <strong>and</strong> <code>vector_store_name</code></h3>
 <p>Both references enable live embedding search and embedding-backed grounding and mapping. The provider must be reachable and compatible vectors must already exist in the store. With a model reference alone, embedding store operations remain unavailable.</p>
+<p>The query encoder must match the stored model identity, dimensions and query-prefix
+convention. Copy that metadata from the prepared store's documentation when
+configuring an existing asset.</p>
 <p>Groundworkers opens the store read-only for queries, status, and coverage checks. Store initialization and population are explicit write operations. Searches never populate missing vectors. See <a href="../../from-scratch/#5-add-embeddings-optional">Initial local setup</a> for the preparation steps.</p>
+<p>For DuckDB, stop services and close other readers before initialization or population. Population opens both the CDM and embedding files. These explicit actions open a writer; they do not change the read-only serving policy. See <a href="../../from-scratch/#maintenance-runs">maintenance</a>.</p>
 <p>The setup wizard uses the <code>groundworkers</code> schema for PostgreSQL vector storage. The model registry and configuration provenance use their packages' reserved schemas. SQLite uses its database file without a schema. Each database supports one store per model: reuse an existing registration or choose a different database for another store of that model.</p>
 <p>A <code>LEGACY_REGISTRY</code> error means the store layout is incompatible. Groundworkers does not migrate legacy stores automatically; inspect the diagnostic and use the migration guidance for your installed storage package. Avoid treating a registry error as an empty store.</p>
 <h3 id="with-groundworkersllm_model_name-configured">With <code>groundworkers.llm_model_name</code> configured</h3>
