@@ -8,6 +8,7 @@ from omop_alchemy.cdm.model import normalised_flag
 from omop_alchemy.cdm.model.vocabulary import (
     Concept,
     Concept_Class,
+    Concept_Relationship,
     Domain,
     Vocabulary,
 )
@@ -74,12 +75,12 @@ class OmopGraphAdapter:
         embedding_metric: str = "cosine",
         faiss_cache_dir: str | None = None,
     ) -> None:
-        self._engine_compatibility_mode = isinstance(engine, Engine) and cdm_session_factory is None
+        self._engine_compatibility_mode = (
+            isinstance(engine, Engine) and cdm_session_factory is None
+        )
         if isinstance(engine, Engine):
             self.engine: Engine | None = engine
-            self._cdm_session_factory = cdm_session_factory or sessionmaker(
-                bind=engine
-            )
+            self._cdm_session_factory = cdm_session_factory or sessionmaker(bind=engine)
         else:
             self.engine = None
             self._cdm_session_factory = cdm_session_factory or engine
@@ -154,7 +155,9 @@ class OmopGraphAdapter:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
         return self._serialise_concept_view(concept_view)
 
-    def get_concept_by_code(self, vocabulary_id: str, code: str) -> list[dict[str, Any]]:
+    def get_concept_by_code(
+        self, vocabulary_id: str, code: str
+    ) -> list[dict[str, Any]]:
         try:
             concept_id = self._get_kg().concept_id_by_code(vocabulary_id, code)
             concept_view = self._get_kg().concept_view(concept_id)
@@ -264,6 +267,33 @@ class OmopGraphAdapter:
     # ------------------------------------------------------------------
     # Edge primitive
     # ------------------------------------------------------------------
+
+    def relationship_edges(
+        self, concept_id: int, relationship_ids: list[str], limit: int
+    ) -> list[dict[str, Any]]:
+        """Bounded active outbound rows; upstream target is omop-graph query API."""
+        statement = (
+            select(
+                Concept_Relationship.concept_id_2, Concept_Relationship.relationship_id
+            )
+            .where(
+                Concept_Relationship.concept_id_1 == concept_id,
+                Concept_Relationship.relationship_id.in_(relationship_ids),
+                func.coalesce(func.trim(Concept_Relationship.invalid_reason), "") == "",
+            )
+            .order_by(
+                Concept_Relationship.concept_id_2, Concept_Relationship.relationship_id
+            )
+            .limit(limit)
+        )
+        try:
+            with self._cdm_session_factory() as session:
+                return [
+                    {"target_concept_id": cid, "relationship_id": rid, "valid": True}
+                    for cid, rid in session.execute(statement)
+                ]
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR") from exc
 
     def edges(
         self,
@@ -584,10 +614,9 @@ class OmopGraphAdapter:
             .group_by(Domain.domain_id, Domain.domain_name)
             .order_by(Domain.domain_id)
         )
-        class_stmt = (
-            select(Concept_Class.concept_class_id, Concept_Class.concept_class_name)
-            .order_by(Concept_Class.concept_class_id)
-        )
+        class_stmt = select(
+            Concept_Class.concept_class_id, Concept_Class.concept_class_name
+        ).order_by(Concept_Class.concept_class_id)
         kg = self._get_kg()
         try:
             with kg.session_factory() as session:
@@ -599,7 +628,11 @@ class OmopGraphAdapter:
 
         return {
             "vocabularies": [
-                {"vocabulary_id": r[0], "vocabulary_name": r[1], "concept_count": int(r[2])}
+                {
+                    "vocabulary_id": r[0],
+                    "vocabulary_name": r[1],
+                    "concept_count": int(r[2]),
+                }
                 for r in vocab_rows
             ],
             "domains": [
@@ -687,13 +720,13 @@ class OmopGraphAdapter:
                 # Broad except: lexical fallback is intentional.
                 emb_config = None
                 self._embedding_configured = False
-                self._embedding_configuration_error = self._embedding_failure_detail(exc)
+                self._embedding_configuration_error = self._embedding_failure_detail(
+                    exc
+                )
                 logger.warning("%s", self._embedding_configuration_error)
 
         try:
-            self._kg = KnowledgeGraph(
-                self._cdm_session_factory, emb_config=emb_config
-            )
+            self._kg = KnowledgeGraph(self._cdm_session_factory, emb_config=emb_config)
         except Exception as exc:
             if emb_config is None:
                 self._embedding_configured = False
@@ -707,7 +740,9 @@ class OmopGraphAdapter:
             try:
                 self._kg = KnowledgeGraph(self._cdm_session_factory, emb_config=None)
             except Exception as lexical_exc:
-                raise self._wrap_graph_error(lexical_exc, default_code="BACKEND_UNAVAIL")
+                raise self._wrap_graph_error(
+                    lexical_exc, default_code="BACKEND_UNAVAIL"
+                )
         return self._kg
 
     @staticmethod
@@ -745,9 +780,13 @@ class OmopGraphAdapter:
             "matched_label": getattr(result, "matched_concept_label", None),
             "total_score": round(float(result.total_score), 4),
             "relevance": round(float(getattr(result, "relevance", 0.0)), 4),
-            "parsimony_penalty": round(float(getattr(result, "parsimony_penalty", 0.0)), 4),
+            "parsimony_penalty": round(
+                float(getattr(result, "parsimony_penalty", 0.0)), 4
+            ),
             "broadness_bonus": round(float(getattr(result, "broadness_bonus", 0.0)), 4),
-            "embedding_score": round(float(emb_score), 4) if emb_score is not None else None,
+            "embedding_score": round(float(emb_score), 4)
+            if emb_score is not None
+            else None,
             "separation": int(getattr(result, "separation", 0)),
             "standardized_from": standardized_from,
         }
@@ -772,7 +811,10 @@ class OmopGraphAdapter:
     def _is_not_found(exc: Exception) -> bool:
         if isinstance(exc, NoResultFound):
             return True
-        return any(cls.__name__ in {"NotFoundError", "ConceptNotFoundError"} for cls in type(exc).__mro__)
+        return any(
+            cls.__name__ in {"NotFoundError", "ConceptNotFoundError"}
+            for cls in type(exc).__mro__
+        )
 
     @staticmethod
     def _wrap_graph_error(exc: Exception, *, default_code: str) -> GroundworkersError:

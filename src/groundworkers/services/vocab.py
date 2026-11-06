@@ -25,9 +25,7 @@ from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.sql import (
     NormalizationProfile,
-    normalization_expression,
-    normalization_key_expression,
-    normalized_key,
+    normalization_match_expression,
 )
 
 logger = logging.getLogger(__name__)
@@ -150,6 +148,10 @@ class VocabService:
         if self._fts_name_sidecar is not None:
             return
         engine = self._cdm.vocab_engine
+        if engine.dialect.name == "duckdb":
+            self._fts_name_sidecar = False
+            self._fts_synonym_sidecar = False
+            return
         schema = physical_schema_of(engine, schema_tag=Role.VOCAB)
         try:
             inspector = sa_inspect(engine)
@@ -190,6 +192,8 @@ class VocabService:
         reporting instead of treating schema presence as operational readiness.
         """
 
+        if self._cdm.vocab_engine.dialect.name == "duckdb":
+            return False, "PostgreSQL full-text search is unavailable on DuckDB."
         try:
             with self._cdm.session() as session:
                 probe_label = session.execute(
@@ -399,18 +403,18 @@ class VocabService:
             include_synonyms=include_synonyms,
             allow_unindexed_scan=allow_unindexed_scan,
         )
-        key = normalized_key(normalized_query)
 
         results: list[ConceptMatch] = []
         seen_ids: set[int] = set()
 
         try:
-            name_expr = normalization_expression(
+            name_predicate = normalization_match_expression(
                 Concept.concept_name,
+                normalized_query,
                 profile=normalization_profile,
                 remove_stop_phrases=remove_stop_phrases,
+                dialect_name=self._cdm.vocab_engine.dialect.name,
             )
-            name_key_expr = normalization_key_expression(Concept.concept_name)
 
             with self._cdm.session() as session:
                 if (
@@ -440,7 +444,7 @@ class VocabService:
                             "classification_concept"
                         ),
                         Concept.is_valid_expr().label("is_active"),
-                    ).where(name_key_expr == key, name_expr == normalized_query),
+                    ).where(name_predicate),
                     domain=domain,
                     vocabulary_id=vocabulary_id,
                     standard_only=standard_only,
@@ -455,13 +459,12 @@ class VocabService:
                 if include_synonyms:
                     remaining = limit - len(results)
                     if remaining > 0:
-                        syn_expr = normalization_expression(
+                        syn_predicate = normalization_match_expression(
                             Concept_Synonym.concept_synonym_name,
+                            normalized_query,
                             profile=normalization_profile,
                             remove_stop_phrases=remove_stop_phrases,
-                        )
-                        syn_key_expr = normalization_key_expression(
-                            Concept_Synonym.concept_synonym_name
+                            dialect_name=self._cdm.vocab_engine.dialect.name,
                         )
                         syn_stmt = self._apply_concept_filters(
                             select(
@@ -482,7 +485,7 @@ class VocabService:
                                 Concept_Synonym,
                                 Concept_Synonym.concept_id == Concept.concept_id,
                             )
-                            .where(syn_key_expr == key, syn_expr == normalized_query),
+                            .where(syn_predicate),
                             domain=domain,
                             vocabulary_id=vocabulary_id,
                             standard_only=standard_only,
@@ -542,6 +545,13 @@ class VocabService:
             return "scoped_scan"
         if allow_unindexed_scan:
             return "unindexed_scan"
+        if engine.dialect.name == "duckdb":
+            raise GroundworkersError(
+                "INVALID_INPUT",
+                "Normalized search on DuckDB needs a domain, vocabulary_id, or "
+                "parent_ids scope. Set allow_unindexed_scan=True only to explicitly "
+                "allow a full vocabulary scan.",
+            )
         raise GroundworkersError(
             "INVALID_INPUT",
             "Normalized search needs an index or a scope. Build indexes via Setup → "

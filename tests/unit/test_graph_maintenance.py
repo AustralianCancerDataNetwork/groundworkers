@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from oa_configurator import StackConfig
 
 from groundworkers.application.setup.graph_maintenance import (
     GraphRemediation,
     GraphRemediationRequest,
     build_graph_remediation_commands,
+    cdm_is_read_only,
     outstanding_remediations,
 )
 from groundworkers.application.setup.models import (
@@ -35,6 +37,14 @@ def _info(code: str) -> ResourceDiagnostic:
     return ResourceDiagnostic(code, "present", DiagnosticSeverity.INFO)
 
 
+@pytest.mark.parametrize(
+    "stack",
+    [None, StackConfig(), StackConfig(tools={"groundworkers": {"cdm_db": "missing"}})],
+)
+def test_readonly_detection_tolerates_incomplete_configuration(stack) -> None:
+    assert cdm_is_read_only(stack) is False
+
+
 # ---------------------------------------------------------------------------
 # Deciding what is outstanding
 # ---------------------------------------------------------------------------
@@ -55,9 +65,7 @@ def test_outstanding_is_read_from_the_readiness_diagnostics() -> None:
 
 def test_empty_relationship_tables_count_as_outstanding() -> None:
     """Tables present but empty is the same problem as absent, for grounding."""
-    readiness = _readiness(
-        _info("graph_tables_present"), _warn("graph_tables_empty")
-    )
+    readiness = _readiness(_info("graph_tables_present"), _warn("graph_tables_empty"))
 
     assert outstanding_remediations(readiness) == (
         GraphRemediation.RELATIONSHIP_CLASSIFICATION,
@@ -131,14 +139,13 @@ def test_relationship_classification_passes_the_csv_directory(tmp_path: Path) ->
     )
 
 
-def test_relationship_classification_without_a_directory_is_refused() -> None:
-    """omop-graph loads these from CSV and ships none, so there is no default."""
-    with pytest.raises(ValueError, match=r"predicate_classification\.csv"):
-        build_graph_remediation_commands(
-            GraphRemediationRequest(
-                actions=(GraphRemediation.RELATIONSHIP_CLASSIFICATION,)
-            )
-        )
+def test_relationship_classification_uses_upstream_defaults_without_a_directory() -> (
+    None
+):
+    commands = build_graph_remediation_commands(
+        GraphRemediationRequest(actions=(GraphRemediation.RELATIONSHIP_CLASSIFICATION,))
+    )
+    assert commands[0].argv[1:] == ("relationship-classification",)
 
 
 def test_commands_are_ordered_tables_then_indexes(tmp_path: Path) -> None:
@@ -170,25 +177,8 @@ def test_selecting_nothing_builds_nothing() -> None:
     assert build_graph_remediation_commands(GraphRemediationRequest(actions=())) == ()
 
 
-# ---------------------------------------------------------------------------
-# Bundled predicate CSVs (temporary, pending the omop-graph packaging fix)
-# ---------------------------------------------------------------------------
-
-
-def test_the_bundled_predicate_csvs_are_installed() -> None:
-    """They are a stand-in for data omop-graph does not ship in its wheel.
-
-    Guards the same failure this works around: files outside a package directory
-    vanish from the wheel silently, with nothing failing until runtime.
-    """
-    from groundworkers.application.setup.graph_maintenance import (
-        PREDICATE_CSV_NAMES,
-        packaged_predicate_csv_dir,
-    )
-
-    bundled = packaged_predicate_csv_dir()
-
-    assert bundled is not None
-    for name in PREDICATE_CSV_NAMES:
-        assert (bundled / name).is_file()
-        assert (bundled / name).stat().st_size > 0
+def test_readonly_graph_preparation_is_refused_before_launching_commands() -> None:
+    with pytest.raises(ValueError, match="read-only"):
+        build_graph_remediation_commands(
+            GraphRemediationRequest(actions=tuple(GraphRemediation), read_only=True)
+        )

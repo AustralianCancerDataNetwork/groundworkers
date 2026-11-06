@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from sqlalchemy import and_, func, literal
 from sqlalchemy import column as sql_column
-from sqlalchemy import func, literal
 from sqlalchemy.engine import Connection, Engine
 
 __all__ = [
@@ -17,6 +17,7 @@ __all__ = [
     "normalization_index_expression_sql",
     "normalization_key_expression",
     "normalization_key_expression_sql",
+    "normalization_match_expression",
     "normalized_key",
 ]
 
@@ -37,8 +38,18 @@ STOP_PHRASE_SQL_PATTERN = r"\m(?:nos|nec|nfs|unspecified|unknown|other|w/?o|w/)\
 # Extending a variant beyond this set requires extending the K expression too.
 KEY_DROP_TOKENS = frozenset(
     {
-        "nos", "nec", "nfs", "unspecified", "unknown", "other", "w", "o",
-        "wo", "extended", "modified", "release",
+        "nos",
+        "nec",
+        "nfs",
+        "unspecified",
+        "unknown",
+        "other",
+        "w",
+        "o",
+        "wo",
+        "extended",
+        "modified",
+        "release",
     }
 )
 KEY_DROP_TOKEN_PATTERN = "(?:" + "|".join(sorted(KEY_DROP_TOKENS)) + ")"
@@ -49,6 +60,7 @@ def normalization_expression(
     *,
     profile: str | NormalizationProfile,
     remove_stop_phrases: bool,
+    dialect_name: str = "postgresql",
 ):
     """Build the SQL expression used for normalized comparison.
 
@@ -63,15 +75,44 @@ def normalization_expression(
     globally = _inline("g")
     expr = func.lower(column)
     if remove_stop_phrases:
-        expr = func.regexp_replace(
-            expr, _inline(STOP_PHRASE_SQL_PATTERN), space, globally
-        )
+        pattern = STOP_PHRASE_SQL_PATTERN
+        if dialect_name == "duckdb":
+            pattern = pattern.replace(r"\m", r"\b").replace(r"\M", r"\b")
+        expr = func.regexp_replace(expr, _inline(pattern), space, globally)
     expr = func.regexp_replace(expr, _inline(r"[^a-z0-9]+"), space, globally)
     if profile == "drug_name":
         expr = func.replace(expr, _inline(" extended release "), space)
         expr = func.replace(expr, _inline(" modified release "), space)
     expr = func.regexp_replace(expr, _inline(r"\s+"), space, globally)
-    return func.btrim(expr)
+    return func.trim(expr) if dialect_name == "duckdb" else func.btrim(expr)
+
+
+def normalization_match_expression(
+    column,
+    normalized_query: str,
+    *,
+    profile: str | NormalizationProfile,
+    remove_stop_phrases: bool,
+    dialect_name: str,
+):
+    """Compare using native regex syntax; retain PostgreSQL's indexed coarse key."""
+    comparison = (
+        normalization_expression(
+            column,
+            profile=profile,
+            remove_stop_phrases=remove_stop_phrases,
+            dialect_name=dialect_name,
+        )
+        == normalized_query
+    )
+    if dialect_name == "duckdb":
+        # DuckDB's RE2 engine has no lookahead for the PostgreSQL coarse key.
+        # Scoped scans can compare the exact normalized value directly.
+        return comparison
+    return and_(
+        normalization_key_expression(column) == normalized_key(normalized_query),
+        comparison,
+    )
 
 
 def normalization_index_expression_sql(

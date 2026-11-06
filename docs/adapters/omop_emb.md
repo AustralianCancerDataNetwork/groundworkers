@@ -20,8 +20,12 @@ The adapter does **not** resolve stack config itself. `build_application(...)` c
 |---|---|
 | `sqlitevec` | a `[vector_stores.*]` entry with `backend_type = "sqlitevec"` and a database reference |
 | `pgvector` | a `[vector_stores.*]` entry with `backend_type = "pgvector"` and a `database` reference |
+| `duckdbvss` | a `[vector_stores.*]` entry with `backend_type = "duckdbvss"` and a separate prebuilt DuckDB database reference |
 
 FAISS remains a sidecar acceleration layer rather than a standalone primary backend.
+
+See [database and vector-storage configuration](../usage/configuration.md#databases-and-vector-storage)
+for connection dialects and file-serving requirements.
 
 ## Operation modes
 
@@ -42,7 +46,13 @@ Requires `embedding_model_name` and `vector_store_name`, plus a configured embed
 
 ## Availability model
 
-The underlying backend is built lazily on first use. If the backend cannot be opened, the adapter reports unavailability rather than failing application construction for callers that do not need embedding-backed operations.
+Configuration is validated when constructing the application. A configured
+DuckDB embedding file must already exist and be separate from the CDM file;
+invalid file configuration stops startup.
+
+The underlying backend is built lazily on first use. Failures while opening a
+validly configured backend are reported as embedding unavailability. Registered
+models and stored vectors can be inspected without a live query encoder.
 
 Representative `index_status()` shape:
 

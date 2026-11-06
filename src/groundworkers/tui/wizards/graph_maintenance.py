@@ -27,8 +27,8 @@ from groundworkers.application.setup.graph_maintenance import (
     GraphRemediation,
     GraphRemediationRequest,
     build_graph_remediation_commands,
+    cdm_is_read_only,
     outstanding_remediations,
-    packaged_predicate_csv_dir,
     start_graph_remediation_run,
 )
 from groundworkers.application.setup.models import ConnectionResult
@@ -46,7 +46,7 @@ _LABELS: dict[GraphRemediation, str] = {
     GraphRemediation.FUNCTIONAL_INDEXES: "Create functional text indexes",
 }
 
-_SOURCE_BUNDLED = "bundled"
+_SOURCE_UPSTREAM = "upstream"
 _SOURCE_CUSTOM = "custom"
 
 
@@ -78,12 +78,9 @@ class GraphMaintenanceWizardController:
         self._readiness = readiness
         self._outstanding = outstanding_remediations(readiness)
         self._selected: set[GraphRemediation] = set(self._outstanding)
-        # Pre-filled from the copy bundled with Groundworkers while omop-graph's
-        # own CSVs stay outside its wheel. Still a prompt rather than a silent
-        # default: a site may maintain its own classification.
-        self._bundled_csv_dir: Path | None = packaged_predicate_csv_dir()
-        self._csv_dir: Path | None = self._bundled_csv_dir
-        self._use_bundled = self._bundled_csv_dir is not None
+        self._csv_dir: Path | None = None
+        self._use_upstream = True
+        self._read_only = cdm_is_read_only(session.configuration.stack)
         self._cluster = True
         self._step_index = 0
         validate_wizard_steps(self._steps())
@@ -160,7 +157,7 @@ class GraphMaintenanceWizardController:
         steps: list[FormStep | ReviewStep] = [self._actions_step()]
         if GraphRemediation.RELATIONSHIP_CLASSIFICATION in self._selected:
             steps.append(self._sources_step())
-            if not self._use_bundled:
+            if not self._use_upstream:
                 steps.append(self._custom_sources_step())
         steps.append(self._review_step())
         return tuple(steps)
@@ -172,8 +169,11 @@ class GraphMaintenanceWizardController:
                 _LABELS[remediation],
                 kind=FieldKind.BOOLEAN,
                 default=remediation in self._selected,
+                disabled=self._read_only,
                 help=(
-                    "Reported missing by the readiness check."
+                    "DuckDB files are served read-only; prepare them outside the running service."
+                    if self._read_only
+                    else "Reported missing by the readiness check."
                     if remediation in self._outstanding
                     else "Already present. Selecting this re-runs it."
                 ),
@@ -186,6 +186,7 @@ class GraphMaintenanceWizardController:
                 "CLUSTER tables after indexing",
                 kind=FieldKind.BOOLEAN,
                 default=self._cluster,
+                disabled=self._read_only,
                 help="Rewrites the heap. Needs free disk space on large vocabularies.",
             )
         )
@@ -197,28 +198,14 @@ class GraphMaintenanceWizardController:
         )
 
     def _sources_step(self) -> FormStep:
-        """Ask which classification to load, not where it lives.
-
-        The bundled copy is the answer in almost every case, and its absolute
-        path is far too long to read in a single-line field. Only an operator
-        who keeps their own classification needs to type anything.
-        """
-        if self._bundled_csv_dir is None:
-            choices = (ChoiceOption(_SOURCE_CUSTOM, "Choose a directory"),)
-            default = _SOURCE_CUSTOM
-            help_text = (
-                "No classification is bundled with this install, so a directory "
-                "is required."
-            )
-        else:
-            choices = (
-                ChoiceOption(
-                    _SOURCE_BUNDLED, "Use the classification bundled with Groundworkers"
-                ),
-                ChoiceOption(_SOURCE_CUSTOM, "Use a different directory"),
-            )
-            default = _SOURCE_BUNDLED if self._use_bundled else _SOURCE_CUSTOM
-            help_text = f"Bundled copy: {self._bundled_csv_dir}"
+        """Offer the upstream defaults or an explicit custom classification."""
+        choices = (
+            ChoiceOption(
+                _SOURCE_UPSTREAM, "Use the classification shipped with omop-graph"
+            ),
+            ChoiceOption(_SOURCE_CUSTOM, "Use a different directory"),
+        )
+        default = _SOURCE_UPSTREAM if self._use_upstream else _SOURCE_CUSTOM
         return FormStep(
             key="sources",
             title="Predicate classification",
@@ -230,8 +217,7 @@ class GraphMaintenanceWizardController:
                     kind=FieldKind.CHOICE,
                     default=default,
                     choices=choices,
-                    disabled=self._bundled_csv_dir is None,
-                    help=help_text,
+                    help="omop-graph includes its default classification; no directory is needed.",
                 ),
             ),
         )
@@ -263,6 +249,10 @@ class GraphMaintenanceWizardController:
             if remediation in self._selected
         )
         warnings: list[str] = []
+        if self._read_only:
+            warnings.append(
+                "DuckDB files are served read-only. Run preparation separately after closing readers."
+            )
         if not self._selected:
             warnings.append("Nothing is selected, so nothing will run.")
         if self._cluster and GraphRemediation.FUNCTIONAL_INDEXES in self._selected:
@@ -282,7 +272,7 @@ class GraphMaintenanceWizardController:
                 changes=changes,
                 effects=("Each step runs as a background command with its own log.",),
                 warnings=tuple(warnings),
-                ready_to_apply=bool(self._selected),
+                ready_to_apply=bool(self._selected) and not self._read_only,
             ),
         )
 
@@ -293,6 +283,7 @@ class GraphMaintenanceWizardController:
             actions=tuple(r for r in GraphRemediation if r in self._selected),
             predicate_csv_dir=self._csv_dir,
             cluster=self._cluster,
+            read_only=self._read_only,
         )
 
     def _submit_form(
@@ -317,9 +308,9 @@ class GraphMaintenanceWizardController:
             return ()
         if step.key == "sources":
             choice = str(values.get("predicate_source") or "").strip()
-            self._use_bundled = choice == _SOURCE_BUNDLED
-            if self._use_bundled:
-                self._csv_dir = self._bundled_csv_dir
+            self._use_upstream = choice == _SOURCE_UPSTREAM
+            if self._use_upstream:
+                self._csv_dir = None
             return ()
         if step.key == "custom_sources":
             raw = str(values.get("predicate_csv_dir") or "").strip()
@@ -377,7 +368,7 @@ class GraphMaintenanceWizardController:
         if step.key == "sources":
             return {
                 "predicate_source": (
-                    _SOURCE_BUNDLED if self._use_bundled else _SOURCE_CUSTOM
+                    _SOURCE_UPSTREAM if self._use_upstream else _SOURCE_CUSTOM
                 )
             }
         if step.key == "custom_sources":

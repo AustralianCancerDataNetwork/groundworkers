@@ -9,7 +9,6 @@ from typing import Any, cast
 
 from groundskeeping.contracts import Command, CommandPlan, CommandStep
 from oa_configurator import ResolvedCDMDatabase, Resolver, safe_endpoint
-from omop_alchemy.config import create_cdm_engines
 from omop_alchemy.cross_database import cdm_sessionmaker
 from omop_llm import canonical_model_name
 from sqlalchemy.engine import Engine
@@ -28,6 +27,10 @@ from groundworkers.application.setup.models import (
     EmbeddingCoverageReport,
     EmbeddingIndexSnapshot,
     EmbeddingPopulationRequest,
+)
+from groundworkers.base.database import (
+    create_runtime_cdm_engines,
+    validate_duckdb_embedding_file,
 )
 from groundworkers.base.errors import embedding_store_error
 from groundworkers.base.results import enum_value
@@ -63,12 +66,13 @@ def load_embedding_coverage_report(
             groundworkers.embedding_model_name is None
             or groundworkers.vector_store_name is None
         ):
-            raise ValueError("Embedding model and vector store references are required.")
+            raise ValueError(
+                "Embedding model and vector store references are required."
+            )
         resolver = Resolver(snapshot.stack)
         resolved_model = resolver.resolve_model(groundworkers.embedding_model_name)
-        vector_store = resolver.resolve_vector_store(
-            groundworkers.vector_store_name
-        )
+        vector_store = resolver.resolve_vector_store(groundworkers.vector_store_name)
+        validate_duckdb_embedding_file(vector_store)
         store = open_vector_store_reader(vector_store)
         cdm_session_factory, cdm_engines = _cdm_session_factory_and_engines(snapshot)
         try:
@@ -175,6 +179,11 @@ def build_embedding_population_command(
 ) -> Command:
     """Build the omop-emb command used to populate missing concept embeddings."""
 
+    if configuration.backend == "duckdbvss":
+        raise ValueError(
+            "DuckDB embedding files are served read-only. Close readers and populate "
+            "the file separately with omop-emb before serving it."
+        )
     executable = shutil.which("omop-emb") or "omop-emb"
     argv: list[str] = [
         executable,
@@ -248,13 +257,15 @@ def _cdm_session_factory_and_engines(
     database = resolver.resolve_database(groundworkers.cdm_db)
     if not isinstance(database, ResolvedCDMDatabase):
         raise ValueError("Groundworkers cdm_db must resolve to a CDM database.")
-    primary_engine, vocab_engine = create_cdm_engines(
-        database, register_claims=False
-    )
+    primary_engine, vocab_engine = create_runtime_cdm_engines(database)
     session_factory = cdm_sessionmaker(
         database, primary=primary_engine, vocab=vocab_engine
     )
-    engines = (primary_engine,) if vocab_engine is primary_engine else (primary_engine, vocab_engine)
+    engines = (
+        (primary_engine,)
+        if vocab_engine is primary_engine
+        else (primary_engine, vocab_engine)
+    )
     return session_factory, engines
 
 

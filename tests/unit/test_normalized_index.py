@@ -282,7 +282,7 @@ def test_performance_cdm_context_connects_to_vocab_engine(monkeypatch) -> None:
         return primary, vocab
 
     monkeypatch.setattr(performance_maintenance, "create_cdm_engines", create_engines)
-    snapshot = SimpleNamespace(stack=build_cdm_stack())
+    snapshot = SimpleNamespace(stack=build_cdm_stack(cdm_schema="primary", vocab_schema="vocabulary"))
 
     with performance_maintenance._postgres_cdm(
         snapshot, purpose="Normalized-name indexes"

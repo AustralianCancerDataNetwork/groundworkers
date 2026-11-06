@@ -100,8 +100,20 @@ LLM_SETUP_TARGET: Final = ConfigTarget(
 
 # Targets whose first step discovers live models from a provider endpoint.
 _PROVIDER_DISCOVERY_STEPS: Final = {
-    MODEL_SETUP_TARGET: ("provider", "provider_kind", "base_url", "api_key", "model_choice"),
-    LLM_SETUP_TARGET: ("provider", "llm_provider_kind", "llm_base_url", "llm_api_key", "llm_model_choice"),
+    MODEL_SETUP_TARGET: (
+        "provider",
+        "provider_kind",
+        "base_url",
+        "api_key",
+        "model_choice",
+    ),
+    LLM_SETUP_TARGET: (
+        "provider",
+        "llm_provider_kind",
+        "llm_base_url",
+        "llm_api_key",
+        "llm_model_choice",
+    ),
 }
 
 ModelDiscoverer = Callable[[str, str | None, str | None], Sequence[str]]
@@ -127,10 +139,12 @@ CDM_VECTOR_DATABASE_SUFFIX: Final = "_vectors"
 _BACKEND_FOR_DIALECT: Final = {
     "sqlite": "sqlitevec",
     "postgresql": "pgvector",
+    "duckdb": "duckdbvss",
 }
 _BACKEND_CHOICES: Final = (
     ChoiceOption("sqlitevec", "sqlite-vec (single file, no server)"),
     ChoiceOption("pgvector", "pgvector (PostgreSQL extension)"),
+    ChoiceOption("duckdbvss", "DuckDB VSS (existing file)"),
 )
 ApplyCallback = Callable[[], None]
 
@@ -274,6 +288,22 @@ class GroundworkersConfigMutationService:
             )
 
         future_fields: tuple[FieldSpec, ...] = ()
+        if (
+            session.target == CDM_SETUP_TARGET
+            and step_key == "connection"
+            and proposed.get("dialect") == "duckdb"
+        ):
+            # The wizard starts with PostgreSQL defaults. Refresh the schema
+            # field before its later form can reapply "public" to a file CDM.
+            future_fields = (
+                FieldSpec("cdm_schema", "CDM schema", required=False, default="main"),
+                FieldSpec(
+                    "vocab_schema", "Vocabulary schema", required=False, default=None
+                ),
+                FieldSpec(
+                    "results_schema", "Results schema", required=False, default=None
+                ),
+            )
         discovery = _PROVIDER_DISCOVERY_STEPS.get(session.target)
         if discovery is not None and step_key == discovery[0]:
             _, kind_key, base_url_key, api_key_key, choice_key = discovery
@@ -313,7 +343,10 @@ class GroundworkersConfigMutationService:
                     changed_fields=session.changed_fields,
                 )
             session.provider_models = models
-            if session.target is MODEL_SETUP_TARGET or session.target == MODEL_SETUP_TARGET:
+            if (
+                session.target is MODEL_SETUP_TARGET
+                or session.target == MODEL_SETUP_TARGET
+            ):
                 # The registry step comes next for embeddings, so refresh its
                 # choice with what the store actually holds.
                 future_fields = (self._model_source_field(session),)
@@ -358,9 +391,7 @@ class GroundworkersConfigMutationService:
     def _model_source_field(self, session: _MutationSession) -> FieldSpec:
         """Offer the registry only when it actually holds something."""
         store = self._registry_lister(self._load_snapshot())
-        session.registered_models = tuple(
-            model.model_name for model in store.models
-        )
+        session.registered_models = tuple(model.model_name for model in store.models)
         registered = session.registered_models
         if not registered:
             return FieldSpec(
@@ -400,9 +431,7 @@ class GroundworkersConfigMutationService:
             _optional_text(proposed.get("model_source")) == MODEL_SOURCE_REGISTERED
             and session.registered_models
         )
-        names = (
-            session.registered_models if use_registered else session.provider_models
-        )
+        names = session.registered_models if use_registered else session.provider_models
         choices, default, choice_help = _model_choice_options(
             session.fields, "model_choice", names
         )
@@ -614,7 +643,7 @@ class GroundworkersConfigMutationService:
                 if key in submitted and not _optional_text(submitted.get(key)):
                     issues.append(ValidationIssue("A name is required.", field_key=key))
             dialect = _optional_text(proposed.get("dialect"))
-            if dialect not in {"sqlite", "postgresql+psycopg"}:
+            if dialect not in {"sqlite", "postgresql+psycopg", "duckdb"}:
                 issues.append(
                     ValidationIssue(
                         "Choose a supported database type.", field_key="dialect"
@@ -622,18 +651,18 @@ class GroundworkersConfigMutationService:
                 )
             if (
                 step_key == "server"
-                and dialect != "sqlite"
+                and dialect not in {"sqlite", "duckdb"}
                 and not _optional_text(proposed.get("host"))
             ):
                 issues.append(
                     ValidationIssue("A database host is required.", field_key="host")
                 )
-            if step_key == "database" and dialect == "sqlite":
+            if step_key == "database" and dialect in {"sqlite", "duckdb"}:
                 sqlite_path = _optional_text(proposed.get("database_name"))
                 if sqlite_path == ":memory:":
                     issues.append(
                         ValidationIssue(
-                            "An in-memory SQLite database cannot be used as an OMOP CDM.",
+                            "An in-memory database cannot be used as an OMOP CDM.",
                             field_key="database_name",
                         )
                     )
@@ -643,7 +672,7 @@ class GroundworkersConfigMutationService:
                 ):
                     issues.append(
                         ValidationIssue(
-                            "Choose an existing SQLite CDM file.",
+                            "Choose an existing CDM file.",
                             field_key="database_name",
                         )
                     )
@@ -714,18 +743,24 @@ class GroundworkersConfigMutationService:
                         issues.append(
                             ValidationIssue("A value is required.", field_key=key)
                         )
+            issues.extend(_duckdb_store_issues(session.base, step_key, proposed))
         elif target == LLM_SETUP_TARGET:
             if step_key == "provider":
                 if not _optional_text(proposed.get("llm_provider_name")):
                     issues.append(
                         ValidationIssue(
-                            "A provider name is required.", field_key="llm_provider_name"
+                            "A provider name is required.",
+                            field_key="llm_provider_name",
                         )
                     )
-                if _optional_text(proposed.get("llm_provider_kind")) not in supported_provider_keys():
+                if (
+                    _optional_text(proposed.get("llm_provider_kind"))
+                    not in supported_provider_keys()
+                ):
                     issues.append(
                         ValidationIssue(
-                            "Choose a supported provider.", field_key="llm_provider_kind"
+                            "Choose a supported provider.",
+                            field_key="llm_provider_kind",
                         )
                     )
                 if not _optional_text(proposed.get("llm_base_url")):
@@ -803,7 +838,7 @@ def cdm_setup_workflow(
                 when=(
                     ConfigBranchCondition(
                         "dialect",
-                        frozenset({"sqlite"}),
+                        frozenset({"sqlite", "duckdb"}),
                         negated=True,
                     ),
                 ),
@@ -928,7 +963,12 @@ def llm_setup_workflow(
             ConfigWorkflowStep(
                 "provider",
                 "Connect to the provider",
-                ("llm_provider_name", "llm_provider_kind", "llm_base_url", "llm_api_key"),
+                (
+                    "llm_provider_name",
+                    "llm_provider_kind",
+                    "llm_base_url",
+                    "llm_api_key",
+                ),
             ),
             ConfigWorkflowStep(
                 "model",
@@ -961,6 +1001,7 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             choices=(
                 ChoiceOption("postgresql+psycopg", "PostgreSQL (recommended)"),
                 ChoiceOption("sqlite", "SQLite (Advanced: existing file)"),
+                ChoiceOption("duckdb", "DuckDB (read-only existing file)"),
             ),
         ),
         FieldSpec(
@@ -991,11 +1032,11 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
         ),
         FieldSpec(
             "database_name",
-            "Database name or SQLite path",
+            "Database name or file path",
             default=getattr(connection, "database_name", None),
             help=(
                 "Enter the PostgreSQL database containing populated OMOP vocabulary tables. "
-                "For SQLite, select an existing CDM file."
+                "For SQLite or DuckDB, select an existing CDM file."
             ),
         ),
         FieldSpec(
@@ -1017,7 +1058,7 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             default=(
                 getattr(database, "cdm_schema", None)
                 if database is not None
-                else ("public" if _supports_schema_dialect(dialect) else None)
+                else ("public" if dialect.startswith("postgresql") else None)
             ),
         ),
         FieldSpec(
@@ -1085,7 +1126,9 @@ def _model_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "base_url",
             "Provider endpoint",
             required=False,
-            default=_default_endpoint(provider_kind, getattr(provider, "base_url", None)),
+            default=_default_endpoint(
+                provider_kind, getattr(provider, "base_url", None)
+            ),
             help=_endpoint_help(provider_kind),
         ),
         FieldSpec(
@@ -1160,8 +1203,10 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     )
     store_connection = stack.connections.get(store_connection_name)
     store_schema = getattr(database, "schema_name", None)
-    if store_schema is None and _supports_schema_dialect(
-        getattr(store_connection, "dialect", None)
+    if (
+        store_schema is None
+        and _supports_schema_dialect(getattr(store_connection, "dialect", None))
+        and getattr(store_connection, "dialect", "").startswith("postgresql")
     ):
         store_schema = GROUNDWORKERS_SCHEMA
     return (
@@ -1221,6 +1266,50 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
     )
 
 
+def _duckdb_store_issues(
+    stack: StackConfig, step_key: str, proposed: Mapping[str, object]
+) -> list[ValidationIssue]:
+    """Validate DuckDB's separate prebuilt embedding-file topology."""
+    if (
+        step_key == "location"
+        and proposed.get("store_location") == STORE_LOCATION_CDM
+        and _backend_for_stack(stack) == "duckdbvss"
+    ):
+        return [
+            ValidationIssue(
+                "Choose the separate prebuilt embedding file; the DuckDB CDM is read-only.",
+                field_key="store_location",
+            )
+        ]
+    if step_key != "database" or proposed.get("backend_type") != "duckdbvss":
+        return []
+    connection_name = str(proposed.get("store_connection_name", ""))
+    connection = stack.connections.get(connection_name)
+    if connection is None or connection.dialect != "duckdb":
+        return [
+            ValidationIssue(
+                "Choose a DuckDB embedding-file connection.",
+                field_key="store_connection_name",
+            )
+        ]
+    _, cdm = _cdm_entry(stack)
+    path = Path(connection.database_name or "").expanduser().resolve()
+    if cdm is not None and any(
+        other is not None
+        and other.dialect == "duckdb"
+        and path == Path(other.database_name or "").expanduser().resolve()
+        for name in (cdm.connection, cdm.vocab_connection)
+        for other in (stack.connections.get(name),)
+    ):
+        return [
+            ValidationIssue(
+                "The embedding file must be separate from the CDM file.",
+                field_key="store_connection_name",
+            )
+        ]
+    return []
+
+
 def _cdm_entry(stack: StackConfig) -> tuple[str, CDMDatabaseConfig | None]:
     """The CDM database entry Groundworkers is pointed at, and its name."""
 
@@ -1244,6 +1333,15 @@ def _store_location_field(
     separate = ChoiceOption(
         STORE_LOCATION_SEPARATE, "Somewhere else (choose a connection and schema)"
     )
+    if cdm is not None and _backend_for_stack(stack) == "duckdbvss":
+        return FieldSpec(
+            "store_location",
+            "Vector storage",
+            kind=FieldKind.CHOICE,
+            default=STORE_LOCATION_SEPARATE,
+            choices=(separate,),
+            help="Select the separate prebuilt DuckDB embedding file; the CDM is served read-only.",
+        )
     if cdm is None:
         return FieldSpec(
             "store_location",
@@ -1282,9 +1380,7 @@ def _store_location_field(
     )
 
 
-def _matches_cdm(
-    database: object, cdm: CDMDatabaseConfig, stack: StackConfig
-) -> bool:
+def _matches_cdm(database: object, cdm: CDMDatabaseConfig, stack: StackConfig) -> bool:
     if getattr(database, "connection", None) != cdm.connection:
         return False
     connection = stack.connections.get(cdm.connection)
@@ -1397,7 +1493,9 @@ def _llm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             "llm_base_url",
             "Provider endpoint",
             required=False,
-            default=_default_endpoint(provider_kind, getattr(provider, "base_url", None)),
+            default=_default_endpoint(
+                provider_kind, getattr(provider, "base_url", None)
+            ),
             help=_endpoint_help(provider_kind),
         ),
         FieldSpec(
@@ -1434,7 +1532,7 @@ def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     }
     for key in ("host", "port", "user", "password"):
         value = answers.get(key)
-        if value not in (None, ""):
+        if value not in (None, "") and answers["dialect"] not in {"sqlite", "duckdb"}:
             connection[key] = value
     database: dict[str, object] = {
         "name": str(answers["cdm_db_name"]),
@@ -1442,6 +1540,8 @@ def _cdm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
     }
     if _supports_schema_dialect(str(answers["dialect"])):
         schema = answers.get("cdm_schema")
+        if answers["dialect"] == "duckdb" and schema in (None, ""):
+            schema = "main"
         if schema not in (None, ""):
             database["cdm_schema"] = schema
         for key in ("vocab_schema", "results_schema"):
@@ -1560,7 +1660,10 @@ def _llm_set_dict(answers: Mapping[str, object]) -> dict[str, object]:
         "name": str(answers["llm_provider_name"]),
         "provider": str(answers["llm_provider_kind"]),
     }
-    for answer_key, provider_key in (("llm_base_url", "base_url"), ("llm_api_key", "api_key")):
+    for answer_key, provider_key in (
+        ("llm_base_url", "base_url"),
+        ("llm_api_key", "api_key"),
+    ):
         value = answers.get(answer_key)
         if value not in (None, ""):
             provider[provider_key] = value
@@ -1613,10 +1716,7 @@ def _align_omop_emb_config(
     """
 
     resolved = groundworkers or GroundworkersConfig.validate_candidate(stack)
-    if (
-        resolved.embedding_model_name is None
-        or resolved.vector_store_name is None
-    ):
+    if resolved.embedding_model_name is None or resolved.vector_store_name is None:
         return stack
     return plan_configure(
         _registered_package_config(_OMOP_EMB_TOOL_NAME),
@@ -1789,9 +1889,7 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
         # Named the same way `_store_database` names it, so the effect an operator
         # is shown is the entry the apply actually writes.
         database_name = str(
-            _store_database(session.answers, session.base).get(
-                "name", "embedding_db"
-            )
+            _store_database(session.answers, session.base).get("name", "embedding_db")
         )
         return (
             EffectRef(
@@ -1805,9 +1903,7 @@ def _effects_for(session: _MutationSession) -> tuple[EffectRef, ...]:
                 session.operation.value,
                 session.target,
                 "embedding store",
-                ConfigTarget(
-                    ConfigTargetKind.VECTOR_STORE, store_name, store_name
-                ),
+                ConfigTarget(ConfigTargetKind.VECTOR_STORE, store_name, store_name),
                 "vector_stores",
             ),
         )
@@ -1946,7 +2042,9 @@ def _convention_for_stored_prefixes(
     return PREFIX_CONVENTION_CUSTOM
 
 
-def _prefix_convention_field(model_name: str | None, *, default: str | None) -> FieldSpec:
+def _prefix_convention_field(
+    model_name: str | None, *, default: str | None
+) -> FieldSpec:
     return FieldSpec(
         "prefix_convention",
         "Prefix convention",
@@ -2027,11 +2125,19 @@ def _model_choice_options(
     options = tuple(ChoiceOption(name, name) for name in discovered)
     if stored and stored not in discovered:
         options = (ChoiceOption(stored, f"{stored} (stored; not discovered)"), *options)
-        return options, stored, (
-            f"Stored model {stored!r} was not reported by the provider. It remains selected; verify it before changing."
+        return (
+            options,
+            stored,
+            (
+                f"Stored model {stored!r} was not reported by the provider. It remains selected; verify it before changing."
+            ),
         )
-    return options, stored or (discovered[0] if discovered else None), (
-        "Models reported by the accepted provider endpoint. Populate embeddings after saving to use a newly selected model."
+    return (
+        options,
+        stored or (discovered[0] if discovered else None),
+        (
+            "Models reported by the accepted provider endpoint. Populate embeddings after saving to use a newly selected model."
+        ),
     )
 
 
@@ -2049,7 +2155,6 @@ def _no_model_discovery(
 ) -> Sequence[str]:
     del provider, base_url, api_key
     raise RuntimeError("No model discovery service is configured.")
-
 
 
 # Derived from omop-llm rather than hand-listed. A hardcoded list previously

@@ -216,7 +216,7 @@ def test_cdm_engine_initialization_error_includes_safe_cause(monkeypatch) -> Non
     def fail(*_args, **_kwargs):
         raise RuntimeError(f"schema registry rejected {unsafe_url}")
 
-    monkeypatch.setattr(bootstrap, "create_cdm_engines", fail)
+    monkeypatch.setattr(bootstrap, "create_runtime_cdm_engines", fail)
 
     with pytest.raises(ConfigurationError) as raised:
         build_app_config_from_stack(stack)
@@ -268,7 +268,7 @@ def test_describe_masks_connection_and_provider_secrets(monkeypatch) -> None:
     import groundworkers.bootstrap as bootstrap
 
     primary = create_engine("sqlite:///:memory:")
-    monkeypatch.setattr(bootstrap, "create_cdm_engines", lambda *_args, **_kw: (primary, primary))
+    monkeypatch.setattr(bootstrap, "create_runtime_cdm_engines", lambda *_args, **_kw: (primary, primary))
     monkeypatch.setattr(bootstrap, "cdm_sessionmaker", lambda *_args, **_kw: lambda: None)
     config = build_app_config_from_stack(stack)
     rendered = repr(config.describe())
@@ -344,7 +344,7 @@ def test_describe_leaks_no_value_declared_sensitive_by_the_schema(monkeypatch) -
     import groundworkers.bootstrap as bootstrap
 
     primary = create_engine("sqlite:///:memory:")
-    monkeypatch.setattr(bootstrap, "create_cdm_engines", lambda *_args, **_kw: (primary, primary))
+    monkeypatch.setattr(bootstrap, "create_runtime_cdm_engines", lambda *_args, **_kw: (primary, primary))
     monkeypatch.setattr(bootstrap, "cdm_sessionmaker", lambda *_args, **_kw: lambda: None)
     rendered = build_app_config_from_stack(stack).describe()
 

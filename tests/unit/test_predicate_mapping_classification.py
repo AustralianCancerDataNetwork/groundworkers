@@ -37,7 +37,7 @@ DEFINING_ATTRIBUTES = {
 
 
 def test_bundled_mapping_classes_snomed_defining_attributes_as_attributes() -> None:
-    mapping_file = files("groundworkers") / "config" / "predicate_mapping.csv"
+    mapping_file = files("omop_graph") / "data" / "predicate_mapping.csv"
     with mapping_file.open(newline="") as handle:
         classes = {row["r_id"]: (row["class"], row["subclass"]) for row in csv.DictReader(handle)}
 

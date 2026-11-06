@@ -10,9 +10,12 @@ from oa_configurator import (  # type: ignore[import-untyped]
     StackConfig,
     load_stack_config,
 )
-from omop_alchemy.config import create_cdm_engines
 from omop_alchemy.cross_database import cdm_sessionmaker
 
+from groundworkers.base.database import (
+    create_runtime_cdm_engines,
+    validate_duckdb_embedding_file,
+)
 from groundworkers.config import (
     AppConfig,
     GroundworkersConfig,
@@ -40,10 +43,33 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
         raise TypeError(
             f"Groundworkers cdm_db {groundworkers.cdm_db!r} must reference a CDM database."
         )
-    try:
-        cdm_engine, cdm_vocab_engine = create_cdm_engines(
-            cdm_database, register_claims=False
+    embedding_model = (
+        resolver.resolve_model(groundworkers.embedding_model_name)
+        if groundworkers.embedding_model_name is not None
+        else None
+    )
+    llm_model = (
+        resolver.resolve_model(groundworkers.llm_model_name)
+        if groundworkers.llm_model_name is not None
+        else None
+    )
+    vector_store = (
+        resolver.resolve_vector_store(groundworkers.vector_store_name)
+        if groundworkers.vector_store_name is not None
+        else None
+    )
+    if vector_store is not None:
+        validate_duckdb_embedding_file(vector_store, cdm=cdm_database)
+
+    knowledge_root = None
+    if groundworkers.knowledge_packs_root is not None:
+        knowledge_root = _resolve_path(
+            groundworkers.knowledge_packs_root,
+            stack.loaded_path,
         )
+
+    try:
+        cdm_engine, cdm_vocab_engine = create_runtime_cdm_engines(cdm_database)
     except Exception as exc:
         detail = " ".join(str(exc).splitlines())
         for role in (Role.PRIMARY, Role.VOCAB):
@@ -66,29 +92,6 @@ def build_app_config_from_stack(stack: StackConfig) -> AppConfig:
         primary=cdm_engine,
         vocab=cdm_vocab_engine,
     )
-
-    embedding_model = (
-        resolver.resolve_model(groundworkers.embedding_model_name)
-        if groundworkers.embedding_model_name is not None
-        else None
-    )
-    llm_model = (
-        resolver.resolve_model(groundworkers.llm_model_name)
-        if groundworkers.llm_model_name is not None
-        else None
-    )
-    vector_store = (
-        resolver.resolve_vector_store(groundworkers.vector_store_name)
-        if groundworkers.vector_store_name is not None
-        else None
-    )
-
-    knowledge_root = None
-    if groundworkers.knowledge_packs_root is not None:
-        knowledge_root = _resolve_path(
-            groundworkers.knowledge_packs_root,
-            stack.loaded_path,
-        )
 
     return AppConfig(
         stack=stack,

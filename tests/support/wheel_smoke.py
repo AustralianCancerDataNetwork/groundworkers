@@ -30,6 +30,63 @@ def main() -> None:
     )
     if mode == "extras":
         _exercise_transports()
+    elif mode == "duckdb":
+        _exercise_duckdb()
+    elif mode == "base":
+        from oa_configurator import CDMDatabaseConfig, ConnectionConfig, StackConfig
+
+        from groundworkers.bootstrap import (
+            DatabaseUnavailableError,
+            build_app_config_from_stack,
+        )
+
+        stack = StackConfig(
+            connections={"file": ConnectionConfig(dialect="duckdb", database_name="missing.duckdb")},
+            databases={"cdm": CDMDatabaseConfig(connection="file")},
+            tools={"groundworkers": {"cdm_db": "cdm"}},
+        )
+        try:
+            build_app_config_from_stack(stack)
+        except DatabaseUnavailableError as exc:
+            assert 'Install "groundworkers[duckdb]"' in str(exc)
+        else:
+            raise AssertionError("base wheel unexpectedly opened a DuckDB connection")
+
+
+def _exercise_duckdb() -> None:
+    from importlib.resources import files
+    from tempfile import TemporaryDirectory
+
+    import duckdb
+    from oa_configurator import CDMDatabaseConfig, ConnectionConfig, StackConfig
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    from groundworkers.bootstrap import build_app_config_from_stack
+
+    assert (files("omop_graph") / "data" / "predicate_mapping.csv").is_file()
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "vocabulary.duckdb"
+        with duckdb.connect(str(path)) as writer:
+            writer.execute("CREATE TABLE concept (concept_id INTEGER PRIMARY KEY)")
+            writer.execute("INSERT INTO concept VALUES (11)")
+        stack = StackConfig(
+            connections={"file": ConnectionConfig(dialect="duckdb", database_name=str(path))},
+            databases={"cdm": CDMDatabaseConfig(connection="file")},
+            tools={"groundworkers": {"cdm_db": "cdm"}},
+        )
+        config = build_app_config_from_stack(stack)
+        try:
+            with config.cdm_engine.connect() as connection:
+                assert connection.scalar(text("SELECT concept_id FROM concept")) == 11
+                try:
+                    connection.execute(text("CREATE TABLE should_fail (value INTEGER)"))
+                except DBAPIError as exc:
+                    assert "read-only" in str(exc).lower()
+                else:
+                    raise AssertionError("installed DuckDB runtime allowed writes")
+        finally:
+            config.cdm_engine.dispose()
 
 
 def _exercise_transports() -> None:

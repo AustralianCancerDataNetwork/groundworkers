@@ -53,6 +53,46 @@ Shared resources have their own entries so several packages can use the same con
 
 Groundworkers references these entries **by name** and resolves them through `oa-configurator`. Its core runtime reads `[tools.groundworkers]` and the shared entries it names. Maintenance commands and installed plugins use their own package sections, as described below.
 
+## Databases and vector storage
+
+The CDM holds concepts, vocabulary metadata, ancestry and relationships. A vector
+store holds registered embedding models and concept vectors. Choose their
+connections separately; each has its own database reference.
+
+| Storage | Connection `dialect` | Vector-store `backend_type` on that connection |
+|---|---|---|
+| PostgreSQL | `postgresql+psycopg` | `pgvector` |
+| SQLite | `sqlite` | `sqlitevec` |
+| DuckDB | `duckdb` | `duckdbvss` |
+
+For server connections, supply host, port and credentials. File connections use
+`database_name` for the file path and need no host or credentials. Select the
+required [installation extras](installation.md#optional-extras) for your storage.
+
+### Use prepared database files
+
+For a DuckDB CDM, the primary and vocabulary roles must use the same existing
+file. If you enable embeddings, select a separate existing DuckDBVSS file.
+Groundworkers opens these files read-only, including during readiness checks.
+Missing CDM or embedding files stop startup without creating a database.
+
+Use absolute paths rather than `~` aliases. Relative paths resolve against the
+server process's working directory. The setup console accepts the CDM as an
+existing file and offers separate embedding storage; add that connection before
+selecting it. Leave schemas blank for files built in their default schema.
+
+Copy the [DuckDB configuration example](https://github.com/AustralianCancerDataNetwork/groundworkers/blob/main/config/groundworkers.duckdb.example.toml)
+and replace the paths and model metadata with those supplied with your files.
+It defines both connections, a CDM database, a generic embedding database, a
+`duckdbvss` store, and the `[tools.groundworkers]` references that select them.
+Read-only access is enforced by the runtime; no connection `read_only` TOML field
+is needed.
+
+See [database preparation](../from-scratch.md#4-prepare-graph-and-search-support),
+[maintenance](../from-scratch.md#maintenance-runs) and
+[offline prerequisites](installation.md#prepare-an-offline-deployment) before
+starting a service against prepared files.
+
 ## Typical TOML shape
 
 This example includes a CDM connection, PostgreSQL embeddings, and an Ollama chat model. Replace the connection details and choose models available from your provider. The model names and grounding threshold are examples, not required defaults.
@@ -176,6 +216,9 @@ vocab_schema = "public"
 ```
 
 Vocabulary reads use `vocab_connection` and `vocab_schema`. If you omit `vocab_connection`, they use the main CDM connection. Different schemas on the same connection need only separate `cdm_schema` and `vocab_schema` values.
+
+DuckDB deployments keep both roles in the same file as described under
+[prepared database files](#use-prepared-database-files).
 
 ## Groundworkers settings
 
@@ -318,6 +361,11 @@ Configuration determines which tools are registered. Registration does not estab
 
 Concept lookup, lexical search and grounding, graph and mapping tools, deterministic source planning, knowledge packs, and system tools are available. Some search and graph operations need prepared indexes or supporting objects. No separate `[tools.omop_graph]` section is needed by the core runtime.
 
+PostgreSQL full-text search requires its prepared search objects. It is unavailable
+on DuckDB; status reports that limitation while vocabulary lookup, ancestry and
+relationship operations remain usable. For normalized search on DuckDB, supply a
+domain, vocabulary or parent scope. Full unindexed scans require explicit opt-in.
+
 ### With `vector_store_name` alone
 
 Stored-vector operations remain available without a live embedding model. For example, `embedding_neighbours` can find neighbours of a concept already in the store. Supply `model_name` when needed to select the stored model.
@@ -328,7 +376,15 @@ Live text encoding, text-based embedding search, and the graph's embedding groun
 
 Both references enable live embedding search and embedding-backed grounding and mapping. The provider must be reachable and compatible vectors must already exist in the store. With a model reference alone, embedding store operations remain unavailable.
 
+The query encoder must match the stored model identity, dimensions and query-prefix
+convention. Copy that metadata from the prepared store's documentation when
+configuring an existing asset.
+
 Groundworkers opens the store read-only for queries, status, and coverage checks. Store initialization and population are explicit write operations. Searches never populate missing vectors. See [Initial local setup](../from-scratch.md#5-add-embeddings-optional) for the preparation steps.
+
+DuckDB deployments consume prebuilt stores; setup refuses initialization,
+population and index-rebuild writes. Update the files separately after closing
+readers, as described under [maintenance](../from-scratch.md#maintenance-runs).
 
 The setup wizard uses the `groundworkers` schema for PostgreSQL vector storage. The model registry and configuration provenance use their packages' reserved schemas. SQLite uses its database file without a schema. Each database supports one store per model: reuse an existing registration or choose a different database for another store of that model.
 

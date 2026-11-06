@@ -18,6 +18,7 @@ Use extras to match the capabilities you plan to run:
 |---|---|
 | `embedding-pgvector` | pgvector embedding backend support |
 | `embedding-faiss` | FAISS sidecar acceleration for embedding search |
+| `duckdb` | Read-only DuckDB CDM/graph and DuckDBVSS embedding support |
 | `xlsx` | XLSX source-planning input support |
 | `pdf` | PDF source-planning input support |
 | `docx` | DOCX source-planning input support |
@@ -29,7 +30,29 @@ Examples:
 ```bash
 pip install "groundworkers[tui,embedding-pgvector]"
 pip install "groundworkers[all_source]"
+pip install "groundworkers[tui,duckdb]"
 ```
+
+Choose your CDM connection and vector storage in
+[Configuration](configuration.md#databases-and-vector-storage).
+
+## Prepare an offline deployment
+
+Install package extras and database extensions while the deployment environment
+has network access. Stored-vector operations can run without a live encoder;
+text-based embedding search needs access to the configured model provider.
+
+For DuckDBVSS, install VSS using the same Python environment and operating-system
+user that will run Groundworkers:
+
+```bash
+python -c "import duckdb; c = duckdb.connect(); c.install_extension('vss'); c.close()"
+```
+
+VSS extensions are specific to the DuckDB version and platform. Use the version
+recorded with your prepared files. The embedding reader loads VSS when opening
+the store and may attempt a network installation if the extension is missing.
+Budget RAM for both the vectors and HNSW index; filtered searches may use exact scans.
 
 ## Shared stack prerequisite
 

@@ -20,7 +20,6 @@ from oa_configurator import (  # type: ignore[import-untyped]
     physical_schema_of,
     supports_schemas,
 )
-from omop_alchemy.config import create_cdm_engines
 from sqlalchemy import (
     Column,
     MetaData,
@@ -45,6 +44,7 @@ from groundworkers.application.setup.models import (
     DiagnosticSeverity,
     ResourceDiagnostic,
 )
+from groundworkers.base.database import create_runtime_cdm_engines
 from groundworkers.base.errors import embedding_store_error
 from groundworkers.base.sql import (
     normalization_key_expression_sql,
@@ -223,7 +223,10 @@ def verify_database_target(
     engine: Engine | None = None
     started = clock()
     try:
-        engine = engine_factory(target.connection_url)
+        if engine_factory is create_engine and target.connection_url.startswith("duckdb:"):
+            engine = create_engine(target.connection_url, connect_args={"read_only": True})
+        else:
+            engine = engine_factory(target.connection_url)
         with engine.connect() as connection:
             connection.execute(select(literal(1)))
             diagnostics = _diagnostics_for_target(connection, connection, target)
@@ -259,9 +262,7 @@ def _verify_cdm_target(
         resolved_cdm_database = target.resolved_cdm_database
         if resolved_cdm_database is None:
             raise ValueError("CDM database configuration is missing")
-        engines = create_cdm_engines(
-            resolved_cdm_database, register_claims=False
-        )
+        engines = create_runtime_cdm_engines(resolved_cdm_database)
         primary_engine, vocab_engine = engines
         with primary_engine.connect() as primary, vocab_engine.connect() as vocab:
             try:
@@ -568,7 +569,7 @@ def _groundworkers_embedding_model_diagnostics(
         return (
             _warning(
                 "grounding_embedding_model_unchecked",
-                f"Groundworkers grounding model {expected_model_name!r} could not be checked because no pgvector embedding store is configured.",
+                f"Groundworkers grounding model {expected_model_name!r} could not be checked because no embedding store is configured.",
             ),
         )
 

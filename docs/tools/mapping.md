@@ -267,5 +267,5 @@ stored ancestor evidence and are reported separately.
 `ancestor_max_depth` independently sets stored separation (0..20, default 5).
 `ancestor_scope` reports the full count and whether the display was truncated.
 Ancestor bounds now reject invalid values rather than silently clamping them.
-For the full contract and migration architecture see
-[the MCP ancestry design](../development/ancestry-mcp-design.md).
+For the runtime contract and bounded relationship-neighborhood behavior see
+[stored ancestry and shared targets](../adapters/ancestry.md).

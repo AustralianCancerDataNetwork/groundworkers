@@ -1,0 +1,39 @@
+# Serve two existing, cleanly closed DuckDB files. Groundworkers opens them read-only.
+# Set the model, dimensions and prefixes from the asset manifest.
+
+[connections.datathon_cdm]
+dialect = "duckdb"
+database_name = "/abs/path/datathon_cdm.duckdb"
+
+[connections.datathon_emb]
+dialect = "duckdb"
+database_name = "/abs/path/datathon_emb.duckdb"
+
+[databases.cdm_db]
+kind = "cdm"
+connection = "datathon_cdm"
+
+[databases.emb_db]
+kind = "generic"
+connection = "datathon_emb"
+
+[providers.local_ollama]
+provider = "ollama"
+base_url = "http://localhost:11434"
+api_key = "ollama"
+
+[models.snowflake]
+provider = "local_ollama"
+model = "snowflake-arctic-embed2:568m"
+embeddings = true
+embedding_dim = 1024
+query_prefix = "query: "
+
+[vector_stores.datathon]
+backend_type = "duckdbvss"
+database = "emb_db"
+
+[tools.groundworkers]
+cdm_db = "cdm_db"
+embedding_model_name = "snowflake"
+vector_store_name = "datathon"

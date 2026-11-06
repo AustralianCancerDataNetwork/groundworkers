@@ -63,6 +63,11 @@ def initialize_embedding_store(
         resolved = Resolver(snapshot.stack).resolve_vector_store(
             groundworkers.vector_store_name
         )
+        if resolved.backend_type == "duckdbvss":
+            raise ValueError(
+                "DuckDB embedding files are served read-only. Initialize and populate "
+                "the file separately with omop-emb after closing readers."
+            )
         if initializer is None:
             from omop_emb.backends import open_vector_store_writer
 
