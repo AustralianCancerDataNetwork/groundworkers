@@ -324,11 +324,11 @@ def _setup_rows_with_coverage(
 
 
 def _store_cells(configuration: EmbeddingConfiguration) -> tuple[str, str, str]:
-    if configuration.backend == "sqlitevec":
+    if configuration.backend in {"sqlitevec", "duckdbvss"}:
         return (
             "Store",
             (
-                f"{configuration.vector_store_name} · sqlitevec · "
+                f"{configuration.vector_store_name} · {configuration.backend} · "
                 f"{configuration.database_path or configuration.database_name}"
             ),
             _path_status(configuration.database_path_exists),
@@ -355,7 +355,7 @@ def _embedding_status(
     database_ready: bool,
     reconciliation: ModelReconciliation | None = None,
 ) -> SemanticStatus:
-    if configuration.backend not in {"pgvector", "sqlitevec"}:
+    if configuration.backend not in {"pgvector", "sqlitevec", "duckdbvss"}:
         return SemanticStatus.ERROR
     if not configuration.embeddings_supported:
         return SemanticStatus.ERROR
@@ -378,8 +378,8 @@ def _embedding_message(
     database_ready: bool,
     reconciliation: ModelReconciliation | None = None,
 ) -> str:
-    if configuration.backend not in {"sqlitevec", "pgvector"}:
-        return "Choose a supported vector store backend: sqlitevec or pgvector. FAISS can be configured separately as a query cache."
+    if configuration.backend not in {"sqlitevec", "pgvector", "duckdbvss"}:
+        return "Choose a supported vector store backend: sqlitevec, pgvector, or duckdbvss. FAISS can be configured separately as a query cache."
     if not configuration.embeddings_supported:
         return "The selected model is not declared as embedding-capable. Choose an embedding model before population."
     if reconciliation is None:
@@ -404,11 +404,7 @@ def _reconciliation_message(reconciliation: ModelReconciliation) -> str:
 
     for severity in (DiagnosticSeverity.ERROR, DiagnosticSeverity.WARNING):
         blocking = next(
-            (
-                item
-                for item in reconciliation.diagnostics
-                if item.severity is severity
-            ),
+            (item for item in reconciliation.diagnostics if item.severity is severity),
             None,
         )
         if blocking is not None:
@@ -487,9 +483,7 @@ def _path_status(exists: bool | None) -> str:
 
 def _provider_label(configuration: EmbeddingConfiguration) -> str:
     endpoint = configuration.api_base or "provider default"
-    return (
-        f"{configuration.provider_name} ({configuration.provider_kind}) · {endpoint}"
-    )
+    return f"{configuration.provider_name} ({configuration.provider_kind}) · {endpoint}"
 
 
 def _model_label(configuration: EmbeddingConfiguration) -> str:
@@ -560,7 +554,11 @@ def _coverage_status(
             return reconciled
     if not report.coverage.available:
         return SemanticStatus.ERROR
-    return SemanticStatus.OK if _embedding_setup_ready(capability) else SemanticStatus.WARNING
+    return (
+        SemanticStatus.OK
+        if _embedding_setup_ready(capability)
+        else SemanticStatus.WARNING
+    )
 
 
 def _coverage_message(

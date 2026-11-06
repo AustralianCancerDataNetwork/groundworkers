@@ -1219,3 +1219,56 @@ def test_relationship_neighborhood_reuses_fetches_and_merges_overlapping_walks()
     assert result["truncated_seeds"] == []
     assert graph.get_relationship_edges.call_count == 3
     graph.get_relationship_edges.assert_any_call(2, ["Box of"], 51)
+
+
+@pytest.mark.parametrize("seeds", [[1, 2], [2, 1]])
+def test_exhausted_relationship_walk_only_probes_and_preserves_other_seed_budgets(
+    seeds,
+):
+    from groundworkers.services.relationship_neighborhood import RelationshipTraversal
+
+    graph = Mock()
+    adjacency = {1: [2, 3], 2: list(range(4, 104))}
+    graph.get_relationship_edges.side_effect = lambda cid, relationships, limit: [
+        {"target_concept_id": target, "relationship_id": "Box of"}
+        for target in adjacency.get(cid, [])[:limit]
+    ]
+    traversal = RelationshipTraversal(
+        graph, ["Box of"], max_depth=2, max_nodes=10, max_edges=2
+    )
+    walks = {seed: traversal.walk(seed) for seed in seeds}
+    assert set(walks[1].edges) == {(1, 2, "Box of"), (1, 3, "Box of")}
+    assert set(walks[2].edges) == {(2, 4, "Box of"), (2, 5, "Box of")}
+    assert all(walk.truncated for walk in walks.values())
+    full_fetches = [
+        call.args[0]
+        for call in graph.get_relationship_edges.call_args_list
+        if call.args[2] > 1
+    ]
+    assert sorted(full_fetches) == [1, 2]
+    probes = [
+        call.args[0]
+        for call in graph.get_relationship_edges.call_args_list
+        if call.args[2] == 1
+    ]
+    assert probes == ([2] if seeds[0] == 1 else [])
+    assert len(traversal.edge_cache[2]) == 3
+
+
+def test_exact_edge_budget_with_no_further_edges_is_not_truncated():
+    from groundworkers.services.relationship_neighborhood import RelationshipTraversal
+
+    graph = Mock()
+    graph.get_relationship_edges.side_effect = lambda cid, relationships, limit: [
+        {"target_concept_id": target, "relationship_id": "Box of"}
+        for target in ([2, 3] if cid == 1 else [])[:limit]
+    ]
+    result = RelationshipTraversal(
+        graph, ["Box of"], max_depth=2, max_nodes=10, max_edges=2
+    ).walk(1)
+    assert len(result.edges) == 2
+    assert result.truncated is False
+    assert [
+        (call.args[0], call.args[2])
+        for call in graph.get_relationship_edges.call_args_list
+    ] == [(1, 3), (2, 1), (3, 1)]

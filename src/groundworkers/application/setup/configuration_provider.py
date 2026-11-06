@@ -288,10 +288,18 @@ class GroundworkersConfigMutationService:
             )
 
         future_fields: tuple[FieldSpec, ...] = ()
+        previous_dialect = session.answers.get(
+            "dialect",
+            next(
+                (field.default for field in session.fields if field.key == "dialect"),
+                None,
+            ),
+        )
         if (
             session.target == CDM_SETUP_TARGET
             and step_key == "connection"
             and proposed.get("dialect") == "duckdb"
+            and previous_dialect != "duckdb"
         ):
             # The wizard starts with PostgreSQL defaults. Refresh the schema
             # field before its later form can reapply "public" to a file CDM.
@@ -1304,6 +1312,15 @@ def _duckdb_store_issues(
         return [
             ValidationIssue(
                 "The embedding file must be separate from the CDM file.",
+                field_key="store_connection_name",
+            )
+        ]
+    # Match the reader's literal path lookup; '~' is not expanded at runtime.
+    filename = connection.database_name or ""
+    if not filename or filename == ":memory:" or not Path(filename).is_file():
+        return [
+            ValidationIssue(
+                "Choose an existing regular DuckDB embedding file; this deployment serves prebuilt stores.",
                 field_key="store_connection_name",
             )
         ]

@@ -239,6 +239,37 @@ def test_provider_updates_an_existing_cdm_configuration(tmp_path: Path) -> None:
     assert reloaded.stack.databases["cdm_db"].cdm_schema is None
 
 
+@pytest.mark.parametrize(
+    "schemas", [("clinical", "vocabulary", "results"), ("main", None, None)]
+)
+def test_updating_duckdb_preserves_schema_defaults(tmp_path: Path, schemas) -> None:
+    path = tmp_path / "config.toml"
+    file = tmp_path / "cdm.duckdb"
+    file.touch()
+    stack = _cdm_stack()
+    stack.connections["cdm_main"].dialect = "duckdb"
+    stack.connections["cdm_main"].database_name = str(file)
+    database = stack.databases["cdm_db"]
+    database.cdm_schema, database.vocab_schema, database.results_schema = schemas
+    save_stack_config(stack, path)
+    controller = ConfigWizardController(
+        cdm_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(path),
+    )
+    controller.start()
+    assert not controller.submit({}).issues
+    schemas_step = controller.submit({}).snapshot.step
+    defaults = {field.key: field.default for field in schemas_step.fields}
+    assert (
+        tuple(defaults[key] for key in ("cdm_schema", "vocab_schema", "results_schema"))
+        == schemas
+    )
+    assert not controller.submit({}).issues
+    assert controller.apply().status is WizardResultStatus.APPLIED
+    saved = load_stack_config(path).databases["cdm_db"]
+    assert (saved.cdm_schema, saved.vocab_schema, saved.results_schema) == schemas
+
+
 def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,

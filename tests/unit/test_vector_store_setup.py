@@ -235,6 +235,8 @@ def test_duckdb_store_setup_compares_physical_files(
             "tilde": "~/cdm.duckdb",
             "separate": str(tmp_path / "emb.duckdb"),
         }[alias]
+    if alias == "separate":
+        Path(store_path).touch()
     stack = build_cdm_stack()
     stack.connections["cdm_main"] = ConnectionConfig(
         dialect="duckdb", database_name=str(cdm_path)
@@ -263,6 +265,53 @@ def test_duckdb_store_setup_compares_physical_files(
         assert [issue.field_key for issue in result.issues] == ["store_connection_name"]
         assert "separate from the CDM" in result.issues[0].message
         assert not result.snapshot.can_apply
+
+
+@pytest.mark.parametrize("target", ["missing", "directory", "memory", "home_alias"])
+def test_duckdb_store_setup_requires_an_existing_file(
+    tmp_path: Path, monkeypatch, target
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    stack = build_cdm_stack()
+    cdm = tmp_path / "cdm.duckdb"
+    cdm.touch()
+    embedding = tmp_path / "emb.duckdb"
+    if target == "directory":
+        embedding.mkdir()
+    elif target == "home_alias":
+        embedding.touch()
+    stack.connections["cdm_main"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(cdm)
+    )
+    stack.connections["emb"] = ConnectionConfig(
+        dialect="duckdb",
+        database_name=":memory:"
+        if target == "memory"
+        else "~/emb.duckdb"
+        if target == "home_alias"
+        else str(embedding),
+    )
+    path = tmp_path / "config.toml"
+    save_stack_config(stack, path)
+    before = path.read_bytes()
+    controller = ConfigWizardController(
+        vector_store_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(path),
+    )
+    controller.start()
+    assert not controller.submit({"store_location": STORE_LOCATION_SEPARATE}).issues
+    assert not controller.submit(
+        {"store_entry_name": "vectors", "backend_type": "duckdbvss"}
+    ).issues
+    result = controller.submit(
+        {"store_database_name": "emb", "store_connection_name": "emb"}
+    )
+    assert [issue.field_key for issue in result.issues] == ["store_connection_name"]
+    assert "existing" in result.issues[0].message
+    assert not result.snapshot.can_apply
+    assert path.read_bytes() == before
+    assert target in {"directory", "home_alias"} or not embedding.exists()
 
 
 def test_a_backend_the_cdm_cannot_serve_is_refused(tmp_path: Path) -> None:

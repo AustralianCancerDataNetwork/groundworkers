@@ -35,6 +35,16 @@ class RelationshipTraversal:
         return result
 
     def _expand(self, result: SeedWalk, current_id: int, depth: int) -> set[int]:
+        if len(result.edges) >= self.max_edges:
+            if not result.truncated:
+                rows = self.edge_cache.get(current_id)
+                if rows is None:
+                    # Another seed may need the full list, so do not cache a probe.
+                    rows = self.graph.get_relationship_edges(
+                        current_id, self.relationship_ids, 1
+                    )
+                result.truncated = bool(rows)
+            return set()
         if current_id not in self.edge_cache:
             self.edge_cache[current_id] = self.graph.get_relationship_edges(
                 current_id, self.relationship_ids, self.max_edges + 1

@@ -72,7 +72,10 @@ def test_setup_session_accepts_explicit_read_only_ownership(tmp_path: Path) -> N
     )
 
     assert session.configuration.ownership.editable is False
-    assert session.configuration.ownership.source_label == "Container supplied configuration"
+    assert (
+        session.configuration.ownership.source_label
+        == "Container supplied configuration"
+    )
 
 
 def test_malformed_config_is_presented_without_secret(tmp_path: Path) -> None:
@@ -249,7 +252,46 @@ def test_embeddings_presenter_explains_faiss_is_not_a_backend() -> None:
         "embedding_store · faiss",
         "Unsupported",
     )
-    assert "sqlitevec or pgvector" in str(view.message)
+    assert "sqlitevec, pgvector, or duckdbvss" in str(view.message)
+
+
+@pytest.mark.parametrize("checked", [False, True])
+def test_embeddings_presenter_recognizes_duckdb_stores(checked) -> None:
+    configuration = _embedding_configuration(
+        backend="duckdbvss",
+        database_path="/assets/emb.duckdb",
+        database_path_exists=True,
+    )
+    report = (
+        EmbeddingCoverageReport(
+            configuration=configuration,
+            coverage=CoverageSnapshot(
+                scope=CoverageScope(
+                    model_name=configuration.model_name,
+                    metric="cosine",
+                    vocabularies=(),
+                    standard_only=True,
+                    valid_only=False,
+                ),
+                available=True,
+            ),
+            index=EmbeddingIndexSnapshot(
+                model_name=configuration.model_name, registered=True
+            ),
+        )
+        if checked
+        else None
+    )
+    view = EmbeddingsPresenter().landing(
+        database_ready=True, configuration=configuration, coverage=report
+    )
+    assert view.rows[0].cells == (
+        "Store",
+        "embedding_store · duckdbvss · /assets/emb.duckdb",
+        "Found",
+    )
+    assert view.status.name != "ERROR"
+    assert "Choose a supported vector store backend" not in str(view.message)
 
 
 def test_embeddings_presenter_leaves_index_readiness_to_performance() -> None:
