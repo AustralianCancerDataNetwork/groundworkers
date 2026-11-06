@@ -69,29 +69,15 @@ For server connections, supply host, port and credentials. File connections use
 `database_name` for the file path and need no host or credentials. Select the
 required [installation extras](installation.md#optional-extras) for your storage.
 
-### Use prepared database files
+### File-backed databases
 
-For a DuckDB CDM, the primary and vocabulary roles must use the same existing
-file. If you enable embeddings, select a separate existing DuckDBVSS file.
-Groundworkers opens these files read-only, including during readiness checks.
-Missing CDM or embedding files stop startup without creating a database.
+For a DuckDB CDM, the primary and vocabulary roles must use the same existing file. If you enable embeddings, select a separate DuckDBVSS file. Serving and readiness checks open these files read-only. Missing CDM or embedding files stop service startup without creating a database. The setup console can initialize a new embedding file and populate it through explicit preparation actions.
 
-Use absolute paths rather than `~` aliases. Relative paths resolve against the
-server process's working directory. The setup console accepts the CDM as an
-existing file and offers separate embedding storage; add that connection before
-selecting it. Leave schemas blank for files built in their default schema.
+Use absolute paths rather than `~` aliases. Relative paths resolve against the server process's working directory. The setup console accepts the CDM as an existing file and offers separate embedding storage; add that connection before selecting it. A new embedding file must have an existing parent directory. Leave schemas blank for files built in their default schema.
 
-Copy the [DuckDB configuration example](https://github.com/AustralianCancerDataNetwork/groundworkers/blob/main/config/groundworkers.duckdb.example.toml)
-and replace the paths and model metadata with those supplied with your files.
-It defines both connections, a CDM database, a generic embedding database, a
-`duckdbvss` store, and the `[tools.groundworkers]` references that select them.
-Read-only access is enforced by the runtime; no connection `read_only` TOML field
-is needed.
+Copy the [DuckDB configuration example](https://github.com/AustralianCancerDataNetwork/groundworkers/blob/main/config/groundworkers.duckdb.example.toml) and replace the paths and model metadata with those supplied with your files. It defines both connections, a CDM database, a generic embedding database, a `duckdbvss` store, and the `[tools.groundworkers]` references that select them. Read-only access is enforced by the runtime; no connection `read_only` TOML field is needed.
 
-See [database preparation](../from-scratch.md#4-prepare-graph-and-search-support),
-[maintenance](../from-scratch.md#maintenance-runs) and
-[offline prerequisites](installation.md#prepare-an-offline-deployment) before
-starting a service against prepared files.
+See [database preparation](../from-scratch.md#4-prepare-graph-and-search-support), [maintenance](../from-scratch.md#maintenance-runs) and [offline prerequisites](installation.md#prepare-an-offline-deployment) before starting a service against prepared files.
 
 ## Typical TOML shape
 
@@ -217,8 +203,7 @@ vocab_schema = "public"
 
 Vocabulary reads use `vocab_connection` and `vocab_schema`. If you omit `vocab_connection`, they use the main CDM connection. Different schemas on the same connection need only separate `cdm_schema` and `vocab_schema` values.
 
-DuckDB deployments keep both roles in the same file as described under
-[prepared database files](#use-prepared-database-files).
+DuckDB deployments keep both roles in the same file as described under [prepared database files](#file-backed-databases).
 
 ## Groundworkers settings
 
@@ -382,9 +367,7 @@ configuring an existing asset.
 
 Groundworkers opens the store read-only for queries, status, and coverage checks. Store initialization and population are explicit write operations. Searches never populate missing vectors. See [Initial local setup](../from-scratch.md#5-add-embeddings-optional) for the preparation steps.
 
-DuckDB deployments consume prebuilt stores; setup refuses initialization,
-population and index-rebuild writes. Update the files separately after closing
-readers, as described under [maintenance](../from-scratch.md#maintenance-runs).
+For DuckDB, stop services and close other readers before initialization or population. Population opens both the CDM and embedding files. These explicit actions open a writer; they do not change the read-only serving policy. See [maintenance](../from-scratch.md#maintenance-runs).
 
 The setup wizard uses the `groundworkers` schema for PostgreSQL vector storage. The model registry and configuration provenance use their packages' reserved schemas. SQLite uses its database file without a schema. Each database supports one store per model: reuse an existing registration or choose a different database for another store of that model.
 

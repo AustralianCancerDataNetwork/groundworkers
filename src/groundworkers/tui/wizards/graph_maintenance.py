@@ -27,7 +27,7 @@ from groundworkers.application.setup.graph_maintenance import (
     GraphRemediation,
     GraphRemediationRequest,
     build_graph_remediation_commands,
-    cdm_is_read_only,
+    cdm_is_duckdb,
     outstanding_remediations,
     start_graph_remediation_run,
 )
@@ -80,8 +80,12 @@ class GraphMaintenanceWizardController:
         self._selected: set[GraphRemediation] = set(self._outstanding)
         self._csv_dir: Path | None = None
         self._use_upstream = True
-        self._read_only = cdm_is_read_only(session.configuration.stack)
-        self._cluster = True
+        self._duckdb = cdm_is_duckdb(session.configuration.stack)
+        if self._duckdb:
+            self._selected.intersection_update(
+                {GraphRemediation.RELATIONSHIP_CLASSIFICATION}
+            )
+        self._cluster = not self._duckdb
         self._step_index = 0
         validate_wizard_steps(self._steps())
 
@@ -169,10 +173,14 @@ class GraphMaintenanceWizardController:
                 _LABELS[remediation],
                 kind=FieldKind.BOOLEAN,
                 default=remediation in self._selected,
-                disabled=self._read_only,
+                disabled=(
+                    self._duckdb
+                    and remediation is not GraphRemediation.RELATIONSHIP_CLASSIFICATION
+                ),
                 help=(
-                    "DuckDB files are served read-only; prepare them outside the running service."
-                    if self._read_only
+                    "This index maintenance requires PostgreSQL."
+                    if self._duckdb
+                    and remediation is not GraphRemediation.RELATIONSHIP_CLASSIFICATION
                     else "Reported missing by the readiness check."
                     if remediation in self._outstanding
                     else "Already present. Selecting this re-runs it."
@@ -186,7 +194,7 @@ class GraphMaintenanceWizardController:
                 "CLUSTER tables after indexing",
                 kind=FieldKind.BOOLEAN,
                 default=self._cluster,
-                disabled=self._read_only,
+                disabled=self._duckdb,
                 help="Rewrites the heap. Needs free disk space on large vocabularies.",
             )
         )
@@ -249,9 +257,9 @@ class GraphMaintenanceWizardController:
             if remediation in self._selected
         )
         warnings: list[str] = []
-        if self._read_only:
+        if self._duckdb:
             warnings.append(
-                "DuckDB files are served read-only. Run preparation separately after closing readers."
+                "Close all services and other readers using the DuckDB CDM file before starting preparation."
             )
         if not self._selected:
             warnings.append("Nothing is selected, so nothing will run.")
@@ -272,7 +280,7 @@ class GraphMaintenanceWizardController:
                 changes=changes,
                 effects=("Each step runs as a background command with its own log.",),
                 warnings=tuple(warnings),
-                ready_to_apply=bool(self._selected) and not self._read_only,
+                ready_to_apply=bool(self._selected),
             ),
         )
 
@@ -283,19 +291,25 @@ class GraphMaintenanceWizardController:
             actions=tuple(r for r in GraphRemediation if r in self._selected),
             predicate_csv_dir=self._csv_dir,
             cluster=self._cluster,
-            read_only=self._read_only,
+            duckdb=self._duckdb,
         )
 
     def _submit_form(
         self, step: FormStep, values: Mapping[str, object]
     ) -> tuple[ValidationIssue, ...]:
         if step.key == "actions":
+            if self._duckdb and any(
+                _as_bool(values.get(key))
+                for remediation, key in _FIELD_BY_REMEDIATION.items()
+                if remediation is not GraphRemediation.RELATIONSHIP_CLASSIFICATION
+            ):
+                return (ValidationIssue("Index preparation requires PostgreSQL."),)
             for remediation, key in _FIELD_BY_REMEDIATION.items():
                 if _as_bool(values.get(key)):
                     self._selected.add(remediation)
                 else:
                     self._selected.discard(remediation)
-            self._cluster = _as_bool(values.get("cluster"))
+            self._cluster = not self._duckdb and _as_bool(values.get("cluster"))
             if not self._selected:
                 return (
                     ValidationIssue(

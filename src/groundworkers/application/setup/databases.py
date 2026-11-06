@@ -678,6 +678,19 @@ def classify_connection_error(exc: BaseException) -> ClassifiedFailure:
     if store_failure is not None:
         return store_failure
     lowered = " ".join(str(item).lower() for item in chain)
+    if any(
+        phrase in lowered
+        for phrase in (
+            "could not set lock on file",
+            "conflicting lock is held",
+            "different configuration than existing connections",
+        )
+    ):
+        return _failure(
+            ConnectionFailureKind.OTHER,
+            "The DuckDB file is already open with a conflicting connection.",
+            "Stop services and close other readers or writers using this file, then retry preparation.",
+        )
     sqlstate = next(
         (
             str(value)

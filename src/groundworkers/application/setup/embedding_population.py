@@ -179,11 +179,6 @@ def build_embedding_population_command(
 ) -> Command:
     """Build the omop-emb command used to populate missing concept embeddings."""
 
-    if configuration.backend == "duckdbvss":
-        raise ValueError(
-            "DuckDB embedding files are served read-only. Close readers and populate "
-            "the file separately with omop-emb before serving it."
-        )
     executable = shutil.which("omop-emb") or "omop-emb"
     argv: list[str] = [
         executable,

@@ -1277,7 +1277,7 @@ def _vector_store_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
 def _duckdb_store_issues(
     stack: StackConfig, step_key: str, proposed: Mapping[str, object]
 ) -> list[ValidationIssue]:
-    """Validate DuckDB's separate prebuilt embedding-file topology."""
+    """Validate DuckDB's separate embedding-file topology for setup."""
     if (
         step_key == "location"
         and proposed.get("store_location") == STORE_LOCATION_CDM
@@ -1285,7 +1285,7 @@ def _duckdb_store_issues(
     ):
         return [
             ValidationIssue(
-                "Choose the separate prebuilt embedding file; the DuckDB CDM is read-only.",
+                "Choose a separate embedding file; vectors cannot share the DuckDB CDM file.",
                 field_key="store_location",
             )
         ]
@@ -1317,10 +1317,17 @@ def _duckdb_store_issues(
         ]
     # Match the reader's literal path lookup; '~' is not expanded at runtime.
     filename = connection.database_name or ""
-    if not filename or filename == ":memory:" or not Path(filename).is_file():
+    candidate = Path(filename)
+    if (
+        not filename
+        or filename == ":memory:"
+        or filename.startswith("~")
+        or (candidate.exists() and not candidate.is_file())
+        or not candidate.parent.is_dir()
+    ):
         return [
             ValidationIssue(
-                "Choose an existing regular DuckDB embedding file; this deployment serves prebuilt stores.",
+                "Choose a regular DuckDB embedding file or a new file in an existing directory; use an absolute path without ~.",
                 field_key="store_connection_name",
             )
         ]

@@ -9,9 +9,12 @@ from sqlalchemy.exc import NoSuchModuleError
 
 
 def validate_duckdb_embedding_file(
-    store: ResolvedVectorStore, *, cdm: ResolvedCDMDatabase | None = None
+    store: ResolvedVectorStore,
+    *,
+    cdm: ResolvedCDMDatabase | None = None,
+    allow_create: bool = False,
 ) -> None:
-    """Require a prebuilt file instead of the upstream reader's empty fallback."""
+    """Require a real file; only explicit initialization may create a new one."""
     if store.backend_type != "duckdbvss":
         return
     database = make_url(store.database.connection.url).database
@@ -22,7 +25,9 @@ def validate_duckdb_embedding_file(
     # Match the upstream reader's literal path lookup. Expanding '~' only here
     # would validate a file that the reader then replaces with an empty store.
     path = Path(database).resolve()
-    if not path.is_file():
+    if not path.is_file() and not (
+        allow_create and not path.exists() and path.parent.is_dir()
+    ):
         raise ConfigurationError(
             f"DuckDB embedding file is missing or is not a regular file: {path}"
         )
@@ -32,7 +37,7 @@ def validate_duckdb_embedding_file(
         for connection in (cdm.connection, cdm.vocab_connection)
     ):
         raise ConfigurationError(
-            "DuckDB embeddings must use a separate prebuilt file from the CDM."
+            "DuckDB embeddings must use a separate file from the CDM."
         )
 
 

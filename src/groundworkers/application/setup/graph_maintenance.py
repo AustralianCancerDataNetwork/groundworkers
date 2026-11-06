@@ -33,7 +33,7 @@ __all__ = [
     "GraphRemediationRequest",
     "build_fulltext_commands",
     "build_graph_remediation_commands",
-    "cdm_is_read_only",
+    "cdm_is_duckdb",
     "outstanding_remediations",
     "start_graph_remediation_run",
 ]
@@ -70,7 +70,7 @@ class GraphRemediationRequest:
     actions: tuple[GraphRemediation, ...]
     predicate_csv_dir: Path | None = None
     cluster: bool = True
-    read_only: bool = False
+    duckdb: bool = False
 
 
 def build_fulltext_commands(
@@ -96,8 +96,8 @@ def build_fulltext_commands(
     )
 
 
-def cdm_is_read_only(stack: StackConfig | None) -> bool:
-    """Detect DuckDB serving; leave incomplete-config errors to setup diagnostics."""
+def cdm_is_duckdb(stack: StackConfig | None) -> bool:
+    """Detect DuckDB so setup can omit PostgreSQL-specific maintenance."""
     if stack is None:
         return False
     try:
@@ -142,10 +142,13 @@ def build_graph_remediation_commands(
 
     The upstream packaged classification is used unless a directory is supplied.
     """
-    if request.read_only and request.actions:
+    if request.duckdb and any(
+        action is not GraphRemediation.RELATIONSHIP_CLASSIFICATION
+        for action in request.actions
+    ):
         raise ValueError(
-            "DuckDB files are served read-only. Close readers and prepare the files "
-            "with separate omop-graph/omop-alchemy maintenance commands."
+            "Full-text and functional index preparation requires PostgreSQL. "
+            "DuckDB supports relationship classification only."
         )
     environment: tuple[tuple[str, str], ...] = ()
     if config_path is not None:

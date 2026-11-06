@@ -393,7 +393,7 @@ def test_duckdb_rejects_colocated_embedding_file(
     message = (
         "missing or is not a regular file"
         if alias == "tilde"
-        else "separate prebuilt file"
+        else "separate file"
     )
     with pytest.raises(ConfigurationError, match=message):
         build_app_config_from_stack(stack)
@@ -416,15 +416,104 @@ def test_duckdb_rejects_unsupported_cdm_topologies(duckdb_stack, tmp_path, topol
         build_app_config_from_stack(stack)
 
 
-def test_duckdb_setup_refuses_writers_and_uses_separate_store(duckdb_stack, tmp_path):
-    from groundworkers.application.setup.configuration_provider import (
-        _vector_store_fields,
+@pytest.fixture
+def preparation_config(duckdb_stack, tmp_path):
+    stack = duckdb_stack.model_copy(deep=True)
+    stack.connections["cdm"].database_name = str(tmp_path / "cdm.duckdb")
+    stack.connections["emb"].database_name = str(tmp_path / "new-emb.duckdb")
+    stack.tools["omop_graph"] = {"cdm_db": "cdm"}
+    stack.tools["omop_emb"] = {
+        "cdm_db": "cdm",
+        "embedding_model_name": "fixture",
+        "vector_store_name": "vectors",
+    }
+    _seed_vocabulary(Resolver(stack).resolve_database("cdm"))
+    path = tmp_path / "prepare.toml"
+    save_stack_config(stack, path)
+    return path
+
+
+def test_duckdb_explicit_initialization_releases_writer_for_inspection(
+    preparation_config,
+):
+    from groundworkers.application.setup.embedding_population import (
+        load_embedding_coverage_report,
     )
+    from groundworkers.application.setup.embedding_setup import (
+        initialize_embedding_store,
+    )
+    from groundworkers.application.setup.models import EmbeddingStoreState
+
+    snapshot = load_configuration(config_path=preparation_config)
+    assert not Path(snapshot.stack.connections["emb"].database_name).exists()
+    result = initialize_embedding_store(snapshot)
+    assert result.reachable, result.failure
+    assert result.state is EmbeddingStoreState.EMPTY
+    target = next(
+        target
+        for target in resolve_database_targets(snapshot)
+        if target.key == "database.embedding"
+    )
+    assert verify_database_target(target).connected
+    coverage = load_embedding_coverage_report(snapshot)
+    assert coverage.coverage.available
+    assert coverage.coverage.pending_total == 4
+    # Readers from both inspections have closed; another writer can acquire the file.
+    assert initialize_embedding_store(snapshot).reachable
+
+
+def test_duckdb_initialization_refuses_active_reader_then_succeeds(preparation_config):
+    from omop_emb.backends import open_vector_store_reader
+
+    from groundworkers.application.setup.embedding_setup import (
+        initialize_embedding_store,
+    )
+
+    snapshot = load_configuration(config_path=preparation_config)
+    assert initialize_embedding_store(snapshot).reachable
+    store = Resolver(snapshot.stack).resolve_vector_store("vectors")
+    reader = open_vector_store_reader(store)
+    try:
+        assert reader.get_registered_models() == ()
+        result = initialize_embedding_store(snapshot)
+        assert not result.reachable
+        assert "conflicting" in result.failure.detail
+        assert "close other readers" in result.failure.next_action
+        assert reader.get_registered_models() == ()
+    finally:
+        reader.close()
+    assert initialize_embedding_store(snapshot).reachable
+
+
+def test_duckdb_initialization_rejects_colocated_store_without_opening_writer(
+    duckdb_stack, tmp_path
+):
+    from groundworkers.application.setup.embedding_setup import (
+        initialize_embedding_store,
+    )
+
+    stack = duckdb_stack.model_copy(deep=True)
+    stack.databases["emb"].connection = "cdm"
+    path = tmp_path / "colocated.toml"
+    save_stack_config(stack, path)
+    initializer = Mock(side_effect=AssertionError("must not open a writer"))
+    result = initialize_embedding_store(
+        load_configuration(config_path=path), initializer=initializer
+    )
+    assert not result.reachable
+    initializer.assert_not_called()
+
+
+def test_duckdb_setup_can_launch_classification_and_population(
+    preparation_config, monkeypatch
+):
+    import os
+    from types import SimpleNamespace
+
     from groundworkers.application.setup.embedding_population import (
         build_embedding_population_command,
     )
     from groundworkers.application.setup.embedding_setup import (
-        initialize_embedding_store,
         load_embedding_configuration,
     )
     from groundworkers.application.setup.models import EmbeddingPopulationRequest
@@ -433,31 +522,97 @@ def test_duckdb_setup_refuses_writers_and_uses_separate_store(duckdb_stack, tmp_
         GraphMaintenanceWizardController,
     )
 
-    fields = {field.key: field for field in _vector_store_fields(duckdb_stack)}
-    assert fields["backend_type"].default == "duckdbvss"
-    assert fields["store_location"].default == "separate"
-    assert {option.value for option in fields["store_location"].choices} == {"separate"}
-    path = tmp_path / "runtime.toml"
-    save_stack_config(duckdb_stack, path)
-    snapshot = load_configuration(config_path=path)
-    initializer = Mock(side_effect=AssertionError("must never open a writer"))
-    result = initialize_embedding_store(snapshot, initializer=initializer)
-    assert result.failure is not None
-    initializer.assert_not_called()
-    configuration = load_embedding_configuration(snapshot)
-    assert configuration is not None
+    commands = []
+
+    def launch(plan, **kwargs):
+        commands.extend(plan)
+        return SimpleNamespace(
+            run_id="test", total=len(plan), root=preparation_config.parent
+        )
+
+    monkeypatch.setattr(
+        "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
+        launch,
+    )
+    controller = GraphMaintenanceWizardController(
+        SetupSession(config_path=preparation_config), None
+    )
+    fields = {field.key: field for field in controller.start().step.fields}
+    assert not fields["load_relationship_classification"].disabled
+    assert fields["create_fulltext_indexes"].disabled
+    assert fields["create_functional_indexes"].disabled
+    assert fields["cluster"].disabled
+    assert controller.submit({"create_fulltext_indexes": True}).issues
+    assert not controller.submit({"load_relationship_classification": True}).issues
+    assert controller.review().snapshot.can_apply
+    assert controller.apply().status.value == "applied"
+    assert len(commands) == 1
+    result = subprocess.run(
+        [str(Path(sys.executable).with_name("omop-graph")), *commands[0].argv[1:]],
+        env={**os.environ, **dict(commands[0].environment)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    configuration = load_embedding_configuration(
+        load_configuration(config_path=preparation_config)
+    )
     request = EmbeddingPopulationRequest(
         standard_only=True,
         vocabulary_mode="all",
         vocabularies=(),
-        limit=None,
+        limit=1,
         batch_size=10,
     )
-    with pytest.raises(ValueError, match="read-only"):
-        build_embedding_population_command(configuration, request)
-    controller = GraphMaintenanceWizardController(SetupSession(config_path=path), None)
-    controller.submit({"load_relationship_classification": True})
-    assert "read-only" in controller.apply().detail
+    command = build_embedding_population_command(
+        configuration, request, config_path=preparation_config
+    )
+    assert command.argv[1:] == (
+        "embeddings",
+        "add-embeddings",
+        "--model-name",
+        "fixture",
+        "--batch-size",
+        "10",
+        "--standard-only",
+        "--num-embeddings",
+        "1",
+    )
+    assert dict(command.environment)["OA_CONFIG_PATH"] == str(preparation_config)
+    # Replace only the external encoder. CLI parsing, registration, CDM reads
+    # and DuckDB writes all use the installed upstream implementation.
+    script = """
+import omop_emb.interface as interface
+from omop_emb.cli.cli_app import app
+class FixedEncoder:
+    provider = "ollama"
+    model = "groundworkers-duckdb:v1"
+    def dimensions(self):
+        return 3
+    def embed_texts(self, texts, *, role, batch_size=None):
+        return [[1.0, 0.0, 0.0] for text in texts]
+interface.build_model_backend_from_resolved = lambda resolved: FixedEncoder()
+app()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, *command.argv[1:]],
+        env={**os.environ, **dict(command.environment)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    from groundworkers.application.setup.embedding_population import (
+        load_embedding_coverage_report,
+    )
+
+    report = load_embedding_coverage_report(
+        load_configuration(config_path=preparation_config)
+    )
+    assert report.coverage.available
+    assert report.coverage.embedded_total == 1
+    assert report.coverage.pending_total == 3
 
 
 @pytest.mark.parametrize(
@@ -546,3 +701,56 @@ def test_duckdb_native_normalization_matches_python(
                 )
             )
             assert actual == expected, (label, profile, remove_stop_phrases)
+
+
+@pytest.mark.parametrize("failure", [None, "build", "verify"])
+def test_plugin_readiness_releases_host_files_before_preparation(
+    preparation_config, failure
+):
+    from types import SimpleNamespace
+
+    from groundworkers.app import load_plugin_readiness
+    from groundworkers.application.setup.embedding_setup import (
+        initialize_embedding_store,
+    )
+    from groundworkers.plugins import PluginReadinessResult, PluginReadinessState
+
+    snapshot = load_configuration(config_path=preparation_config)
+    assert initialize_embedding_store(snapshot).reachable
+
+    def build(context, _config):
+        with context.cdm_engine.connect() as connection:
+            assert connection.scalar(sa.text("SELECT count(*) FROM concept")) == 4
+        context.embedding_backend_factory().get_registered_models()
+        if failure == "build":
+            raise RuntimeError("fixture build failure")
+        return object()
+
+    def verify(_state):
+        if failure == "verify":
+            raise RuntimeError("fixture verification failure")
+        return PluginReadinessResult(state=PluginReadinessState.READY, summary="Ready")
+
+    plugin = SimpleNamespace(
+        name="preparation_probe", config_cls=None, build=build, verify_readiness=verify
+    )
+    result = load_plugin_readiness(str(preparation_config), plugin)
+    expected = (
+        PluginReadinessState.UNCONFIGURED
+        if failure == "build"
+        else PluginReadinessState.ERROR
+        if failure == "verify"
+        else PluginReadinessState.READY
+    )
+    assert result.state is expected
+    # The plugin used the shared factory directly. Both it and the pooled CDM
+    # connection must be released, on success and on either failure path.
+    assert initialize_embedding_store(snapshot).reachable
+    engine = Resolver(snapshot.stack).resolve_database("cdm").create_engines()[0]
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text("CREATE TABLE preparation_probe (value INTEGER)")
+            )
+    finally:
+        engine.dispose()

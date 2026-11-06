@@ -9,7 +9,7 @@ from groundworkers.application.setup.graph_maintenance import (
     GraphRemediation,
     GraphRemediationRequest,
     build_graph_remediation_commands,
-    cdm_is_read_only,
+    cdm_is_duckdb,
     outstanding_remediations,
 )
 from groundworkers.application.setup.models import (
@@ -41,8 +41,8 @@ def _info(code: str) -> ResourceDiagnostic:
     "stack",
     [None, StackConfig(), StackConfig(tools={"groundworkers": {"cdm_db": "missing"}})],
 )
-def test_readonly_detection_tolerates_incomplete_configuration(stack) -> None:
-    assert cdm_is_read_only(stack) is False
+def test_duckdb_detection_tolerates_incomplete_configuration(stack) -> None:
+    assert cdm_is_duckdb(stack) is False
 
 
 # ---------------------------------------------------------------------------
@@ -139,11 +139,10 @@ def test_relationship_classification_passes_the_csv_directory(tmp_path: Path) ->
     )
 
 
-def test_relationship_classification_uses_upstream_defaults_without_a_directory() -> (
-    None
-):
+@pytest.mark.parametrize("duckdb", [False, True])
+def test_relationship_classification_uses_upstream_defaults_without_a_directory(duckdb) -> None:
     commands = build_graph_remediation_commands(
-        GraphRemediationRequest(actions=(GraphRemediation.RELATIONSHIP_CLASSIFICATION,))
+        GraphRemediationRequest(actions=(GraphRemediation.RELATIONSHIP_CLASSIFICATION,), duckdb=duckdb)
     )
     assert commands[0].argv[1:] == ("relationship-classification",)
 
@@ -177,8 +176,11 @@ def test_selecting_nothing_builds_nothing() -> None:
     assert build_graph_remediation_commands(GraphRemediationRequest(actions=())) == ()
 
 
-def test_readonly_graph_preparation_is_refused_before_launching_commands() -> None:
-    with pytest.raises(ValueError, match="read-only"):
+@pytest.mark.parametrize(
+    "action", [GraphRemediation.FULLTEXT_INDEXES, GraphRemediation.FUNCTIONAL_INDEXES]
+)
+def test_duckdb_rejects_postgres_index_commands(action) -> None:
+    with pytest.raises(ValueError, match="requires PostgreSQL"):
         build_graph_remediation_commands(
-            GraphRemediationRequest(actions=tuple(GraphRemediation), read_only=True)
+            GraphRemediationRequest(actions=(action,), duckdb=True)
         )

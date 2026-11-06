@@ -267,8 +267,10 @@ def test_duckdb_store_setup_compares_physical_files(
         assert not result.snapshot.can_apply
 
 
-@pytest.mark.parametrize("target", ["missing", "directory", "memory", "home_alias"])
-def test_duckdb_store_setup_requires_an_existing_file(
+@pytest.mark.parametrize(
+    "target", ["missing_parent", "directory", "memory", "home_alias"]
+)
+def test_duckdb_store_setup_rejects_invalid_file_targets(
     tmp_path: Path, monkeypatch, target
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -277,7 +279,9 @@ def test_duckdb_store_setup_requires_an_existing_file(
     cdm = tmp_path / "cdm.duckdb"
     cdm.touch()
     embedding = tmp_path / "emb.duckdb"
-    if target == "directory":
+    if target == "missing_parent":
+        embedding = tmp_path / "missing" / "emb.duckdb"
+    elif target == "directory":
         embedding.mkdir()
     elif target == "home_alias":
         embedding.touch()
@@ -395,3 +399,27 @@ def test_an_unconfigured_store_still_shows_a_row(tmp_path: Path) -> None:
 
     row = next(row for row in view.rows if row.key == EMBEDDING_TARGET_KEY)
     assert "Not configured" in row.cells
+
+
+def test_duckdb_store_configuration_accepts_a_new_file_without_creating_it(tmp_path):
+    stack = build_cdm_stack()
+    cdm = tmp_path / "cdm.duckdb"
+    cdm.touch()
+    embedding = tmp_path / "new-emb.duckdb"
+    stack.connections["cdm_main"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(cdm)
+    )
+    stack.connections["emb"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(embedding)
+    )
+    path = tmp_path / "config.toml"
+    save_stack_config(stack, path)
+    controller = _drive(
+        path,
+        location=STORE_LOCATION_SEPARATE,
+        backend_type="duckdbvss",
+        store_connection_name="emb",
+    )
+    assert controller.review().snapshot.can_apply
+    assert controller.apply().status.value == "applied"
+    assert not embedding.exists()

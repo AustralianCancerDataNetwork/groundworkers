@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from oa_configurator import (
+    ResolvedCDMDatabase,
     ResolvedModel,
     ResolvedVectorStore,
     Resolver,
@@ -30,6 +31,7 @@ from groundworkers.application.setup.models import (
     ProviderSnapshot,
     RegisteredEmbeddingModel,
 )
+from groundworkers.base.database import validate_duckdb_embedding_file
 from groundworkers.base.results import enum_value, required_enum_value
 from groundworkers.config import GroundworkersConfig
 
@@ -64,10 +66,10 @@ def initialize_embedding_store(
             groundworkers.vector_store_name
         )
         if resolved.backend_type == "duckdbvss":
-            raise ValueError(
-                "DuckDB embedding files are served read-only. Initialize and populate "
-                "the file separately with omop-emb after closing readers."
-            )
+            cdm = Resolver(snapshot.stack).resolve_database(groundworkers.cdm_db)
+            if not isinstance(cdm, ResolvedCDMDatabase):
+                raise ValueError("Groundworkers requires a CDM database.")
+            validate_duckdb_embedding_file(resolved, cdm=cdm, allow_create=True)
         if initializer is None:
             from omop_emb.backends import open_vector_store_writer
 

@@ -45,7 +45,11 @@ class EmbeddingStoreInitializationWizardController:
     def apply(self) -> WizardResult:
         result = initialize_embedding_store(self._session.configuration)
         if not result.reachable:
-            detail = result.failure.detail if result.failure is not None else None
+            detail = (
+                f"{result.failure.detail} {result.failure.next_action}"
+                if result.failure is not None
+                else None
+            )
             return WizardResult(
                 status=WizardResultStatus.FAILED,
                 summary="The embedding store could not be initialized.",
@@ -78,7 +82,7 @@ class EmbeddingStoreInitializationWizardController:
                         "Creates the omop-emb registry schema and backend prerequisites.",
                     ),
                     warnings=(
-                        "This is the only setup action that performs embedding-store DDL.",
+                        "Initialization writes registry and storage metadata. For DuckDB, close services and other readers using the embedding file first.",
                     ),
                     ready_to_apply=True,
                 ),
