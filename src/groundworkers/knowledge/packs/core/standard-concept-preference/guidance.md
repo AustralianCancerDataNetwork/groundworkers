@@ -135,16 +135,11 @@ For example, LOINC survey items are in Observation, while SNOMED assessment
 scales are in Measurement. Keep instrument identity, administration, and score
 distinct where the source data distinguishes them.
 
-### Drug
-
-Use `drug-concept-granularity` for Drug concept level and vocabulary preference;
-that pack takes precedence for Drug vocabulary selection. This pack governs
-standardness and active-target eligibility.
-
 ### Other domains
 
-Other domain preferences apply only to active candidates with equivalent meaning
-at the required precision.
+Keep the existing Drug and other domain preferences as provisional defaults.
+Apply them only when candidates are active and equivalent at the required
+precision; revisit them when domain-specific audit evidence is available.
 
 ## Zero concept
 
