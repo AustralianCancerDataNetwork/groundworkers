@@ -44,11 +44,11 @@ def test_mapping_context_delegates_to_the_host_service():
     }
     assert context.concept_shared_standard_ancestor([1, 2]) == {
         "concept_ids": [1, 2],
-        "kwargs": {"max_depth": 5},
+        "kwargs": {"max_depth": 5, "concept_class_ids": None, "vocabulary_ids": None, "limit": 10, "offset": 0},
     }
     assert context.concept_shared_standard_ancestor([1, 2], max_depth=8) == {
         "concept_ids": [1, 2],
-        "kwargs": {"max_depth": 8},
+        "kwargs": {"max_depth": 8, "concept_class_ids": None, "vocabulary_ids": None, "limit": 10, "offset": 0},
     }
     assert context.concept_relationship_neighborhood(
         [1, 2], relationship_ids=["Tradename of"], max_depth=2
@@ -74,6 +74,8 @@ def test_mapping_context_passes_shared_ancestor_constraints():
         "max_depth": 0,
         "concept_class_ids": ["Clinical Drug"],
         "vocabulary_ids": ["RxNorm"],
+        "limit": 10,
+        "offset": 0,
     }
 
 

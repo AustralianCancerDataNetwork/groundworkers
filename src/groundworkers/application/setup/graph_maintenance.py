@@ -12,10 +12,10 @@ import shutil
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
-from importlib import resources
 from pathlib import Path
 
 from groundskeeping.contracts import Command, CommandPlan, CommandStep
+from oa_configurator import ResolvedCDMDatabase, Resolver, StackConfig
 
 from groundworkers.application.setup.maintenance_runs import (
     MaintenanceRun,
@@ -25,6 +25,8 @@ from groundworkers.application.setup.models import (
     ConnectionResult,
     DiagnosticSeverity,
 )
+from groundworkers.base.database import validate_duckdb_cdm_paths
+from groundworkers.config import GroundworkersConfig
 
 __all__ = [
     "PREDICATE_CSV_NAMES",
@@ -32,32 +34,14 @@ __all__ = [
     "GraphRemediationRequest",
     "build_fulltext_commands",
     "build_graph_remediation_commands",
+    "cdm_is_duckdb",
     "outstanding_remediations",
-    "packaged_predicate_csv_dir",
     "start_graph_remediation_run",
+    "validate_graph_preparation_paths",
 ]
 
-# The two files omop-graph's loader reads. Named here because both the packaged
-# lookup and the wizard's validation need the same list.
+# The two files required when an operator chooses a custom classification directory.
 PREDICATE_CSV_NAMES = ("predicate_classification.csv", "predicate_mapping.csv")
-
-
-def packaged_predicate_csv_dir() -> Path | None:
-    """The predicate CSVs bundled with Groundworkers, if they are present.
-
-    TEMPORARY. These are a verbatim copy of omop-graph's own `config/` files,
-    which live outside its packaged directory and so never reach its wheel --
-    leaving `omop-graph relationship-classification` unrunnable from a normal
-    install. An upstream issue is open to ship them; delete this function, the
-    `config/` directory, and the wizard's default once it lands.
-
-    Returns ``None`` rather than a missing path so the caller can fall back to
-    asking, instead of offering a default that does not exist.
-    """
-    bundled = Path(str(resources.files("groundworkers") / "config"))
-    if all((bundled / name).is_file() for name in PREDICATE_CSV_NAMES):
-        return bundled
-    return None
 
 
 class GraphRemediation(StrEnum):
@@ -88,6 +72,7 @@ class GraphRemediationRequest:
     actions: tuple[GraphRemediation, ...]
     predicate_csv_dir: Path | None = None
     cluster: bool = True
+    duckdb: bool = False
 
 
 def build_fulltext_commands(
@@ -111,6 +96,31 @@ def build_fulltext_commands(
         )
         for action in ("install", "populate")
     )
+
+
+def cdm_is_duckdb(stack: StackConfig | None) -> bool:
+    """Detect DuckDB so setup can omit PostgreSQL-specific maintenance."""
+    if stack is None:
+        return False
+    try:
+        config = GroundworkersConfig.validate_candidate(stack)
+        database = Resolver(stack).resolve_database(config.cdm_db)
+    except (ValueError, TypeError, KeyError):
+        return False
+    return isinstance(database, ResolvedCDMDatabase) and any(
+        connection.dialect_name == "duckdb"
+        for connection in (database.connection, database.vocab_connection)
+    )
+
+
+def validate_graph_preparation_paths(stack: StackConfig | None) -> None:
+    """Validate CDM filenames before an upstream maintenance CLI can open a writer."""
+    if stack is None:
+        raise ValueError("Configure the CDM database before preparing the graph.")
+    config = GroundworkersConfig.validate_candidate(stack)
+    cdm = Resolver(stack).resolve_database(config.cdm_db)
+    if isinstance(cdm, ResolvedCDMDatabase):
+        validate_duckdb_cdm_paths(cdm)
 
 
 def outstanding_remediations(
@@ -142,12 +152,16 @@ def build_graph_remediation_commands(
 ) -> tuple[Command, ...]:
     """Build the CLI commands for the selected remediations, in dependency order.
 
-    Raises
-    ------
-    ValueError
-        If relationship classification is selected without a source directory,
-        which omop-graph requires and does not ship.
+    The upstream packaged classification is used unless a directory is supplied.
     """
+    if request.duckdb and any(
+        action is not GraphRemediation.RELATIONSHIP_CLASSIFICATION
+        for action in request.actions
+    ):
+        raise ValueError(
+            "Full-text and functional index preparation requires PostgreSQL. "
+            "DuckDB supports relationship classification only."
+        )
     environment: tuple[tuple[str, str], ...] = ()
     if config_path is not None:
         environment = (("OA_CONFIG_PATH", str(Path(config_path).expanduser())),)
@@ -156,19 +170,12 @@ def build_graph_remediation_commands(
     selected = set(request.actions)
 
     if GraphRemediation.RELATIONSHIP_CLASSIFICATION in selected:
-        if request.predicate_csv_dir is None:
-            raise ValueError(
-                "Relationship classification needs a directory holding "
-                "predicate_classification.csv and predicate_mapping.csv."
-            )
+        argv = [_executable("omop-graph"), "relationship-classification"]
+        if request.predicate_csv_dir is not None:
+            argv.extend(("--pred-class-dir", str(request.predicate_csv_dir)))
         commands.append(
             Command(
-                argv=(
-                    _executable("omop-graph"),
-                    "relationship-classification",
-                    "--pred-class-dir",
-                    str(request.predicate_csv_dir),
-                ),
+                argv=tuple(argv),
                 environment=environment,
             )
         )
@@ -182,9 +189,7 @@ def build_graph_remediation_commands(
             # CLUSTER rewrites the whole heap; on large vocabulary tables that
             # needs disk headroom the operator may not have.
             argv.append("--no-cluster")
-        commands.append(
-            Command(argv=tuple(argv), environment=environment)
-        )
+        commands.append(Command(argv=tuple(argv), environment=environment))
 
     return tuple(commands)
 
@@ -214,4 +219,6 @@ def start_graph_remediation_run(
 
 def _executable(name: str) -> str:
     beside_python = Path(sys.executable).with_name(name)
-    return str(beside_python) if beside_python.is_file() else (shutil.which(name) or name)
+    return (
+        str(beside_python) if beside_python.is_file() else (shutil.which(name) or name)
+    )

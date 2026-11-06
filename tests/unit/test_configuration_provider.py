@@ -74,7 +74,11 @@ def test_groundworkers_config_uses_real_1x_references() -> None:
 
 @pytest.mark.parametrize(
     ("dialect", "cdm_schema", "vocab_schema"),
-    [("sqlite", None, None), ("postgresql+psycopg", "clinical", "vocabulary")],
+    [
+        ("sqlite", None, None),
+        ("duckdb", None, None),
+        ("postgresql+psycopg", "clinical", "vocabulary"),
+    ],
 )
 def test_cdm_wizard_output_round_trips_through_stack_resolver(
     tmp_path: Path, dialect: str, cdm_schema: str | None, vocab_schema: str | None
@@ -83,10 +87,12 @@ def test_cdm_wizard_output_round_trips_through_stack_resolver(
     sqlite_path = tmp_path / "cdm.db"
     sqlite_path.touch()
     service = GroundworkersConfigMutationService(path)
-    controller = ConfigWizardController(cdm_setup_workflow(MutationOperation.CREATE), service)
+    controller = ConfigWizardController(
+        cdm_setup_workflow(MutationOperation.CREATE), service
+    )
     controller.start()
     controller.submit({"connection_name": "cdm_main", "dialect": dialect})
-    if dialect != "sqlite":
+    if dialect not in {"sqlite", "duckdb"}:
         controller.submit(
             {
                 "host": "postgres.example.test",
@@ -110,10 +116,14 @@ def test_cdm_wizard_output_round_trips_through_stack_resolver(
     loaded = load_stack_config(path)
     resolved = Resolver(loaded).resolve_database("cdm_db")
     assert resolved.connection.dialect_name == (
-        "sqlite" if dialect == "sqlite" else "postgresql"
+        dialect if dialect in {"sqlite", "duckdb"} else "postgresql"
     )
-    assert resolved.schema_for_role(Role.PRIMARY) == cdm_schema
-    assert resolved.schema_for_role(Role.VOCAB) == vocab_schema
+    assert resolved.schema_for_role(Role.PRIMARY) == (
+        "main" if dialect == "duckdb" else cdm_schema
+    )
+    assert resolved.schema_for_role(Role.VOCAB) == (
+        "main" if dialect == "duckdb" else vocab_schema
+    )
     if dialect == "sqlite":
         saved = tomllib.loads(path.read_text(encoding="utf-8"))
         cdm_entry = saved["databases"]["cdm_db"]
@@ -229,6 +239,37 @@ def test_provider_updates_an_existing_cdm_configuration(tmp_path: Path) -> None:
     assert reloaded.stack.databases["cdm_db"].cdm_schema is None
 
 
+@pytest.mark.parametrize(
+    "schemas", [("clinical", "vocabulary", "results"), ("main", None, None)]
+)
+def test_updating_duckdb_preserves_schema_defaults(tmp_path: Path, schemas) -> None:
+    path = tmp_path / "config.toml"
+    file = tmp_path / "cdm.duckdb"
+    file.touch()
+    stack = _cdm_stack()
+    stack.connections["cdm_main"].dialect = "duckdb"
+    stack.connections["cdm_main"].database_name = str(file)
+    database = stack.databases["cdm_db"]
+    database.cdm_schema, database.vocab_schema, database.results_schema = schemas
+    save_stack_config(stack, path)
+    controller = ConfigWizardController(
+        cdm_setup_workflow(MutationOperation.UPDATE),
+        GroundworkersConfigMutationService(path),
+    )
+    controller.start()
+    assert not controller.submit({}).issues
+    schemas_step = controller.submit({}).snapshot.step
+    defaults = {field.key: field.default for field in schemas_step.fields}
+    assert (
+        tuple(defaults[key] for key in ("cdm_schema", "vocab_schema", "results_schema"))
+        == schemas
+    )
+    assert not controller.submit({}).issues
+    assert controller.apply().status is WizardResultStatus.APPLIED
+    saved = load_stack_config(path).databases["cdm_db"]
+    assert (saved.cdm_schema, saved.vocab_schema, saved.results_schema) == schemas
+
+
 def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
@@ -312,8 +353,9 @@ def test_model_discovery_refreshes_only_the_future_choice_and_keeps_secrets_safe
     ((("stored-model", "other-model"), False), (("other-model",), True)),
 )
 def test_model_update_preserves_stored_choice_and_flags_missing_inventory(
-    tmp_path: Path, discovered: tuple[str, ...], flagged: bool
+    tmp_path: Path, discovered: tuple[str, ...], flagged: bool, monkeypatch
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     path = tmp_path / "config.toml"
     save_stack_config(build_embedding_stack(model_name="stored-model"), path)
     controller = ConfigWizardController(
@@ -692,3 +734,23 @@ def test_custom_prefixes_are_only_asked_for_when_chosen(tmp_path: Path) -> None:
 
     model = load_stack_config(path).models["embedding_model"]
     assert (model.document_prefix, model.query_prefix) == ("index: ", "ask: ")
+
+
+@pytest.mark.parametrize("path_form", ["relative", "tilde"])
+def test_duckdb_cdm_setup_requires_an_absolute_path(tmp_path, monkeypatch, path_form):
+    file = tmp_path / "cdm.duckdb"
+    file.touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = tmp_path / "config.toml"
+    controller = ConfigWizardController(
+        cdm_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(config),
+    )
+    controller.start()
+    assert not controller.submit({"connection_name": "cdm", "dialect": "duckdb"}).issues
+    filename = "~/cdm.duckdb" if path_form == "tilde" else "cdm.duckdb"
+    result = controller.submit({"database_name": filename})
+    assert [issue.field_key for issue in result.issues] == ["database_name"]
+    assert "absolute" in result.issues[0].message
+    assert not config.exists()

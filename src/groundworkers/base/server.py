@@ -247,12 +247,11 @@ class GroundworkersMCPServer:
             stateless_http=True,
         )
         for tool_name, func in self._tools.items():
-            options = {}
-            if (annotations := self._tool_annotations.get(tool_name)) is not None:
-                options["annotations"] = annotations
-            app.tool(name=tool_name, description=inspect.getdoc(func) or "", **options)(
-                func
-            )
+            app.tool(
+                name=tool_name,
+                description=inspect.getdoc(func) or "",
+                annotations=self._tool_annotations.get(tool_name),
+            )(func)
         for prompt_name, prompt in self._prompts.items():
             if prompt.arguments is None:
                 app.prompt(
@@ -397,7 +396,7 @@ def _advertise_tool_signature(
         get_origin(value) is Annotated for value in resolved.values()
     ):
         signature = inspect.signature(func)
-        guarded.__signature__ = signature.replace(
+        advertised_signature = signature.replace(
             parameters=[
                 param.replace(annotation=resolved.get(name, param.annotation))
                 for name, param in signature.parameters.items()
@@ -405,6 +404,7 @@ def _advertise_tool_signature(
             return_annotation=result_model
             or resolved.get("return", signature.return_annotation),
         )
+        setattr(guarded, "__signature__", advertised_signature)
         guarded.__annotations__ = resolved
         if result_model is not None:
             guarded.__annotations__["return"] = result_model

@@ -55,6 +55,7 @@ jobs:
       - name: Run hermetic suite with coverage and skip reasons
         run: |
           uv sync --frozen --all-extras --dev
+          uv run --frozen --no-sync python -c "import duckdb; c = duckdb.connect(); c.install_extension('vss'); c.close()"
           export GROUNDWORKERS_REQUIRE_FORMAT_TESTS=1
           echo "GROUNDWORKERS_REQUIRE_FORMAT_TESTS=1" >> "$GITHUB_ENV"
           COVERAGE_FILE="$RUNNER_TEMP/groundworkers.coverage" uv run pytest -q -ra \
@@ -90,3 +91,6 @@ jobs:
           uv venv "$RUNNER_TEMP/gw-wheel-extras" --python 3.12
           uv pip install --python "$RUNNER_TEMP/gw-wheel-extras/bin/python" "$wheel[all_source,tui]" httpx
           "$RUNNER_TEMP/gw-wheel-extras/bin/python" "$GITHUB_WORKSPACE/tests/support/wheel_smoke.py" extras
+          uv venv "$RUNNER_TEMP/gw-wheel-duckdb" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/gw-wheel-duckdb/bin/python" "$wheel[duckdb]"
+          "$RUNNER_TEMP/gw-wheel-duckdb/bin/python" "$GITHUB_WORKSPACE/tests/support/wheel_smoke.py" duckdb

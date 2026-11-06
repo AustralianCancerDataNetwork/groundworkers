@@ -25,10 +25,13 @@ Install Groundworkers with the setup console:
 uv pip install "groundworkers[tui]"
 ```
 
-If you plan to store embeddings in PostgreSQL, include its backend support:
+Include the extra for the database backend you plan to use:
 
 ```bash
+# PostgreSQL embeddings
 uv pip install "groundworkers[tui,embedding-pgvector]"
+# DuckDB vocabulary and embeddings
+uv pip install "groundworkers[tui,duckdb]"
 ```
 
 Other extras include `embedding-faiss` for FAISS sidecar acceleration and `all_source` for XLSX, PDF, and DOCX source-planning inputs. See [Installation](usage/installation.md) for the available extras.
@@ -57,17 +60,26 @@ Run **Test connections** in Database or **Verify all** in Overview. A working CD
 
 See [Configuration](usage/configuration.md) for the shared configuration layout and named references.
 
+For prepared database files, follow the [file configuration requirements](usage/configuration.md#file-backed-databases)
+and use the supplied vocabulary and model metadata when configuring them.
+
 ## 4. Prepare graph and search support
 
-Open **Graph → Prepare graph** when readiness reports missing relationship, full-text, or functional indexes. Review the proposed commands before starting. **Performance** shows index readiness and offers further index maintenance.
+For PostgreSQL, open **Graph → Prepare graph** when readiness reports missing relationship, full-text, or functional indexes. Review the proposed commands before starting. **Performance** shows index readiness and offers further index maintenance.
 
 Preparation runs as a background maintenance task; follow it in **Runs**. The database account used for preparation needs permission to create the required indexes and supporting objects. Normal service queries remain read-only.
 
 You can use basic vocabulary operations before preparing every index. Prepare the search and graph support needed by the tools you intend to use, then rerun the checks.
 
+For DuckDB, **Graph → Prepare graph** can load relationship classification. Stop services and close other readers using the CDM file before starting it. PostgreSQL full-text, GIN/trigram indexes and CLUSTER maintenance do not apply to DuckDB and are disabled in this wizard.
+
 ## 5. Add embeddings (optional)
 
 Embedding search needs a named embedding model, a named vector store, and vectors for the concepts you want to search. The query model must be compatible with the stored vectors.
+
+For DuckDB CDM and embedding connections, enter absolute file paths in `database_name`; relative paths and `~` aliases are rejected. For a prebuilt DuckDBVSS store, configure its separate file and matching model, then check registration and coverage. To prepare a new DuckDBVSS store, select a separate file in an existing directory and follow the steps below. Stop services and close other readers using the embedding file before initialization. Population also opens the CDM file, so close its readers too. Prepare [offline dependencies](usage/installation.md#prepare-an-offline-deployment) before disconnecting from the network.
+
+For stores you are preparing through the console:
 
 1. **Configure the store.** Use Database to select or create the vector-store configuration.
 2. **Configure the model.** In Embeddings, choose **Configure model**. Supply the provider details and select a model already registered in the store or a new model from the provider.
@@ -143,7 +155,13 @@ Change the authoritative configuration source, then reopen the console to verify
 
 ## Maintenance runs
 
-Graph preparation and embedding population run in separate background processes. You can close and reopen the console while they continue. In **Runs**, follow progress, inspect a redacted log tail, cancel active work, retry a supported failed step, or export commands. Postflight results appear for tasks that define those checks.
+Serving and readiness checks are read-only. The setup console can explicitly initialize embedding storage, populate vectors and classify relationships. For DuckDB, stop services and close other readers of the file being written before starting preparation. A conflicting connection causes the operation to fail; close it and retry. Restart the service after preparation completes.
+
+For bulk CDM loading or index rebuilds, use the omop-alchemy and omop-emb CLIs. Graph preparation uses the classification packaged with omop-graph unless you choose a custom CSV directory in the wizard.
+
+Close writers cleanly before sharing or reopening the files. Several Groundworkers reader processes can share the same prepared files. Distribute files without outstanding WAL, and record the vocabulary release, package/DuckDB versions, model identity, dimensions and prefixes with them.
+
+When you start graph preparation or embedding population from the console, it runs in a separate background process. You can close and reopen the console while it continues. In **Runs**, follow progress, inspect a redacted log tail, cancel active work, retry a supported failed step, or export commands. Postflight results appear for tasks that define those checks.
 
 Run history is saved on disk. Groundworkers uses `GROUNDWORKERS_STATE_HOME`, then `XDG_STATE_HOME`, as the state base directory and appends `groundworkers`. If neither is set, it uses `~/.local/state/groundworkers`.
 

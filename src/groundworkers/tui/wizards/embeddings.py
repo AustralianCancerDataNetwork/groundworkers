@@ -424,6 +424,13 @@ class EmbeddingPopulationWizardController:
     def _review_step(self) -> ReviewStep:
         command = self._command() if self._coverage is not None else None
         warnings = []
+        if (
+            self._coverage is not None
+            and self._coverage.configuration.backend == "duckdbvss"
+        ):
+            warnings.append(
+                "Close services and other readers using the DuckDB CDM and embedding files before population."
+            )
         if self._coverage is None:
             warnings.append("Embedding coverage is unavailable.")
         else:

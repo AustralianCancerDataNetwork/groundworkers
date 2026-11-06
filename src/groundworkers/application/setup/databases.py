@@ -20,7 +20,6 @@ from oa_configurator import (  # type: ignore[import-untyped]
     physical_schema_of,
     supports_schemas,
 )
-from omop_alchemy.config import create_cdm_engines
 from sqlalchemy import (
     Column,
     MetaData,
@@ -44,6 +43,11 @@ from groundworkers.application.setup.models import (
     DatabaseTarget,
     DiagnosticSeverity,
     ResourceDiagnostic,
+)
+from groundworkers.base.database import (
+    create_runtime_cdm_engines,
+    duckdb_file_path,
+    validate_duckdb_embedding_file,
 )
 from groundworkers.base.errors import embedding_store_error
 from groundworkers.base.sql import (
@@ -223,7 +227,16 @@ def verify_database_target(
     engine: Engine | None = None
     started = clock()
     try:
-        engine = engine_factory(target.connection_url)
+        if engine_factory is create_engine and target.connection_url.startswith("duckdb:"):
+            if target.resolved_vector_store is not None:
+                validate_duckdb_embedding_file(target.resolved_vector_store)
+            else:
+                from sqlalchemy.engine import make_url
+
+                duckdb_file_path(make_url(target.connection_url).database)
+            engine = create_engine(target.connection_url, connect_args={"read_only": True})
+        else:
+            engine = engine_factory(target.connection_url)
         with engine.connect() as connection:
             connection.execute(select(literal(1)))
             diagnostics = _diagnostics_for_target(connection, connection, target)
@@ -259,9 +272,7 @@ def _verify_cdm_target(
         resolved_cdm_database = target.resolved_cdm_database
         if resolved_cdm_database is None:
             raise ValueError("CDM database configuration is missing")
-        engines = create_cdm_engines(
-            resolved_cdm_database, register_claims=False
-        )
+        engines = create_runtime_cdm_engines(resolved_cdm_database)
         primary_engine, vocab_engine = engines
         with primary_engine.connect() as primary, vocab_engine.connect() as vocab:
             try:
@@ -568,7 +579,7 @@ def _groundworkers_embedding_model_diagnostics(
         return (
             _warning(
                 "grounding_embedding_model_unchecked",
-                f"Groundworkers grounding model {expected_model_name!r} could not be checked because no pgvector embedding store is configured.",
+                f"Groundworkers grounding model {expected_model_name!r} could not be checked because no embedding store is configured.",
             ),
         )
 
@@ -677,6 +688,19 @@ def classify_connection_error(exc: BaseException) -> ClassifiedFailure:
     if store_failure is not None:
         return store_failure
     lowered = " ".join(str(item).lower() for item in chain)
+    if any(
+        phrase in lowered
+        for phrase in (
+            "could not set lock on file",
+            "conflicting lock is held",
+            "different configuration than existing connections",
+        )
+    ):
+        return _failure(
+            ConnectionFailureKind.OTHER,
+            "The DuckDB file is already open with a conflicting connection.",
+            "Stop services and close other readers or writers using this file, then retry preparation.",
+        )
     sqlstate = next(
         (
             str(value)

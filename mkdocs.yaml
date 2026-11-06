@@ -70,6 +70,7 @@ nav:
       - Testing: usage/testing.md
       - CDM adapter: adapters/cdm.md
       - OMOP graph adapter: adapters/omop_graph.md
+      - Ancestry and relationship queries: adapters/ancestry.md
       - OMOP embedding adapter: adapters/omop_emb.md
   - API Reference:
       - Tools: reference/ref_tools.md

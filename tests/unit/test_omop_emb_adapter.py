@@ -210,7 +210,7 @@ def test_encode_uses_query_role_and_returns_vector_payload(monkeypatch):
         "text": "diabetes mellitus",
         "model_name": "demo-model",
         "dimensions": 3,
-        "vector": [0.1, 0.2, 0.3],
+        "vector": pytest.approx([0.1, 0.2, 0.3]),
     }
     assert backend.calls == [
         {

@@ -46,7 +46,7 @@ def _short_text(value: str, *, limit: int = 120) -> str:
     compact = " ".join(value.split())
     if len(compact) <= limit:
         return compact
-    return f"{compact[:limit - 3]}..."
+    return f"{compact[: limit - 3]}..."
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,9 @@ class GraphService:
     _ASSOCIATION_KIND = "Association"
     _HIERARCHY_KIND = "Hierarchy"
 
-    def __init__(self, adapter: OmopGraphAdapter, cdm: CDMAdapter | None = None) -> None:
+    def __init__(
+        self, adapter: OmopGraphAdapter, cdm: CDMAdapter | None = None
+    ) -> None:
         self._adapter = adapter
         # Optional: only required by the classified-edge traversals below
         # (concept_associations / concept_extended_inheritance).
@@ -91,16 +93,22 @@ class GraphService:
     def get_concept(self, concept_id: int) -> dict[str, Any] | None:
         return self._adapter.get_concept(concept_id)
 
-    def get_concept_by_code(self, vocabulary_id: str, code: str) -> list[dict[str, Any]]:
+    def get_concept_by_code(
+        self, vocabulary_id: str, code: str
+    ) -> list[dict[str, Any]]:
         return self._adapter.get_concept_by_code(vocabulary_id, code)
 
-    def concept_views(self, concept_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+    def concept_views(
+        self, concept_ids: Sequence[int], *, strict: bool = False
+    ) -> dict[int, dict[str, Any]]:
         """Batch-fetch normalized concept views keyed by concept_id.
 
         Thin passthrough to the adapter's batch lookup. Returns an empty dict
         for unknown ids or on backend failure (the adapter swallows enrichment
         errors), so callers can treat a missing key as "unknown concept".
         """
+        if strict:
+            return self._adapter.concept_views(concept_ids, strict=True)
         return self._adapter.concept_views(concept_ids)
 
     def canonicalize_domain(self, domain: str | None) -> str | None:
@@ -176,7 +184,9 @@ class GraphService:
         queue: deque[tuple[int, int]] = deque(
             (child_id, 1) for child_id in self._adapter.children(concept_id)
         )
-        return self._walk_hierarchy(queue=queue, neighbour_getter=self._adapter.children, max_depth=max_depth)
+        return self._walk_hierarchy(
+            queue=queue, neighbour_getter=self._adapter.children, max_depth=max_depth
+        )
 
     def _walk_hierarchy(
         self,
@@ -212,15 +222,22 @@ class GraphService:
     # Edges
     # ------------------------------------------------------------------
 
+    def get_relationship_edges(
+        self, concept_id: int, relationship_ids: list[str], limit: int
+    ) -> list[dict[str, Any]]:
+        return self._adapter.relationship_edges(concept_id, relationship_ids, limit)
+
     def get_edges(self, concept_id: int) -> dict[str, Any]:
         if self._adapter.get_concept(concept_id) is None:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
         outbound = self._adapter.edges(concept_id, direction="out", active_only=False)
         inbound = self._adapter.edges(concept_id, direction="in", active_only=False)
 
-        other_ids = tuple(dict.fromkeys(
-            [e["object_id"] for e in outbound] + [e["subject_id"] for e in inbound]
-        ))
+        other_ids = tuple(
+            dict.fromkeys(
+                [e["object_id"] for e in outbound] + [e["subject_id"] for e in inbound]
+            )
+        )
         views = self._adapter.concept_views(other_ids)
 
         return {
@@ -312,15 +329,30 @@ class GraphService:
         if self._adapter.get_concept(concept_id) is None:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
 
-        result: dict[str, Any] = {"concept_id": concept_id, "predicate_kind": predicate_kind}
+        result: dict[str, Any] = {
+            "concept_id": concept_id,
+            "predicate_kind": predicate_kind,
+        }
         with self._cdm.session() as session:
             if direction in ("out", "both"):
                 result["outbound"] = self._query_classified_edges(
-                    session, concept_id, predicate_kind, predicate_subkinds, active_only, limit, outbound=True
+                    session,
+                    concept_id,
+                    predicate_kind,
+                    predicate_subkinds,
+                    active_only,
+                    limit,
+                    outbound=True,
                 )
             if direction in ("in", "both"):
                 result["inbound"] = self._query_classified_edges(
-                    session, concept_id, predicate_kind, predicate_subkinds, active_only, limit, outbound=False
+                    session,
+                    concept_id,
+                    predicate_kind,
+                    predicate_subkinds,
+                    active_only,
+                    limit,
+                    outbound=False,
                 )
         return result
 
@@ -446,7 +478,9 @@ class GraphService:
                 }
                 for step in steps
             ]
-            serialised.append({"length": len(serialised_steps), "steps": serialised_steps})
+            serialised.append(
+                {"length": len(serialised_steps), "steps": serialised_steps}
+            )
         return {"found": True, "paths": serialised}
 
     def find_equivalency_path(
@@ -456,7 +490,11 @@ class GraphService:
         max_depth: int,
         allow_hierarchical_traversal: bool = False,
     ) -> dict[str, Any]:
-        kinds = self._IDENTITY_AND_HIERARCHY_KINDS if allow_hierarchical_traversal else self._IDENTITY_KINDS
+        kinds = (
+            self._IDENTITY_AND_HIERARCHY_KINDS
+            if allow_hierarchical_traversal
+            else self._IDENTITY_KINDS
+        )
         return self.find_path(
             source_id=source_id,
             target_id=target_id,
@@ -472,7 +510,9 @@ class GraphService:
     def map_to_standard(self, vocabulary_id: str, code: str) -> dict[str, Any]:
         source_list = self._adapter.get_concept_by_code(vocabulary_id, code)
         if not source_list:
-            raise GroundworkersError("NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found")
+            raise GroundworkersError(
+                "NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found"
+            )
         source = source_list[0]
 
         if source["standard_concept"]:
@@ -520,14 +560,16 @@ class GraphService:
         for nid in data["neighbor_ids"]:
             view = views.get(nid)
             if view:
-                neighbors.append({
-                    "concept_id": view["concept_id"],
-                    "concept_name": view["concept_name"],
-                    "vocabulary_id": view["vocabulary_id"],
-                    "domain_id": view["domain_id"],
-                    "concept_class_id": view["concept_class_id"],
-                    "standard_concept": view["standard_concept"],
-                })
+                neighbors.append(
+                    {
+                        "concept_id": view["concept_id"],
+                        "concept_name": view["concept_name"],
+                        "vocabulary_id": view["vocabulary_id"],
+                        "domain_id": view["domain_id"],
+                        "concept_class_id": view["concept_class_id"],
+                        "standard_concept": view["standard_concept"],
+                    }
+                )
 
         terminated_reason = data["terminated_reason"]
         return {
@@ -551,7 +593,9 @@ class GraphService:
         logger.info(
             "concept_ground plan query=%r parent_ids=%s tiers=%s",
             _short_text(request.query),
-            list(request.constraints.parent_ids) if request.constraints.parent_ids is not None else None,
+            list(request.constraints.parent_ids)
+            if request.constraints.parent_ids is not None
+            else None,
             ["+".join(type(r).__name__ for r in tier) for tier in request.tiers],
         )
 
@@ -560,10 +604,15 @@ class GraphService:
         for tier in request.tiers:
             tier_started = time.perf_counter()
             tier_name = "+".join(type(r).__name__ for r in tier)
-            is_fts_tier = any(isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier)
+            is_fts_tier = any(
+                isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier
+            )
             try:
                 hits = self._adapter.run_ground_tier(
-                    tier, request.query, constraints=request.constraints, limit=request.limit
+                    tier,
+                    request.query,
+                    constraints=request.constraints,
+                    limit=request.limit,
                 )
             except EmbeddingTierUnavailable as exc:
                 # Skip this tier only. The remaining lexical tiers are still useful,
@@ -571,7 +620,9 @@ class GraphService:
                 embedding_tier_detail = exc.message
                 logger.warning(
                     "concept_ground tier skipped query=%r tier=%s detail=%s",
-                    _short_text(request.query), tier_name, exc.message,
+                    _short_text(request.query),
+                    tier_name,
+                    exc.message,
                 )
                 continue
             # Drop FTS hits where fewer than min_fulltext_overlap of the query tokens
@@ -579,15 +630,20 @@ class GraphService:
             if hits and is_fts_tier and request.min_fulltext_overlap > 0.0:
                 query_tokens = set(request.query.lower().split())
                 results = [
-                    h for h in hits
-                    if self._fts_overlap(query_tokens, h["matched_label"] or "") >= request.min_fulltext_overlap
+                    h
+                    for h in hits
+                    if self._fts_overlap(query_tokens, h["matched_label"] or "")
+                    >= request.min_fulltext_overlap
                 ]
             else:
                 results = list(hits)
             logger.info(
                 "concept_ground tier done query=%r tier=%s duration_ms=%.1f raw=%d kept=%d",
-                _short_text(request.query), tier_name,
-                (time.perf_counter() - tier_started) * 1000.0, len(hits), len(results),
+                _short_text(request.query),
+                tier_name,
+                (time.perf_counter() - tier_started) * 1000.0,
+                len(hits),
+                len(results),
             )
             if results:
                 break
@@ -613,7 +669,9 @@ class GraphService:
             "concept_ground complete query=%r duration_ms=%.1f matched_tier=%r used_embedding=%s result_count=%d",
             _short_text(request.query),
             (time.perf_counter() - overall_started) * 1000.0,
-            matched_tier, used_embedding, len(payload["results"]),
+            matched_tier,
+            used_embedding,
+            len(payload["results"]),
         )
         return payload
 
@@ -636,8 +694,7 @@ class GraphService:
             tier_started = time.perf_counter()
             tier_name = "+".join(type(r).__name__ for r in tier)
             is_fts_tier = any(
-                isinstance(r, (FullTextResolver, FullTextSynonymResolver))
-                for r in tier
+                isinstance(r, (FullTextResolver, FullTextSynonymResolver)) for r in tier
             )
             try:
                 hits = await self._adapter.async_run_ground_tier(

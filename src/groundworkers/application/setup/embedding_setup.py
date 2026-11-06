@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from oa_configurator import (
+    ResolvedCDMDatabase,
     ResolvedModel,
     ResolvedVectorStore,
     Resolver,
@@ -29,6 +30,10 @@ from groundworkers.application.setup.models import (
     ProviderCapabilities,
     ProviderSnapshot,
     RegisteredEmbeddingModel,
+)
+from groundworkers.base.database import (
+    validate_duckdb_cdm_paths,
+    validate_duckdb_embedding_file,
 )
 from groundworkers.base.results import enum_value, required_enum_value
 from groundworkers.config import GroundworkersConfig
@@ -63,6 +68,12 @@ def initialize_embedding_store(
         resolved = Resolver(snapshot.stack).resolve_vector_store(
             groundworkers.vector_store_name
         )
+        if resolved.backend_type == "duckdbvss":
+            cdm = Resolver(snapshot.stack).resolve_database(groundworkers.cdm_db)
+            if not isinstance(cdm, ResolvedCDMDatabase):
+                raise ValueError("Groundworkers requires a CDM database.")
+            validate_duckdb_cdm_paths(cdm)
+            validate_duckdb_embedding_file(resolved, cdm=cdm, allow_create=True)
         if initializer is None:
             from omop_emb.backends import open_vector_store_writer
 
@@ -123,9 +134,7 @@ def load_embedding_configuration(
             return None
         resolver = Resolver(stack)
         model = resolver.resolve_model(groundworkers.embedding_model_name)
-        vector_store = resolver.resolve_vector_store(
-            groundworkers.vector_store_name
-        )
+        vector_store = resolver.resolve_vector_store(groundworkers.vector_store_name)
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -136,11 +145,18 @@ def load_embedding_configuration(
     database_path = (
         connection_config.database_name
         if connection_config.dialect.startswith("sqlite")
+        or connection_config.dialect == "duckdb"
         else None
     )
     config_base = snapshot.path.parent if snapshot.path is not None else None
     database_path_exists = (
-        _path_exists(database_path, base=config_base)
+        bool(
+            database_path
+            and Path(database_path).is_absolute()
+            and Path(database_path).is_file()
+        )
+        if connection_config.dialect == "duckdb"
+        else _path_exists(database_path, base=config_base)
         if database_path is not None
         else None
     )
@@ -160,7 +176,9 @@ def load_embedding_configuration(
         model_entry_name=model.name,
         model_name=model.model,
         embeddings_supported=model.embeddings,
-        api_base=(safe_endpoint(model.provider.base_url) if model.provider.base_url else None),
+        api_base=(
+            safe_endpoint(model.provider.base_url) if model.provider.base_url else None
+        ),
         database_path=database_path,
         database_path_exists=database_path_exists,
         faiss_cache_dir=vector_store.faiss_cache_dir,

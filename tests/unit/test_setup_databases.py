@@ -506,3 +506,14 @@ def _write_config(tmp_path: Path, content: str) -> Path:
     path = tmp_path / "config.toml"
     path.write_text(content, encoding="utf-8")
     return path
+
+
+@pytest.mark.parametrize("message", [
+    'IO Error: Could not set lock on file "secret/path.duckdb"',
+    "Connection Error: Can't open a connection to same database file with a different configuration than existing connections",
+])
+def test_duckdb_connection_conflicts_offer_safe_preparation_guidance(message):
+    failure = classify_connection_error(RuntimeError(message))
+    assert "conflicting" in failure.detail
+    assert "close other readers" in failure.next_action
+    assert "secret" not in failure.detail

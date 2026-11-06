@@ -144,9 +144,7 @@ def test_separate_store_location_round_trips_on_either_connection(
     tmp_path: Path, same_connection: bool
 ) -> None:
     path = tmp_path / "config.toml"
-    stack = build_cdm_stack(
-        cdm_schema="clinical", vocab_schema="vocabulary"
-    )
+    stack = build_cdm_stack(cdm_schema="clinical", vocab_schema="vocabulary")
     if not same_connection:
         stack.connections["vectors"] = ConnectionConfig(
             dialect="postgresql+psycopg",
@@ -159,14 +157,19 @@ def test_separate_store_location_round_trips_on_either_connection(
     database_name = "cdm_db_vectors" if same_connection else "separate_vectors"
     connection_name = "cdm_main" if same_connection else "vectors"
 
-    assert _drive(
-        path,
-        location=STORE_LOCATION_SEPARATE,
-        backend_type="pgvector",
-        store_database_name=database_name,
-        store_connection_name=connection_name,
-        store_schema_name="vectors",
-    ).apply().status.value == "applied"
+    assert (
+        _drive(
+            path,
+            location=STORE_LOCATION_SEPARATE,
+            backend_type="pgvector",
+            store_database_name=database_name,
+            store_connection_name=connection_name,
+            store_schema_name="vectors",
+        )
+        .apply()
+        .status.value
+        == "applied"
+    )
 
     reopened = ConfigWizardController(
         vector_store_setup_workflow(MutationOperation.UPDATE),
@@ -208,12 +211,118 @@ def test_the_cdm_location_needs_no_database_answers(tmp_path: Path) -> None:
 def test_the_backend_choice_is_carried_through(tmp_path: Path) -> None:
     path = _stack_path(tmp_path)
 
-    _drive(
-        path, location=STORE_LOCATION_SEPARATE, backend_type="pgvector"
-    ).apply()
+    _drive(path, location=STORE_LOCATION_SEPARATE, backend_type="pgvector").apply()
 
     stack = load_stack_config(path)
     assert stack.vector_stores["embeddings"].backend_type == "pgvector"
+
+
+@pytest.mark.parametrize("alias", ["relative", "tilde", "symlink", "hardlink", "separate"])
+def test_duckdb_store_setup_compares_physical_files(
+    tmp_path: Path, monkeypatch, alias
+) -> None:
+    cdm_path = tmp_path / "cdm.duckdb"
+    cdm_path.touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    if alias in {"symlink", "hardlink"}:
+        linked = tmp_path / "alias.duckdb"
+        if alias == "hardlink":
+            linked.hardlink_to(cdm_path)
+        else:
+            linked.symlink_to(cdm_path)
+        store_path = str(linked)
+    else:
+        store_path = {
+            "relative": "./cdm.duckdb",
+            "tilde": "~/cdm.duckdb",
+            "separate": str(tmp_path / "emb.duckdb"),
+        }[alias]
+    if alias == "separate":
+        Path(store_path).touch()
+    stack = build_cdm_stack()
+    stack.connections["cdm_main"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(cdm_path)
+    )
+    stack.connections["emb"] = ConnectionConfig(
+        dialect="duckdb", database_name=store_path
+    )
+    config_path = tmp_path / "config.toml"
+    save_stack_config(stack, config_path)
+    controller = ConfigWizardController(
+        vector_store_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(config_path),
+    )
+    controller.start()
+    assert not controller.submit({"store_location": STORE_LOCATION_SEPARATE}).issues
+    assert not controller.submit(
+        {"store_entry_name": "vectors", "backend_type": "duckdbvss"}
+    ).issues
+    result = controller.submit(
+        {"store_database_name": "emb", "store_connection_name": "emb"}
+    )
+    if alias == "separate":
+        assert not result.issues
+        assert result.snapshot.can_apply
+    else:
+        assert [issue.field_key for issue in result.issues] == ["store_connection_name"]
+        assert (
+            "absolute" if alias in {"relative", "tilde"} else "separate from the CDM"
+        ) in result.issues[0].message
+        assert not result.snapshot.can_apply
+
+
+@pytest.mark.parametrize(
+    "target", ["missing_parent", "directory", "memory", "home_alias"]
+)
+def test_duckdb_store_setup_rejects_invalid_file_targets(
+    tmp_path: Path, monkeypatch, target
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    stack = build_cdm_stack()
+    cdm = tmp_path / "cdm.duckdb"
+    cdm.touch()
+    embedding = tmp_path / "emb.duckdb"
+    if target == "missing_parent":
+        embedding = tmp_path / "missing" / "emb.duckdb"
+    elif target == "directory":
+        embedding.mkdir()
+    elif target == "home_alias":
+        embedding.touch()
+    stack.connections["cdm_main"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(cdm)
+    )
+    stack.connections["emb"] = ConnectionConfig(
+        dialect="duckdb",
+        database_name=":memory:"
+        if target == "memory"
+        else "~/emb.duckdb"
+        if target == "home_alias"
+        else str(embedding),
+    )
+    path = tmp_path / "config.toml"
+    save_stack_config(stack, path)
+    before = path.read_bytes()
+    controller = ConfigWizardController(
+        vector_store_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(path),
+    )
+    controller.start()
+    assert not controller.submit({"store_location": STORE_LOCATION_SEPARATE}).issues
+    assert not controller.submit(
+        {"store_entry_name": "vectors", "backend_type": "duckdbvss"}
+    ).issues
+    result = controller.submit(
+        {"store_database_name": "emb", "store_connection_name": "emb"}
+    )
+    assert [issue.field_key for issue in result.issues] == ["store_connection_name"]
+    assert (
+        "absolute" if target in {"memory", "home_alias"} else "existing"
+    ) in result.issues[0].message
+    assert not result.snapshot.can_apply
+    assert path.read_bytes() == before
+    assert target in {"directory", "home_alias"} or not embedding.exists()
 
 
 def test_a_backend_the_cdm_cannot_serve_is_refused(tmp_path: Path) -> None:
@@ -297,3 +406,27 @@ def test_an_unconfigured_store_still_shows_a_row(tmp_path: Path) -> None:
 
     row = next(row for row in view.rows if row.key == EMBEDDING_TARGET_KEY)
     assert "Not configured" in row.cells
+
+
+def test_duckdb_store_configuration_accepts_a_new_file_without_creating_it(tmp_path):
+    stack = build_cdm_stack()
+    cdm = tmp_path / "cdm.duckdb"
+    cdm.touch()
+    embedding = tmp_path / "new-emb.duckdb"
+    stack.connections["cdm_main"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(cdm)
+    )
+    stack.connections["emb"] = ConnectionConfig(
+        dialect="duckdb", database_name=str(embedding)
+    )
+    path = tmp_path / "config.toml"
+    save_stack_config(stack, path)
+    controller = _drive(
+        path,
+        location=STORE_LOCATION_SEPARATE,
+        backend_type="duckdbvss",
+        store_connection_name="emb",
+    )
+    assert controller.review().snapshot.can_apply
+    assert controller.apply().status.value == "applied"
+    assert not embedding.exists()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -83,7 +84,10 @@ class GroundworkersApp:
     plugin_issues: dict[str, str] = field(default_factory=dict)
 
 
-def build_adapters(config: AppConfig) -> Adapters:
+def build_adapters(
+    config: AppConfig, *, resources: ExitStack | None = None
+) -> Adapters:
+    """Build shared adapters; a scoped owner can release their lazy store reader."""
     adapters = Adapters()
     adapters.cdm = CDMAdapter(
         config.cdm_engine,
@@ -103,6 +107,8 @@ def build_adapters(config: AppConfig) -> Adapters:
             from omop_emb.backends import open_vector_store_reader
 
             shared_backend = open_vector_store_reader(resolved_store)
+            if resources is not None:
+                resources.callback(shared_backend.close)
         return shared_backend
 
     shared_model_backend: ModelBackend | None = None
@@ -333,27 +339,30 @@ def verify_plugin_readiness(
             configured=False,
             summary="This plugin does not expose readiness verification.",
         )
-    adapters = build_adapters(config)
-    services = build_services(config, adapters)
-    context = _build_plugin_context(config, adapters, services)
-    state, issue = _build_plugin(config, context, plugin)
-    if state is None:
-        return PluginReadinessResult(
-            state=PluginReadinessState.UNCONFIGURED,
-            configured=False,
-            summary=(
-                "Plugin configuration or prerequisites are unavailable. "
-                f"Host detail: {issue or 'unknown issue'}."
-            ),
-        )
-    try:
-        return plugin.verify_readiness(state)
-    except Exception:
-        logger.exception("Groundworkers plugin %s readiness check failed.", plugin.name)
-        return PluginReadinessResult(
-            state=PluginReadinessState.ERROR,
-            summary="Plugin verification failed unexpectedly; review the host logs.",
-        )
+    with ExitStack() as resources:
+        adapters = build_adapters(config, resources=resources)
+        services = build_services(config, adapters)
+        context = _build_plugin_context(config, adapters, services)
+        state, issue = _build_plugin(config, context, plugin)
+        if state is None:
+            return PluginReadinessResult(
+                state=PluginReadinessState.UNCONFIGURED,
+                configured=False,
+                summary=(
+                    "Plugin configuration or prerequisites are unavailable. "
+                    f"Host detail: {issue or 'unknown issue'}."
+                ),
+            )
+        try:
+            return plugin.verify_readiness(state)
+        except Exception:
+            logger.exception(
+                "Groundworkers plugin %s readiness check failed.", plugin.name
+            )
+            return PluginReadinessResult(
+                state=PluginReadinessState.ERROR,
+                summary="Plugin verification failed unexpectedly; review the host logs.",
+            )
 
 
 def load_plugin_readiness(
@@ -380,7 +389,12 @@ def load_plugin_readiness(
                 "configure this plugin."
             ),
         )
-    return verify_plugin_readiness(config, plugin)
+    try:
+        return verify_plugin_readiness(config, plugin)
+    finally:
+        config.cdm_engine.dispose()
+        if config.cdm_vocab_engine is not config.cdm_engine:
+            config.cdm_vocab_engine.dispose()
 
 
 def build_application(config: AppConfig) -> GroundworkersApp:

@@ -25,6 +25,13 @@ def _session(tmp_path: Path) -> SetupSession:
     return SetupSession(config_path=path)
 
 
+def test_incomplete_configuration_does_not_crash_the_wizard(tmp_path: Path) -> None:
+    path = tmp_path / "incomplete.toml"
+    path.write_text('[tools.groundworkers]\ncdm_db = "missing"\n', encoding="utf-8")
+    controller = GraphMaintenanceWizardController(SetupSession(config_path=path), None)
+    assert controller.start().step.key == "actions"
+
+
 def _readiness(*codes: str) -> ConnectionResult:
     return ConnectionResult(
         target_key="database.graph",
@@ -63,9 +70,7 @@ def test_selections_start_from_what_the_check_found(tmp_path: Path) -> None:
     assert values["create_functional_indexes"] is False
 
 
-def test_running_only_indexes_needs_no_csv_step(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_running_only_indexes_needs_no_csv_step(tmp_path: Path, monkeypatch) -> None:
     launcher = _RecordingLauncher()
     monkeypatch.setattr(
         "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
@@ -135,9 +140,7 @@ def test_a_directory_with_the_csvs_is_accepted(tmp_path: Path, monkeypatch) -> N
         "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
         launcher,
     )
-    controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness()
-    )
+    controller = GraphMaintenanceWizardController(_session(tmp_path), _readiness())
     controller.submit(
         {
             "load_relationship_classification": True,
@@ -197,12 +200,8 @@ def test_cancelling_changes_nothing(tmp_path: Path) -> None:
     assert result.status is WizardResultStatus.CANCELLED
 
 
-def test_the_bundled_classification_is_offered_as_a_choice(tmp_path: Path) -> None:
+def test_the_upstream_classification_is_offered_as_a_choice(tmp_path: Path) -> None:
     """Accepting it must not mean reading an 80-character path in a text field."""
-    from groundworkers.application.setup.graph_maintenance import (
-        packaged_predicate_csv_dir,
-    )
-
     controller = GraphMaintenanceWizardController(_session(tmp_path), _readiness())
     snapshot = controller.submit(
         {
@@ -215,11 +214,11 @@ def test_the_bundled_classification_is_offered_as_a_choice(tmp_path: Path) -> No
 
     assert snapshot.step.key == "sources"
     field = next(f for f in snapshot.step.fields if f.key == "predicate_source")
-    assert field.default == "bundled"
-    assert str(packaged_predicate_csv_dir()) in field.help
+    assert field.default == "upstream"
+    assert "omop-graph" in field.help
 
 
-def test_accepting_the_bundled_classification_skips_the_path_step(
+def test_accepting_the_upstream_classification_skips_the_path_step(
     tmp_path: Path, monkeypatch
 ) -> None:
     launcher = _RecordingLauncher()
@@ -227,9 +226,7 @@ def test_accepting_the_bundled_classification_skips_the_path_step(
         "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
         launcher,
     )
-    controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness()
-    )
+    controller = GraphMaintenanceWizardController(_session(tmp_path), _readiness())
     controller.submit(
         {
             "load_relationship_classification": True,
@@ -239,20 +236,14 @@ def test_accepting_the_bundled_classification_skips_the_path_step(
         }
     )
 
-    review = controller.submit({"predicate_source": "bundled"}).snapshot
+    review = controller.submit({"predicate_source": "upstream"}).snapshot
 
     assert isinstance(review.step, ReviewStep)
     controller.apply()
-    from groundworkers.application.setup.graph_maintenance import (
-        packaged_predicate_csv_dir,
-    )
-
-    assert str(packaged_predicate_csv_dir()) in launcher.commands[0].argv
+    assert launcher.commands[0].argv[1:] == ("relationship-classification",)
 
 
-def test_the_bundled_default_can_be_overridden(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_the_upstream_default_can_be_overridden(tmp_path: Path, monkeypatch) -> None:
     """A site may maintain its own classification, so this stays a prompt."""
     source = tmp_path / "site-predicates"
     source.mkdir()
@@ -263,9 +254,7 @@ def test_the_bundled_default_can_be_overridden(
         "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
         launcher,
     )
-    controller = GraphMaintenanceWizardController(
-        _session(tmp_path), _readiness()
-    )
+    controller = GraphMaintenanceWizardController(_session(tmp_path), _readiness())
     controller.submit(
         {
             "load_relationship_classification": True,

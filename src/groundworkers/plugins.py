@@ -282,17 +282,13 @@ class MappingContext:
         offset: int = 0,
     ) -> dict[str, Any]:
         """Find a nearest common standard ancestor within optional constraints."""
-        constraints = {}
-        if concept_class_ids is not None:
-            constraints["concept_class_ids"] = concept_class_ids
-        if vocabulary_ids is not None:
-            constraints["vocabulary_ids"] = vocabulary_ids
-        if limit != 10:
-            constraints["limit"] = limit
-        if offset != 0:
-            constraints["offset"] = offset
         return self._require_mapping_service().concept_shared_standard_ancestor(
-            concept_ids, max_depth=max_depth, **constraints
+            concept_ids,
+            max_depth=max_depth,
+            concept_class_ids=concept_class_ids,
+            vocabulary_ids=vocabulary_ids,
+            limit=limit,
+            offset=offset,
         )
 
     def concept_relationship_neighborhood(

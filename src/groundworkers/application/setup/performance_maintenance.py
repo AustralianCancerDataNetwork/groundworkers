@@ -138,6 +138,8 @@ def _postgres_cdm(
     database = Resolver(snapshot.stack).resolve_database(config.cdm_db)
     if not isinstance(database, ResolvedCDMDatabase):
         raise TypeError("Groundworkers cdm_db must resolve to a CDM database.")
+    if database.vocab_connection.dialect_name != "postgresql":
+        raise ValueError(f"{purpose} require a PostgreSQL CDM database.")
     primary_engine, vocab_engine = create_cdm_engines(
         database, register_claims=False
     )

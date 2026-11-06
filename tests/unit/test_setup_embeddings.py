@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from oa_configurator import Resolver
 from omop_emb.backends.index_config import FlatIndexConfig
 from omop_emb.model_registry import EmbeddingModelRecord
@@ -543,3 +544,34 @@ def test_coverage_failure_does_not_expose_backend_secret(
     assert report.coverage.available is False
     assert report.coverage.blocker is not None
     assert "database-password" not in report.coverage.blocker
+
+
+@pytest.mark.parametrize("target", ["existing", "missing", "directory", "relative", "tilde"])
+def test_duckdb_configuration_reports_absolute_file_metadata(
+    tmp_path, monkeypatch, target
+):
+    stack = build_embedding_stack()
+    stack.connections["embedding_main"].dialect = "duckdb"
+    stack.vector_stores["embedding_store"].backend_type = "duckdbvss"
+    asset = tmp_path / "vectors.duckdb"
+    if target == "directory":
+        asset.mkdir()
+    elif target != "missing":
+        asset.touch()
+    elsewhere = tmp_path / "working"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    filename = (
+        asset.name
+        if target == "relative"
+        else "~/" + asset.name
+        if target == "tilde"
+        else str(asset)
+    )
+    stack.connections["embedding_main"].database_name = filename
+    configuration = load_embedding_configuration(
+        _snapshot(stack, tmp_path / "config.toml")
+    )
+    assert configuration.database_path == filename
+    assert configuration.database_path_exists is (target == "existing")
