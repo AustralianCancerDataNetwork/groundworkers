@@ -18,6 +18,7 @@ from groundworkers.services.ancestry import (
 )
 from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
+from groundworkers.services.relationship_neighborhood import RelationshipTraversal
 from groundworkers.services.vocab import (
     VocabService,
     normalize_text_for_matching,
@@ -28,6 +29,8 @@ from groundworkers.services.vocab import (
 
 MAX_CANDIDATES_PER_CHANNEL = 20
 MAX_CANDIDATE_UNION = 100
+# Allow multiple relationship types per node while bounding each seed's edge payload.
+RELATIONSHIP_EDGES_PER_NODE = 5
 _SYNC_EMBEDDING = object()
 _SYNC_GROUNDING = object()
 
@@ -504,7 +507,9 @@ class MappingService:
             }
             selection_reason = "direct_concept_input"
 
-        decision = resolve_nearest_target(self._graph, seed_concept, max_depth, selection_reason)
+        decision = resolve_nearest_target(
+            self._graph, seed_concept, max_depth, selection_reason
+        )
         path = ancestor_path_evidence(self._graph, seed_concept, decision, max_depth)
         warnings = decision.warnings + path.pop("warnings")
         return {
@@ -513,12 +518,19 @@ class MappingService:
             "found": decision.selected is not None,
             "status": decision.status,
             "nearest_candidate_count": decision.nearest_count,
-            "seed_selection_policy": "rank_1_grounded_candidate" if query is not None else "explicit_concept_id",
+            "seed_selection_policy": "rank_1_grounded_candidate"
+            if query is not None
+            else "explicit_concept_id",
             "seed_candidates": results if query is not None else [seed],
-            "ancestry_source": "concept_ancestor", "distance_metric": "min_levels_of_separation",
-            "max_depth": max_depth, "evidence_route": decision.evidence_route,
-            "selected_parent": decision.selected, "selection_reason": decision.reason,
-            "alternative_parents": decision.alternatives, "warnings": warnings, **path,
+            "ancestry_source": "concept_ancestor",
+            "distance_metric": "min_levels_of_separation",
+            "max_depth": max_depth,
+            "evidence_route": decision.evidence_route,
+            "selected_parent": decision.selected,
+            "selection_reason": decision.reason,
+            "alternative_parents": decision.alternatives,
+            "warnings": warnings,
+            **path,
         }
 
     def concept_shared_standard_ancestor(
@@ -554,72 +566,46 @@ class MappingService:
         max_depth: int = 3,
         max_nodes: int = 200,
     ) -> dict[str, Any]:
-        """Return bounded active paths over an explicit set of relationships."""
+        """Return reached nodes and edges over bounded active relationship traversals."""
         if self._graph is None:
             raise GroundworkersError(
                 "BACKEND_UNAVAIL", "omop_graph backend is not configured"
             )
         seeds = list(dict.fromkeys(concept_ids))
-        if not seeds or any(concept_id <= 0 for concept_id in seeds):
-            raise ValueError("concept_ids must contain positive concept IDs")
+        if (
+            not seeds
+            or len(seeds) > 50
+            or any(
+                type(concept_id) is not int or concept_id <= 0 for concept_id in seeds
+            )
+        ):
+            raise ValueError("concept_ids must contain 1..50 positive concept IDs")
         relationships = {value.strip() for value in relationship_ids if value.strip()}
         if not relationships:
             raise ValueError("relationship_ids must contain non-empty values")
 
         safe_depth = max(1, min(max_depth, 3))
         safe_nodes = max(10, min(max_nodes, 500))
-        edge_cache: dict[int, dict[str, Any]] = {}
-        reached_by_seed: dict[int, dict[int, int]] = {}
-        traversed_edges: dict[tuple[int, int, str], dict[str, Any]] = {}
-        truncated_seeds: list[int] = []
-
-        for seed in seeds:
-            depths = {seed: 0}
-            frontier = {seed}
-            for depth in range(1, safe_depth + 1):
-                next_frontier: set[int] = set()
-                for current_id in frontier:
-                    if current_id not in edge_cache:
-                        edge_cache[current_id] = self._graph.get_edges(current_id)
-                    groups = edge_cache[current_id]
-                    for edge in groups.get("outbound", []):
-                        relationship_id = edge.get("relationship_id")
-                        if not edge.get("valid") or relationship_id not in relationships:
-                            continue
-                        neighbor_id = edge.get("target_concept_id")
-                        if not isinstance(neighbor_id, int) or neighbor_id <= 0:
-                            continue
-                        traversed_edges[(current_id, neighbor_id, relationship_id)] = {
-                            "subject_id": current_id,
-                            "object_id": neighbor_id,
-                            "relationship_id": relationship_id,
-                        }
-                        if neighbor_id in depths:
-                            continue
-                        if len(depths) >= safe_nodes:
-                            if seed not in truncated_seeds:
-                                truncated_seeds.append(seed)
-                            continue
-                        depths[neighbor_id] = depth
-                        next_frontier.add(neighbor_id)
-                frontier = next_frontier
-                if not frontier:
-                    break
-            reached_by_seed[seed] = depths
+        traversal = RelationshipTraversal(
+            self._graph,
+            sorted(relationships),
+            safe_depth,
+            safe_nodes,
+            safe_nodes * RELATIONSHIP_EDGES_PER_NODE,
+        )
+        walks = {seed: traversal.walk(seed) for seed in seeds}
+        reached_by_seed = {seed: walk.depths for seed, walk in walks.items()}
+        edges = {key: edge for walk in walks.values() for key, edge in walk.edges.items()}
 
         all_ids = tuple(
-            dict.fromkeys(
-                concept_id
-                for depths in reached_by_seed.values()
-                for concept_id in depths
-            )
+            sorted({cid for depths in reached_by_seed.values() for cid in depths})
         )
-        views = self._graph.concept_views(all_ids)
-        nodes = [
-            views[concept_id]
-            for concept_id in all_ids
-            if concept_id in views
-        ]
+        views = self._graph.concept_views(all_ids, strict=True)
+        if set(all_ids) - views.keys():
+            raise GroundworkersError(
+                "QUERY_ERROR", "Relationship traversal metadata is incomplete"
+            )
+        nodes = [views[concept_id] for concept_id in all_ids]
         return {
             "seed_concept_ids": seeds,
             "reached_by_seed": {
@@ -632,10 +618,13 @@ class MappingService:
                 for seed, depths in reached_by_seed.items()
             },
             "nodes": nodes,
-            "edges": list(traversed_edges.values()),
-            "truncated_seeds": truncated_seeds,
+            "edges": list(edges.values()),
+            "truncated_seeds": sorted(
+                seed for seed, walk in walks.items() if walk.truncated
+            ),
             "max_depth": safe_depth,
             "max_nodes_per_seed": safe_nodes,
+            "max_edges": traversal.max_edges,
         }
 
     async def async_concept_nearest_standard_ancestor(

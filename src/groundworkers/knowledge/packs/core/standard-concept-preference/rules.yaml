@@ -33,11 +33,9 @@ vocab_preference:
       combinations; do not replace them automatically with SNOMED.
 
   - domain: Drug
-    prefer: [RxNorm]
-    over: [RxNorm Extension]
     note: >
-      Prefer RxNorm clinical drug concepts. Use RxNorm Extension only when no
-      RxNorm concept exists for the same clinical drug at the same precision level.
+      Defer to drug-concept-granularity for Drug concept level and vocabulary
+      preference; this pack governs standardness and active-target eligibility.
 
   - domain: Measurement
     note: >

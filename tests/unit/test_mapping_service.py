@@ -12,7 +12,18 @@ from groundworkers.services.vocab import (
 
 
 class StubVocabAdapter:
-    def search_exact(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, limit=20):
+    def search_exact(
+        self,
+        query: str,
+        *,
+        domain=None,
+        vocabulary_id=None,
+        standard_only=False,
+        active_only=False,
+        include_synonyms=True,
+        parent_ids=None,
+        limit=20,
+    ):
         return [
             ConceptMatch(
                 concept={
@@ -30,7 +41,21 @@ class StubVocabAdapter:
             )
         ]
 
-    def search_normalized(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=False, normalization_profile="verbatim", parent_ids=None, remove_stop_phrases=True, limit=20, allow_unindexed_scan=False):
+    def search_normalized(
+        self,
+        query: str,
+        *,
+        domain=None,
+        vocabulary_id=None,
+        standard_only=False,
+        active_only=False,
+        include_synonyms=False,
+        normalization_profile="verbatim",
+        parent_ids=None,
+        remove_stop_phrases=True,
+        limit=20,
+        allow_unindexed_scan=False,
+    ):
         return [
             ConceptMatch(
                 concept={
@@ -63,23 +88,39 @@ class StubVocabAdapter:
             "scoped_scan" if scoped else "unindexed_scan"
         )
 
-    def search_fulltext(self, query: str, *, domain=None, vocabulary_id=None, standard_only=False, active_only=False, include_synonyms=True, parent_ids=None, min_rank=0.0, limit=20):
-        return ([
-            ConceptMatch(
-                concept={
-                    "concept_id": 103,
-                    "concept_name": "Diabetic disorder",
-                    "concept_code": "44054008",
-                    "vocabulary_id": "SNOMED",
-                    "domain_id": "Condition",
-                    "concept_class_id": "Clinical Finding",
-                    "standard_concept": False,
-                    "classification_concept": False,
-                    "is_active": True,
-                },
-                match_source="name", ts_rank=0.42,
-            )
-        ], True)
+    def search_fulltext(
+        self,
+        query: str,
+        *,
+        domain=None,
+        vocabulary_id=None,
+        standard_only=False,
+        active_only=False,
+        include_synonyms=True,
+        parent_ids=None,
+        min_rank=0.0,
+        limit=20,
+    ):
+        return (
+            [
+                ConceptMatch(
+                    concept={
+                        "concept_id": 103,
+                        "concept_name": "Diabetic disorder",
+                        "concept_code": "44054008",
+                        "vocabulary_id": "SNOMED",
+                        "domain_id": "Condition",
+                        "concept_class_id": "Clinical Finding",
+                        "standard_concept": False,
+                        "classification_concept": False,
+                        "is_active": True,
+                    },
+                    match_source="name",
+                    ts_rank=0.42,
+                )
+            ],
+            True,
+        )
 
     def navigate_to_standard(self, concept_ids: list[int]):
         return [
@@ -221,40 +262,88 @@ class StubGraphAdapter:
     def get_ancestors(self, concept_id: int, max_depth: int):
         if concept_id == 102:
             return [
-                {"concept_id": 301, "concept_name": "Diabetes mellitus", "vocabulary_id": "SNOMED", "domain_id": "Condition", "standard_concept": True, "depth": 1},
-                {"concept_id": 302, "concept_name": "Endocrine disorder", "vocabulary_id": "SNOMED", "domain_id": "Condition", "standard_concept": True, "depth": 2},
+                {
+                    "concept_id": 301,
+                    "concept_name": "Diabetes mellitus",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "standard_concept": True,
+                    "depth": 1,
+                },
+                {
+                    "concept_id": 302,
+                    "concept_name": "Endocrine disorder",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "standard_concept": True,
+                    "depth": 2,
+                },
             ]
         return []
 
     def get_descendants(self, concept_id: int, max_depth: int):
         if concept_id == 301:
             return [
-                {"concept_id": 401, "concept_name": "Child concept", "vocabulary_id": "SNOMED", "domain_id": "Condition", "standard_concept": True, "depth": 1}
+                {
+                    "concept_id": 401,
+                    "concept_name": "Child concept",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "standard_concept": True,
+                    "depth": 1,
+                }
             ]
         return []
 
     def get_edges(self, concept_id: int):
         return {
             "outbound": [
-                {"relationship_id": "Is a", "predicate_kind": "HIERARCHY", "target_concept_id": 301, "target_concept_name": "Diabetes mellitus", "valid": True}
+                {
+                    "relationship_id": "Is a",
+                    "predicate_kind": "HIERARCHY",
+                    "target_concept_id": 301,
+                    "target_concept_name": "Diabetes mellitus",
+                    "valid": True,
+                }
             ],
             "inbound": [],
         }
 
-    def get_neighbors(self, concept_id: int, max_depth: int, predicate_kinds, max_nodes: int, include_edges: bool):
+    def get_neighbors(
+        self,
+        concept_id: int,
+        max_depth: int,
+        predicate_kinds,
+        max_nodes: int,
+        include_edges: bool,
+    ):
         return {
             "concept_id": concept_id,
             "neighbor_count": 1,
             "edge_count": 0,
             "neighbors": [
-                {"concept_id": 301, "concept_name": "Diabetes mellitus", "vocabulary_id": "SNOMED", "domain_id": "Condition", "concept_class_id": "Clinical Finding", "standard_concept": True}
+                {
+                    "concept_id": 301,
+                    "concept_name": "Diabetes mellitus",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "concept_class_id": "Clinical Finding",
+                    "standard_concept": True,
+                }
             ],
             "edges": [],
             "terminated_early": False,
             "terminated_reason": None,
         }
 
-    def ground(self, query: str, limit: int, domain: str | None, vocabulary_id: str | None, parent_ids=None):
+    def ground(
+        self,
+        query: str,
+        limit: int,
+        domain: str | None,
+        vocabulary_id: str | None,
+        parent_ids=None,
+    ):
         return {
             "results": [
                 {
@@ -267,12 +356,32 @@ class StubGraphAdapter:
             "grounding_explanation": {"matched_tier": "PARTIAL"},
         }
 
-    def find_path(self, source_id: int, target_id: int, max_depth: int, within_domain: bool = True):
-        return {"found": True, "paths": [{"length": 1, "steps": [{"subject_id": source_id, "object_id": target_id, "predicate": "Is a", "predicate_kind": "HIERARCHY"}]}]}
+    def find_path(
+        self, source_id: int, target_id: int, max_depth: int, within_domain: bool = True
+    ):
+        return {
+            "found": True,
+            "paths": [
+                {
+                    "length": 1,
+                    "steps": [
+                        {
+                            "subject_id": source_id,
+                            "object_id": target_id,
+                            "predicate": "Is a",
+                            "predicate_kind": "HIERARCHY",
+                        }
+                    ],
+                }
+            ],
+        }
 
     def map_to_standard(self, vocabulary_id: str, code: str):
         if code == "44054007":
-            return {"source": self.get_concept(102), "standard_concepts": [self.get_concept(201)]}
+            return {
+                "source": self.get_concept(102),
+                "standard_concepts": [self.get_concept(201)],
+            }
         return {"source": self.get_concept(555), "standard_concepts": []}
 
     def concept_views(self, concept_ids):
@@ -301,12 +410,27 @@ class StubGraphAdapter:
 
 
 class StubEmbAdapter:
-    def search(self, query: str, limit: int, domain: str | None, vocabulary: str | None, standard_only: bool, active_only: bool, model_name: str | None):
+    def search(
+        self,
+        query: str,
+        limit: int,
+        domain: str | None,
+        vocabulary: str | None,
+        standard_only: bool,
+        active_only: bool,
+        model_name: str | None,
+    ):
         return {
             "query_text": query,
             "model_name": model_name or "demo-model",
             "results": [
-                {"concept_id": 104, "concept_name": "Diabetes", "similarity": 0.91, "is_standard": True, "is_active": True}
+                {
+                    "concept_id": 104,
+                    "concept_name": "Diabetes",
+                    "similarity": 0.91,
+                    "is_standard": True,
+                    "is_active": True,
+                }
             ],
         }
 
@@ -314,7 +438,13 @@ class StubEmbAdapter:
         return {
             "query_concept_id": concept_id,
             "model_name": model_name or "demo-model",
-            "results": [{"concept_id": 888, "concept_name": "Near neighbour", "similarity": 0.88}],
+            "results": [
+                {
+                    "concept_id": 888,
+                    "concept_name": "Near neighbour",
+                    "similarity": 0.88,
+                }
+            ],
         }
 
 
@@ -381,7 +511,9 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
 
     assert set(result["channels"]) >= {"exact", "normalized", "fulltext", "embedding"}
     assert any(row["concept_id"] == 102 for row in result["candidate_union"])
-    non_standard = next(row for row in result["candidate_union"] if row["concept_id"] == 102)
+    non_standard = next(
+        row for row in result["candidate_union"] if row["concept_id"] == 102
+    )
     assert non_standard["mapped_standard_concepts"][0]["concept_id"] == 201
     assert "ancestor_preview" in non_standard
 
@@ -408,7 +540,9 @@ def test_embedding_only_candidate_backfilled_with_identity_metadata():
 
     result = service.concept_candidate_bundle("type 2 diabetes")
 
-    emb_only = next(row for row in result["candidate_union"] if row["concept_id"] == 104)
+    emb_only = next(
+        row for row in result["candidate_union"] if row["concept_id"] == 104
+    )
     assert "embedding" in emb_only["retrieved_by"]
     assert emb_only["vocabulary_id"] == "SNOMED"
     assert emb_only["concept_code"] == "73211009"
@@ -423,7 +557,9 @@ def test_embedding_only_candidate_warns_when_graph_absent_for_backfill():
 
     result = service.concept_candidate_bundle("type 2 diabetes")
 
-    emb_only = next(row for row in result["candidate_union"] if row["concept_id"] == 104)
+    emb_only = next(
+        row for row in result["candidate_union"] if row["concept_id"] == 104
+    )
     assert emb_only["vocabulary_id"] is None
     assert any("identity metadata" in w for w in result["warnings"])
 
@@ -431,7 +567,9 @@ def test_embedding_only_candidate_warns_when_graph_absent_for_backfill():
 def test_concept_nearest_standard_ancestor_selects_nearest_standard_ancestor():
     service = build_service()
 
-    result = service.concept_nearest_standard_ancestor(query="type 2 diabetes", domain="Condition")
+    result = service.concept_nearest_standard_ancestor(
+        query="type 2 diabetes", domain="Condition"
+    )
 
     assert result["found"] is True
     assert result["selected_parent"]["concept_id"] == 301
@@ -528,50 +666,34 @@ def test_concept_shared_standard_ancestor_requires_graph():
         service.concept_shared_standard_ancestor([801, 802])
 
 
-def test_concept_relationship_neighborhood_follows_only_requested_active_edges():
+def test_concept_relationship_neighborhood_bounds_depth_and_assembles_unique_edges():
     graph = Mock()
     edge_data = {
-        801: {
-            "outbound": [
-                {
-                    "relationship_id": "Tradename of",
-                    "target_concept_id": 802,
-                    "valid": True,
-                },
-                {
-                    "relationship_id": "Has marketed form",
-                    "target_concept_id": 804,
-                    "valid": True,
-                },
-            ],
-            "inbound": [],
-        },
-        802: {
-            "outbound": [
-                {
-                    "relationship_id": "Box of",
-                    "target_concept_id": 803,
-                    "valid": True,
-                },
-                {
-                    "relationship_id": "Has quantified form",
-                    "target_concept_id": 805,
-                    "valid": False,
-                },
-            ],
-            "inbound": [],
-        },
-        803: {"outbound": [], "inbound": []},
-        804: {"outbound": [], "inbound": []},
+        801: [
+            {
+                "target_concept_id": 802,
+                "relationship_id": "Tradename of",
+                "valid": True,
+            },
+            {
+                "target_concept_id": 802,
+                "relationship_id": "Tradename of",
+                "valid": True,
+            },
+        ],
+        802: [{"target_concept_id": 803, "relationship_id": "Box of", "valid": True}],
+        803: [{"target_concept_id": 804, "relationship_id": "Box of", "valid": True}],
     }
-    graph.get_edges.side_effect = lambda concept_id: edge_data[concept_id]
-    graph.concept_views.return_value = {
-        concept_id: {"concept_id": concept_id} for concept_id in (801, 802, 803)
+    graph.get_relationship_edges.side_effect = lambda cid, relationships, limit: (
+        edge_data[cid][:limit]
+    )
+    graph.concept_views.side_effect = lambda ids, **kw: {
+        cid: {"concept_id": cid} for cid in ids
     }
     service = MappingService(StubVocabAdapter(), graph_service=graph)
 
     result = service.concept_relationship_neighborhood(
-        [801], relationship_ids=["Tradename of", "Box of"], max_depth=3
+        [801], relationship_ids=["Tradename of", "Box of"], max_depth=2
     )
 
     assert result["reached_by_seed"]["801"] == [
@@ -579,10 +701,15 @@ def test_concept_relationship_neighborhood_follows_only_requested_active_edges()
         {"concept_id": 802, "depth": 1},
         {"concept_id": 803, "depth": 2},
     ]
-    assert {edge["relationship_id"] for edge in result["edges"]} == {
-        "Tradename of",
-        "Box of",
-    }
+    assert result["nodes"] == [{"concept_id": cid} for cid in (801, 802, 803)]
+    assert result["edges"] == [
+        {"subject_id": 801, "object_id": 802, "relationship_id": "Tradename of"},
+        {"subject_id": 802, "object_id": 803, "relationship_id": "Box of"},
+    ]
+    assert result["truncated_seeds"] == []
+    assert graph.get_relationship_edges.call_count == 2
+    graph.get_relationship_edges.assert_any_call(801, ["Box of", "Tradename of"], 1001)
+    graph.get_relationship_edges.assert_any_call(802, ["Box of", "Tradename of"], 1001)
 
 
 def test_concept_relationship_neighborhood_requires_relationship_ids():
@@ -636,13 +763,33 @@ def test_mapping_evaluate_candidates_computes_summary_metrics():
 
     result = service.mapping_evaluate_candidates(
         predicted_mappings=[
-            {"source_key": "a", "predicted_standard_concept_ids": [201, 202], "domain_id": "Condition"},
-            {"source_key": "b", "predicted_standard_concept_ids": [999], "domain_id": "Condition"},
+            {
+                "source_key": "a",
+                "predicted_standard_concept_ids": [201, 202],
+                "domain_id": "Condition",
+            },
+            {
+                "source_key": "b",
+                "predicted_standard_concept_ids": [999],
+                "domain_id": "Condition",
+            },
         ],
         reference_mappings=[
-            {"source_key": "a", "reference_standard_concept_id": 201, "domain_id": "Condition"},
-            {"source_key": "b", "reference_standard_concept_id": 301, "domain_id": "Condition"},
-            {"source_key": "c", "reference_standard_concept_id": 401, "domain_id": "Condition"},
+            {
+                "source_key": "a",
+                "reference_standard_concept_id": 201,
+                "domain_id": "Condition",
+            },
+            {
+                "source_key": "b",
+                "reference_standard_concept_id": 301,
+                "domain_id": "Condition",
+            },
+            {
+                "source_key": "c",
+                "reference_standard_concept_id": 401,
+                "domain_id": "Condition",
+            },
         ],
     )
 
@@ -667,11 +814,17 @@ class _RecordingVocabAdapter(StubVocabAdapter):
         return super().search_exact(query, **kwargs)
 
     def search_normalized(self, query, *, active_only=False, parent_ids=None, **kwargs):
-        self.received["normalized"] = {"active_only": active_only, "parent_ids": parent_ids}
+        self.received["normalized"] = {
+            "active_only": active_only,
+            "parent_ids": parent_ids,
+        }
         return super().search_normalized(query, **kwargs)
 
     def search_fulltext(self, query, *, active_only=False, parent_ids=None, **kwargs):
-        self.received["fulltext"] = {"active_only": active_only, "parent_ids": parent_ids}
+        self.received["fulltext"] = {
+            "active_only": active_only,
+            "parent_ids": parent_ids,
+        }
         return super().search_fulltext(query, **kwargs)
 
     def navigate_to_standard(self, concept_ids):
@@ -692,7 +845,9 @@ def _service_with_recording_vocab(emb=None):
 def test_active_only_true_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM", active_only=True)
+    service.concept_candidate_bundle(
+        "diabetes", vocabulary_id="ICD10CM", active_only=True
+    )
 
     assert vocab.received["exact"]["active_only"] is True
     assert vocab.received["normalized"]["active_only"] is True
@@ -702,7 +857,9 @@ def test_active_only_true_propagated_to_all_lexical_channels():
 def test_active_only_false_propagated_to_all_lexical_channels():
     service, vocab = _service_with_recording_vocab(emb=StubEmbAdapter())
 
-    service.concept_candidate_bundle("diabetes", vocabulary_id="ICD10CM", active_only=False)
+    service.concept_candidate_bundle(
+        "diabetes", vocabulary_id="ICD10CM", active_only=False
+    )
 
     assert vocab.received["exact"]["active_only"] is False
     assert vocab.received["normalized"]["active_only"] is False
@@ -750,12 +907,14 @@ def test_concept_nearest_standard_ancestor_navigates_ancestors_for_exact_non_sta
     class ExactNonStandardGroundingService:
         def ground(self, query, *, limit, domain, vocabulary_id, parent_ids=None):
             return {
-                "results": [{
-                    "concept_id": 102,
-                    "concept_name": "Type 2 diabetes mellitus",
-                    "match_kind": "EXACT",
-                    "standard_concept": False,
-                }],
+                "results": [
+                    {
+                        "concept_id": 102,
+                        "concept_name": "Type 2 diabetes mellitus",
+                        "match_kind": "EXACT",
+                        "standard_concept": False,
+                    }
+                ],
                 "grounding_explanation": {"matched_tier": "EXACT"},
             }
 
@@ -791,7 +950,9 @@ def test_embedding_channel_no_parent_ids_note_when_parent_ids_absent():
 def test_candidate_bundle_constraints_reflect_active_only_and_parent_ids():
     service, _ = _service_with_recording_vocab()
 
-    result = service.concept_candidate_bundle("diabetes", active_only=True, parent_ids=[301, 302])
+    result = service.concept_candidate_bundle(
+        "diabetes", active_only=True, parent_ids=[301, 302]
+    )
 
     constraints = result["constraints"]
     assert constraints["active_only"] is True
@@ -895,7 +1056,9 @@ def test_candidate_bundle_omits_the_normalized_channel_when_it_would_scan():
     result = service.concept_candidate_bundle("diabetes")
 
     assert "normalized" not in result["channels"]
-    assert any("normalized channel omitted" in warning for warning in result["warnings"])
+    assert any(
+        "normalized channel omitted" in warning for warning in result["warnings"]
+    )
 
 
 def test_candidate_bundle_keeps_the_normalized_channel_when_a_vocabulary_bounds_it():
@@ -904,7 +1067,9 @@ def test_candidate_bundle_keeps_the_normalized_channel_when_a_vocabulary_bounds_
     result = service.concept_candidate_bundle("diabetes", vocabulary_id="SNOMED")
 
     assert result["channels"]["normalized"]["available"] is True
-    assert not any("normalized channel omitted" in warning for warning in result["warnings"])
+    assert not any(
+        "normalized channel omitted" in warning for warning in result["warnings"]
+    )
 
 
 def test_candidate_bundle_keeps_a_failed_timeout_channel_as_unavailable():
@@ -920,4 +1085,115 @@ def test_candidate_bundle_keeps_a_failed_timeout_channel_as_unavailable():
     assert result["channels"]["normalized"]["retrieval_notes"] == [
         "normalized scan timed out"
     ]
-    assert any("normalized channel timed out" in warning for warning in result["warnings"])
+    assert any(
+        "normalized channel timed out" in warning for warning in result["warnings"]
+    )
+
+
+def test_relationship_neighborhood_bounds_edges_and_reports_truncation():
+    graph = Mock()
+    graph.get_relationship_edges.side_effect = lambda cid, relationships, limit: [
+        {"target_concept_id": n, "relationship_id": "Box of", "valid": True}
+        for n in range(2, 1002)
+    ][:limit]
+    graph.concept_views.side_effect = lambda ids, **kw: {
+        cid: {"concept_id": cid} for cid in ids
+    }
+    result = MappingService(
+        StubVocabAdapter(), graph_service=graph
+    ).concept_relationship_neighborhood(
+        [1], relationship_ids=["Box of"], max_depth=1, max_nodes=10
+    )
+    assert len(result["nodes"]) == 10
+    assert len(result["edges"]) == 9
+    assert result["truncated_seeds"] == [1]
+    assert {node["concept_id"] for node in result["nodes"]} == set(range(1, 11))
+    assert graph.concept_views.call_count == 1
+
+
+def test_relationship_neighborhood_rejects_incomplete_metadata():
+    graph = Mock()
+    graph.get_relationship_edges.return_value = []
+    graph.concept_views.return_value = {}
+    with pytest.raises(GroundworkersError, match="metadata is incomplete"):
+        MappingService(
+            StubVocabAdapter(), graph_service=graph
+        ).concept_relationship_neighborhood([1], relationship_ids=["Box of"])
+
+
+@pytest.mark.parametrize("seeds", [[1, 20], [20, 1]])
+def test_relationship_neighborhood_gives_each_seed_its_own_edge_budget(seeds):
+    graph = Mock()
+    # Dense edges among ten nodes exhaust the 50-edge budget without hitting the node cap.
+    edge_data = {
+        cid: [
+            {"target_concept_id": target, "relationship_id": "Box of", "valid": True}
+            for target in range(1, 7)
+        ]
+        for cid in range(1, 10)
+    }
+    edge_data[1] = [
+        {"target_concept_id": target, "relationship_id": "Box of", "valid": True}
+        for target in range(2, 11)
+    ]
+    edge_data[20] = [
+        {"target_concept_id": 21, "relationship_id": "Box of", "valid": True}
+    ]
+    graph.get_relationship_edges.side_effect = lambda cid, relationships, limit: (
+        edge_data.get(cid, [])[:limit]
+    )
+    graph.concept_views.side_effect = lambda ids, **kw: {
+        cid: {"concept_id": cid} for cid in ids
+    }
+    service = MappingService(StubVocabAdapter(), graph_service=graph)
+
+    result = service.concept_relationship_neighborhood(
+        seeds, relationship_ids=["Box of"], max_depth=2, max_nodes=10
+    )
+    reverse = service.concept_relationship_neighborhood(
+        seeds[::-1], relationship_ids=["Box of"], max_depth=2, max_nodes=10
+    )
+
+    assert result["truncated_seeds"] == reverse["truncated_seeds"] == [1]
+    assert result["nodes"] == reverse["nodes"]
+    assert result["reached_by_seed"] == reverse["reached_by_seed"]
+    assert {tuple(sorted(edge.items())) for edge in result["edges"]} == {
+        tuple(sorted(edge.items())) for edge in reverse["edges"]
+    }
+    assert len(result["edges"]) == result["max_edges"] + 1 == 51
+    assert {"subject_id": 20, "object_id": 21, "relationship_id": "Box of"} in result[
+        "edges"
+    ]
+
+
+def test_relationship_neighborhood_reuses_fetches_and_merges_overlapping_walks():
+    graph = Mock()
+    edge_data = {
+        1: [{"target_concept_id": 2, "relationship_id": "Box of", "valid": True}],
+        2: [{"target_concept_id": 3, "relationship_id": "Box of", "valid": True}],
+    }
+    graph.get_relationship_edges.side_effect = lambda cid, relationships, limit: (
+        edge_data.get(cid, [])[:limit]
+    )
+    graph.concept_views.side_effect = lambda ids, **kw: {
+        cid: {"concept_id": cid} for cid in ids
+    }
+
+    result = MappingService(
+        StubVocabAdapter(), graph_service=graph
+    ).concept_relationship_neighborhood(
+        [1, 2], relationship_ids=["Box of"], max_depth=2, max_nodes=10
+    )
+
+    assert result["nodes"] == [{"concept_id": cid} for cid in (1, 2, 3)]
+    assert result["edges"] == [
+        {"subject_id": 1, "object_id": 2, "relationship_id": "Box of"},
+        {"subject_id": 2, "object_id": 3, "relationship_id": "Box of"},
+    ]
+    assert result["reached_by_seed"]["2"] == [
+        {"concept_id": 2, "depth": 0},
+        {"concept_id": 3, "depth": 1},
+    ]
+    assert result["truncated_seeds"] == []
+    assert graph.get_relationship_edges.call_count == 3
+    graph.get_relationship_edges.assert_any_call(2, ["Box of"], 51)
