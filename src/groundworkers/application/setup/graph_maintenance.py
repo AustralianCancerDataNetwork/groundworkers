@@ -25,6 +25,7 @@ from groundworkers.application.setup.models import (
     ConnectionResult,
     DiagnosticSeverity,
 )
+from groundworkers.base.database import validate_duckdb_cdm_paths
 from groundworkers.config import GroundworkersConfig
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "cdm_is_duckdb",
     "outstanding_remediations",
     "start_graph_remediation_run",
+    "validate_graph_preparation_paths",
 ]
 
 # The two files required when an operator chooses a custom classification directory.
@@ -109,6 +111,16 @@ def cdm_is_duckdb(stack: StackConfig | None) -> bool:
         connection.dialect_name == "duckdb"
         for connection in (database.connection, database.vocab_connection)
     )
+
+
+def validate_graph_preparation_paths(stack: StackConfig | None) -> None:
+    """Validate CDM filenames before an upstream maintenance CLI can open a writer."""
+    if stack is None:
+        raise ValueError("Configure the CDM database before preparing the graph.")
+    config = GroundworkersConfig.validate_candidate(stack)
+    cdm = Resolver(stack).resolve_database(config.cdm_db)
+    if isinstance(cdm, ResolvedCDMDatabase):
+        validate_duckdb_cdm_paths(cdm)
 
 
 def outstanding_remediations(

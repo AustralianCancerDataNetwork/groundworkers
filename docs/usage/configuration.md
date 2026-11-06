@@ -73,7 +73,7 @@ required [installation extras](installation.md#optional-extras) for your storage
 
 For a DuckDB CDM, the primary and vocabulary roles must use the same existing file. If you enable embeddings, select a separate DuckDBVSS file. Serving and readiness checks open these files read-only. Missing CDM or embedding files stop service startup without creating a database. The setup console can initialize a new embedding file and populate it through explicit preparation actions.
 
-Use absolute paths rather than `~` aliases. Relative paths resolve against the server process's working directory. The setup console accepts the CDM as an existing file and offers separate embedding storage; add that connection before selecting it. A new embedding file must have an existing parent directory. Leave schemas blank for files built in their default schema.
+DuckDB `database_name` values must be absolute file paths. Relative paths and `~` aliases are rejected, so launching from a different directory cannot select a different database. The setup console accepts the CDM as an existing file and offers separate embedding storage; add that connection before selecting it. A new embedding file must have an existing parent directory. Leave schemas blank for files built in their default schema.
 
 Copy the [DuckDB configuration example](https://github.com/AustralianCancerDataNetwork/groundworkers/blob/main/config/groundworkers.duckdb.example.toml) and replace the paths and model metadata with those supplied with your files. It defines both connections, a CDM database, a generic embedding database, a `duckdbvss` store, and the `[tools.groundworkers]` references that select them. Read-only access is enforced by the runtime; no connection `read_only` TOML field is needed.
 

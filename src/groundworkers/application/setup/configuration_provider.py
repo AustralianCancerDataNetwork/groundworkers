@@ -68,6 +68,7 @@ from groundworkers.application.setup.models import (
     EmbeddingStoreSnapshot,
     EmbeddingStoreState,
 )
+from groundworkers.base.database import duckdb_file_path, same_database_file
 from groundworkers.base.errors import scrub_error_message
 from groundworkers.config import GroundworkersConfig
 
@@ -674,6 +675,13 @@ class GroundworkersConfigMutationService:
                             field_key="database_name",
                         )
                     )
+                elif sqlite_path and dialect == "duckdb" and not Path(sqlite_path).is_absolute():
+                    issues.append(
+                        ValidationIssue(
+                            "Use an absolute CDM file path without ~.",
+                            field_key="database_name",
+                        )
+                    )
                 elif sqlite_path and not _existing_sqlite_path(
                     sqlite_path,
                     stack=session.base,
@@ -1044,7 +1052,7 @@ def _cdm_fields(stack: StackConfig) -> tuple[FieldSpec, ...]:
             default=getattr(connection, "database_name", None),
             help=(
                 "Enter the PostgreSQL database containing populated OMOP vocabulary tables. "
-                "For SQLite or DuckDB, select an existing CDM file."
+                "For SQLite or DuckDB, select an existing CDM file. DuckDB requires an absolute path without ~."
             ),
         ),
         FieldSpec(
@@ -1301,30 +1309,28 @@ def _duckdb_store_issues(
             )
         ]
     _, cdm = _cdm_entry(stack)
-    path = Path(connection.database_name or "").expanduser().resolve()
-    if cdm is not None and any(
-        other is not None
-        and other.dialect == "duckdb"
-        and path == Path(other.database_name or "").expanduser().resolve()
-        for name in (cdm.connection, cdm.vocab_connection)
-        for other in (stack.connections.get(name),)
-    ):
+    try:
+        path = duckdb_file_path(connection.database_name)
+        cdm_paths = (
+            [
+                duckdb_file_path(other.database_name)
+                for name in (cdm.connection, cdm.vocab_connection)
+                for other in (stack.connections.get(name),)
+                if other is not None and other.dialect == "duckdb"
+            ]
+            if cdm is not None
+            else []
+        )
+    except ConfigurationError as exc:
+        return [ValidationIssue(str(exc), field_key="store_connection_name")]
+    if any(same_database_file(path, other) for other in cdm_paths):
         return [
             ValidationIssue(
                 "The embedding file must be separate from the CDM file.",
                 field_key="store_connection_name",
             )
         ]
-    # Match the reader's literal path lookup; '~' is not expanded at runtime.
-    filename = connection.database_name or ""
-    candidate = Path(filename)
-    if (
-        not filename
-        or filename == ":memory:"
-        or filename.startswith("~")
-        or (candidate.exists() and not candidate.is_file())
-        or not candidate.parent.is_dir()
-    ):
+    if (path.exists() and not path.is_file()) or not path.parent.is_dir():
         return [
             ValidationIssue(
                 "Choose a regular DuckDB embedding file or a new file in an existing directory; use an absolute path without ~.",

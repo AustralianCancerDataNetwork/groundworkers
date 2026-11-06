@@ -734,3 +734,23 @@ def test_custom_prefixes_are_only_asked_for_when_chosen(tmp_path: Path) -> None:
 
     model = load_stack_config(path).models["embedding_model"]
     assert (model.document_prefix, model.query_prefix) == ("index: ", "ask: ")
+
+
+@pytest.mark.parametrize("path_form", ["relative", "tilde"])
+def test_duckdb_cdm_setup_requires_an_absolute_path(tmp_path, monkeypatch, path_form):
+    file = tmp_path / "cdm.duckdb"
+    file.touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = tmp_path / "config.toml"
+    controller = ConfigWizardController(
+        cdm_setup_workflow(MutationOperation.CREATE),
+        GroundworkersConfigMutationService(config),
+    )
+    controller.start()
+    assert not controller.submit({"connection_name": "cdm", "dialect": "duckdb"}).issues
+    filename = "~/cdm.duckdb" if path_form == "tilde" else "cdm.duckdb"
+    result = controller.submit({"database_name": filename})
+    assert [issue.field_key for issue in result.issues] == ["database_name"]
+    assert "absolute" in result.issues[0].message
+    assert not config.exists()

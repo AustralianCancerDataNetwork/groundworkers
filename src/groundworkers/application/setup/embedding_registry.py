@@ -19,6 +19,7 @@ from groundworkers.application.setup.models import (
     EmbeddingStoreState,
     RegisteredEmbeddingModel,
 )
+from groundworkers.base.database import validate_duckdb_embedding_file
 from groundworkers.config import GroundworkersConfig
 
 __all__ = ["RegistryLister", "list_registered_models"]
@@ -56,6 +57,7 @@ setup has been run.
     try:
         from omop_emb.backends import open_vector_store_reader
 
+        validate_duckdb_embedding_file(resolved)
         store = open_vector_store_reader(resolved)
         records = store.get_registered_models()
         models_list = []

@@ -8,6 +8,30 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import NoSuchModuleError
 
 
+def duckdb_file_path(database: str | None) -> Path:
+    """Use the configured absolute filename without resolving a relative base."""
+    if not database or not Path(database).is_absolute():
+        raise ConfigurationError(
+            f"DuckDB database file paths must be absolute, not {database!r}. "
+            "Set database_name to the full file path without ~."
+        )
+    return Path(database)
+
+
+def same_database_file(first: Path, second: Path) -> bool:
+    """Compare file identity, retaining path equality for a not-yet-created file."""
+    return first.resolve() == second.resolve() or (
+        first.is_file() and second.is_file() and first.samefile(second)
+    )
+
+
+def validate_duckdb_cdm_paths(resolved: ResolvedCDMDatabase) -> None:
+    """Require absolute filenames for both configured DuckDB CDM roles."""
+    for connection in (resolved.connection, resolved.vocab_connection):
+        if connection.dialect_name == "duckdb":
+            duckdb_file_path(make_url(connection.url).database)
+
+
 def validate_duckdb_embedding_file(
     store: ResolvedVectorStore,
     *,
@@ -22,9 +46,7 @@ def validate_duckdb_embedding_file(
         raise ConfigurationError(
             f"DuckDB embeddings require an existing regular file, not {database!r}."
         )
-    # Match the upstream reader's literal path lookup. Expanding '~' only here
-    # would validate a file that the reader then replaces with an empty store.
-    path = Path(database).resolve()
+    path = duckdb_file_path(database)
     if not path.is_file() and not (
         allow_create and not path.exists() and path.parent.is_dir()
     ):
@@ -33,7 +55,9 @@ def validate_duckdb_embedding_file(
         )
     if cdm is not None and any(
         connection.dialect_name == "duckdb"
-        and Path(make_url(connection.url).database or "").expanduser().resolve() == path
+        and same_database_file(
+            duckdb_file_path(make_url(connection.url).database), path
+        )
         for connection in (cdm.connection, cdm.vocab_connection)
     ):
         raise ConfigurationError(
@@ -62,6 +86,7 @@ def create_runtime_cdm_engines(resolved: ResolvedCDMDatabase) -> tuple[Engine, E
         raise ValueError(
             "DuckDB serving requires primary and vocabulary roles in one file."
         )
+    validate_duckdb_cdm_paths(resolved)
     try:
         return resolved.create_engines(
             register_claims=False, connect_args={"read_only": True}

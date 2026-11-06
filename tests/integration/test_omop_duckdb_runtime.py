@@ -371,7 +371,7 @@ def test_duckdb_missing_cdm_does_not_create_a_file(duckdb_stack, tmp_path):
     assert not path.exists()
 
 
-@pytest.mark.parametrize("alias", ["absolute", "relative", "tilde", "symlink"])
+@pytest.mark.parametrize("alias", ["absolute", "relative", "tilde", "symlink", "hardlink"])
 def test_duckdb_rejects_colocated_embedding_file(
     duckdb_stack, tmp_path, monkeypatch, alias
 ):
@@ -379,9 +379,12 @@ def test_duckdb_rejects_colocated_embedding_file(
     path = Path(stack.connections["cdm"].database_name)
     monkeypatch.chdir(path.parent)
     monkeypatch.setenv("HOME", str(path.parent))
-    if alias == "symlink":
+    if alias in {"symlink", "hardlink"}:
         linked = tmp_path / "alias.duckdb"
-        linked.symlink_to(path)
+        if alias == "hardlink":
+            linked.hardlink_to(path)
+        else:
+            linked.symlink_to(path)
         database_name = str(linked)
     else:
         database_name = {
@@ -391,8 +394,8 @@ def test_duckdb_rejects_colocated_embedding_file(
         }[alias]
     stack.connections["emb"].database_name = database_name
     message = (
-        "missing or is not a regular file"
-        if alias == "tilde"
+        "must be absolute"
+        if alias in {"tilde", "relative"}
         else "separate file"
     )
     with pytest.raises(ConfigurationError, match=message):
@@ -404,7 +407,7 @@ def test_duckdb_rejects_unsupported_cdm_topologies(duckdb_stack, tmp_path, topol
     stack = duckdb_stack.model_copy(deep=True)
     if topology == "memory":
         stack.connections["cdm"].database_name = ":memory:"
-        message = "existing CDM file"
+        message = "must be absolute"
     else:
         stack.connections["other"] = ConnectionConfig(
             dialect="sqlite" if topology == "mixed_dialect" else "duckdb",
@@ -412,7 +415,8 @@ def test_duckdb_rejects_unsupported_cdm_topologies(duckdb_stack, tmp_path, topol
         )
         stack.databases["cdm"].vocab_connection = "other"
         message = "primary and vocabulary roles in one file"
-    with pytest.raises(DatabaseUnavailableError, match=message):
+    exception = ConfigurationError if topology == "memory" else DatabaseUnavailableError
+    with pytest.raises(exception, match=message):
         build_app_config_from_stack(stack)
 
 
@@ -485,15 +489,26 @@ def test_duckdb_initialization_refuses_active_reader_then_succeeds(preparation_c
     assert initialize_embedding_store(snapshot).reachable
 
 
+@pytest.mark.parametrize("alias", ["same_connection", "symlink", "hardlink"])
 def test_duckdb_initialization_rejects_colocated_store_without_opening_writer(
-    duckdb_stack, tmp_path
+    duckdb_stack, tmp_path, alias
 ):
     from groundworkers.application.setup.embedding_setup import (
         initialize_embedding_store,
     )
 
     stack = duckdb_stack.model_copy(deep=True)
-    stack.databases["emb"].connection = "cdm"
+    cdm_path = Path(stack.connections["cdm"].database_name)
+    before = cdm_path.read_bytes()
+    if alias == "same_connection":
+        stack.databases["emb"].connection = "cdm"
+    else:
+        linked = tmp_path / "alias.duckdb"
+        if alias == "hardlink":
+            linked.hardlink_to(cdm_path)
+        else:
+            linked.symlink_to(cdm_path)
+        stack.connections["emb"].database_name = str(linked)
     path = tmp_path / "colocated.toml"
     save_stack_config(stack, path)
     initializer = Mock(side_effect=AssertionError("must not open a writer"))
@@ -502,6 +517,7 @@ def test_duckdb_initialization_rejects_colocated_store_without_opening_writer(
     )
     assert not result.reachable
     initializer.assert_not_called()
+    assert cdm_path.read_bytes() == before
 
 
 def test_duckdb_setup_can_launch_classification_and_population(
@@ -650,7 +666,7 @@ def test_duckdb_missing_embedding_file_is_reported_without_creation(
     )
     with pytest.raises(ConfigurationError) as raised:
         build_app_config_from_stack(stack)
-    assert (":memory:" if target == "memory" else str(path)) in str(raised.value)
+    assert stack.connections["emb"].database_name in str(raised.value)
     construct_engines.assert_not_called()
     if target != "directory":
         assert not path.exists()
@@ -754,3 +770,65 @@ def test_plugin_readiness_releases_host_files_before_preparation(
             )
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("role", ["cdm", "emb"])
+@pytest.mark.parametrize("path_form", ["relative", "tilde"])
+def test_preparation_rejects_nonabsolute_paths_before_opening_writer(
+    preparation_config, monkeypatch, role, path_form
+):
+    from oa_configurator import load_stack_config
+
+    from groundworkers.application.setup.embedding_setup import (
+        initialize_embedding_store,
+    )
+    from groundworkers.tui.state import SetupSession
+    from groundworkers.tui.wizards.graph_maintenance import (
+        GraphMaintenanceWizardController,
+    )
+
+    stack = load_stack_config(preparation_config)
+    absolute = Path(stack.connections[role].database_name)
+    monkeypatch.chdir(absolute.parent)
+    monkeypatch.setenv("HOME", str(absolute.parent))
+    stack.connections[role].database_name = (
+        "~/" if path_form == "tilde" else ""
+    ) + absolute.name
+    save_stack_config(stack, preparation_config)
+    initializer = Mock(side_effect=AssertionError("must not open a writer"))
+    result = initialize_embedding_store(
+        load_configuration(config_path=preparation_config), initializer=initializer
+    )
+    assert not result.reachable
+    initializer.assert_not_called()
+    if role == "cdm":
+        launch = Mock(side_effect=AssertionError("must not launch a command"))
+        monkeypatch.setattr(
+            "groundworkers.tui.wizards.graph_maintenance.start_graph_remediation_run",
+            launch,
+        )
+        controller = GraphMaintenanceWizardController(
+            SetupSession(config_path=preparation_config), None
+        )
+        controller.submit({"load_relationship_classification": True})
+        result = controller.apply()
+        assert result.status.value == "failed"
+        assert "absolute" in result.detail
+        launch.assert_not_called()
+
+
+@pytest.mark.parametrize("path_form", ["relative", "tilde"])
+def test_duckdb_serving_requires_absolute_cdm_paths_without_embeddings(
+    duckdb_stack, monkeypatch, path_form
+):
+    stack = duckdb_stack.model_copy(deep=True)
+    cdm = Path(stack.connections["cdm"].database_name)
+    monkeypatch.chdir(cdm.parent)
+    monkeypatch.setenv("HOME", str(cdm.parent))
+    stack.tools["groundworkers"].pop("vector_store_name")
+    stack.tools["groundworkers"].pop("embedding_model_name")
+    stack.connections["cdm"].database_name = (
+        "~/" if path_form == "tilde" else ""
+    ) + cdm.name
+    with pytest.raises(DatabaseUnavailableError, match="must be absolute"):
+        build_app_config_from_stack(stack)

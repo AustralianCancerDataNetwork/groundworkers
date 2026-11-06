@@ -30,6 +30,7 @@ from groundworkers.application.setup.models import (
 )
 from groundworkers.base.database import (
     create_runtime_cdm_engines,
+    duckdb_file_path,
     validate_duckdb_embedding_file,
 )
 from groundworkers.base.errors import embedding_store_error
@@ -179,6 +180,8 @@ def build_embedding_population_command(
 ) -> Command:
     """Build the omop-emb command used to populate missing concept embeddings."""
 
+    if configuration.backend == "duckdbvss":
+        duckdb_file_path(configuration.database_path)
     executable = shutil.which("omop-emb") or "omop-emb"
     argv: list[str] = [
         executable,

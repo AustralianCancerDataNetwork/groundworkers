@@ -30,6 +30,7 @@ from groundworkers.application.setup.graph_maintenance import (
     cdm_is_duckdb,
     outstanding_remediations,
     start_graph_remediation_run,
+    validate_graph_preparation_paths,
 )
 from groundworkers.application.setup.models import ConnectionResult
 from groundworkers.tui.routes import SETUP_ROUTE
@@ -110,6 +111,7 @@ class GraphMaintenanceWizardController:
 
     def apply(self) -> WizardResult:
         try:
+            validate_graph_preparation_paths(self._session.configuration.stack)
             commands = build_graph_remediation_commands(
                 self._request(), config_path=self._session.configuration.path
             )

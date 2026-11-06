@@ -217,7 +217,7 @@ def test_the_backend_choice_is_carried_through(tmp_path: Path) -> None:
     assert stack.vector_stores["embeddings"].backend_type == "pgvector"
 
 
-@pytest.mark.parametrize("alias", ["relative", "tilde", "symlink", "separate"])
+@pytest.mark.parametrize("alias", ["relative", "tilde", "symlink", "hardlink", "separate"])
 def test_duckdb_store_setup_compares_physical_files(
     tmp_path: Path, monkeypatch, alias
 ) -> None:
@@ -225,9 +225,12 @@ def test_duckdb_store_setup_compares_physical_files(
     cdm_path.touch()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
-    if alias == "symlink":
+    if alias in {"symlink", "hardlink"}:
         linked = tmp_path / "alias.duckdb"
-        linked.symlink_to(cdm_path)
+        if alias == "hardlink":
+            linked.hardlink_to(cdm_path)
+        else:
+            linked.symlink_to(cdm_path)
         store_path = str(linked)
     else:
         store_path = {
@@ -263,7 +266,9 @@ def test_duckdb_store_setup_compares_physical_files(
         assert result.snapshot.can_apply
     else:
         assert [issue.field_key for issue in result.issues] == ["store_connection_name"]
-        assert "separate from the CDM" in result.issues[0].message
+        assert (
+            "absolute" if alias in {"relative", "tilde"} else "separate from the CDM"
+        ) in result.issues[0].message
         assert not result.snapshot.can_apply
 
 
@@ -312,7 +317,9 @@ def test_duckdb_store_setup_rejects_invalid_file_targets(
         {"store_database_name": "emb", "store_connection_name": "emb"}
     )
     assert [issue.field_key for issue in result.issues] == ["store_connection_name"]
-    assert "existing" in result.issues[0].message
+    assert (
+        "absolute" if target in {"memory", "home_alias"} else "existing"
+    ) in result.issues[0].message
     assert not result.snapshot.can_apply
     assert path.read_bytes() == before
     assert target in {"directory", "home_alias"} or not embedding.exists()

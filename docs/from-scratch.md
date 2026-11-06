@@ -77,7 +77,7 @@ For DuckDB, **Graph → Prepare graph** can load relationship classification. St
 
 Embedding search needs a named embedding model, a named vector store, and vectors for the concepts you want to search. The query model must be compatible with the stored vectors.
 
-For a prebuilt DuckDBVSS store, configure its separate file and matching model, then check registration and coverage. To prepare a new DuckDBVSS store, select a separate file in an existing directory and follow the steps below. Stop services and close other readers using the embedding file before initialization. Population also opens the CDM file, so close its readers too. Prepare [offline dependencies](usage/installation.md#prepare-an-offline-deployment) before disconnecting from the network.
+For DuckDB CDM and embedding connections, enter absolute file paths in `database_name`; relative paths and `~` aliases are rejected. For a prebuilt DuckDBVSS store, configure its separate file and matching model, then check registration and coverage. To prepare a new DuckDBVSS store, select a separate file in an existing directory and follow the steps below. Stop services and close other readers using the embedding file before initialization. Population also opens the CDM file, so close its readers too. Prepare [offline dependencies](usage/installation.md#prepare-an-offline-deployment) before disconnecting from the network.
 
 For stores you are preparing through the console:
 

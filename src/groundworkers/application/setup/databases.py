@@ -44,7 +44,11 @@ from groundworkers.application.setup.models import (
     DiagnosticSeverity,
     ResourceDiagnostic,
 )
-from groundworkers.base.database import create_runtime_cdm_engines
+from groundworkers.base.database import (
+    create_runtime_cdm_engines,
+    duckdb_file_path,
+    validate_duckdb_embedding_file,
+)
 from groundworkers.base.errors import embedding_store_error
 from groundworkers.base.sql import (
     normalization_key_expression_sql,
@@ -224,6 +228,12 @@ def verify_database_target(
     started = clock()
     try:
         if engine_factory is create_engine and target.connection_url.startswith("duckdb:"):
+            if target.resolved_vector_store is not None:
+                validate_duckdb_embedding_file(target.resolved_vector_store)
+            else:
+                from sqlalchemy.engine import make_url
+
+                duckdb_file_path(make_url(target.connection_url).database)
             engine = create_engine(target.connection_url, connect_args={"read_only": True})
         else:
             engine = engine_factory(target.connection_url)
