@@ -41,7 +41,12 @@ def main() -> None:
         )
 
         stack = StackConfig(
-            connections={"file": ConnectionConfig(dialect="duckdb", database_name="missing.duckdb")},
+            connections={
+                "file": ConnectionConfig(
+                    dialect="duckdb",
+                    database_name=str(Path("missing.duckdb").resolve()),
+                )
+            },
             databases={"cdm": CDMDatabaseConfig(connection="file")},
             tools={"groundworkers": {"cdm_db": "cdm"}},
         )
