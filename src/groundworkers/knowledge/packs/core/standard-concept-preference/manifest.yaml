@@ -1,6 +1,6 @@
 name: standard-concept-preference
 layer: core
-version: "1.2"
+version: "1.1"
 shareability: public
 scope_summary: >
   Rules for selecting standard concepts as mapping targets: standard_concept='S'
