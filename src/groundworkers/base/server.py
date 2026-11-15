@@ -17,6 +17,7 @@ from groundworkers.base.errors import (
     internal_error_response,
     scrub_error_message,
 )
+from groundworkers.server_instructions import build_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,20 @@ class GroundworkersMCPServer:
     def call_prompt(self, name: str, **kwargs: Any) -> Any:
         return self._prompts[name].func(**kwargs)
 
+    @property
+    def instructions(self) -> str | None:
+        # Resolve against the final tool registry, including late plugin registration.
+        text, _ = build_instructions(self._tools)
+        return text
+
+    def describe_instructions(self) -> dict[str, Any]:
+        text, sections = build_instructions(self._tools)
+        return {
+            "present": text is not None,
+            "chars": len(text) if text is not None else 0,
+            "sections": list(sections),
+        }
+
     def describe_tools(self) -> dict[str, dict[str, Any]]:
         description: dict[str, dict[str, Any]] = {}
         for name, func in self._tools.items():
@@ -241,6 +256,7 @@ class GroundworkersMCPServer:
         # alive for the process lifetime.
         app = FastMCP(
             self.name,
+            instructions=self.instructions,
             host=host,
             port=port,
             json_response=transport == "streamable-http",
@@ -381,7 +397,9 @@ def _normalise_tool_result(
 
 
 def _advertise_tool_signature(
-    func: Callable[..., Any], guarded: Callable[..., Any], result_model: type[BaseModel] | None,
+    func: Callable[..., Any],
+    guarded: Callable[..., Any],
+    result_model: type[BaseModel] | None,
 ) -> None:
     # wraps preserves annotation strings, but FastMCP evaluates them in
     # this wrapper's globals. Resolve Annotated aliases in the original

@@ -113,9 +113,7 @@ def test_embedding_store_is_resolved_lazily_and_shared(monkeypatch, tmp_path: Pa
         calls.append(resolved_store)
         return backend
 
-    monkeypatch.setattr(
-        "omop_emb.backends.open_vector_store_reader", resolve
-    )
+    monkeypatch.setattr("omop_emb.backends.open_vector_store_reader", resolve)
 
     adapters = build_adapters(config)
 
@@ -160,6 +158,7 @@ def test_streamable_http_transport_runs_in_stateless_json_mode(
         "port": 18080,
         "json_response": True,
         "stateless_http": True,
+        "instructions": None,
     }
 
 
@@ -195,6 +194,7 @@ def test_stdio_transport_runs_without_json_responses(monkeypatch: pytest.MonkeyP
         "port": 18080,
         "json_response": False,
         "stateless_http": True,
+        "instructions": None,
     }
 
 
@@ -212,7 +212,9 @@ def test_fastmcp_preserves_native_async_tool_invocation(
     server = GroundworkersMCPServer("groundworkers-test")
 
     @server.tool("embedding_encode")
-    async def embedding_encode(text: str, model_name: str | None = None) -> dict[str, Any]:
+    async def embedding_encode(
+        text: str, model_name: str | None = None
+    ) -> dict[str, Any]:
         invocation_loops.append(asyncio.get_running_loop())
         assert threading.get_ident() == caller_thread
         return {"text": text, "model_name": model_name}
@@ -520,7 +522,9 @@ def test_logging_is_configured_before_the_stack_is_loaded(
 
     monkeypatch.setattr(
         "groundworkers.config.GroundworkersConfig.configure_logging",
-        classmethod(lambda cls, config=None, *, verbosity=0, **kw: configured.append(verbosity)),
+        classmethod(
+            lambda cls, config=None, *, verbosity=0, **kw: configured.append(verbosity)
+        ),
     )
     monkeypatch.setattr("groundworkers.server.build_app_config", fail_to_load)
 
@@ -541,12 +545,16 @@ def test_logging_reapplies_with_the_stack_once_loaded(
         "groundworkers.config.GroundworkersConfig.configure_logging",
         classmethod(lambda cls, cfg=None, *, verbosity=0, **kw: calls.append(cfg)),
     )
-    monkeypatch.setattr("groundworkers.server.build_app_config", lambda *, config_path=None: config)
+    monkeypatch.setattr(
+        "groundworkers.server.build_app_config", lambda *, config_path=None: config
+    )
     monkeypatch.setattr(
         "groundworkers.server.build_application",
         lambda cfg: SimpleNamespace(plugins={}, plugin_issues={}),
     )
-    monkeypatch.setattr("groundworkers.server.create_server", lambda cfg, app: _DescribeStub())
+    monkeypatch.setattr(
+        "groundworkers.server.create_server", lambda cfg, app: _DescribeStub()
+    )
 
     main(["--describe"])
 
@@ -554,6 +562,9 @@ def test_logging_reapplies_with_the_stack_once_loaded(
 
 
 class _DescribeStub:
+    def describe_instructions(self):
+        return {"present": False, "chars": 0, "sections": []}
+
     def describe_tools(self):
         return []
 

@@ -74,6 +74,38 @@ def test_diff_reports_added_removed_and_changed_tools():
     assert any(line.startswith("~ tool kept: description") for line in lines)
 
 
+def test_surface_diff_detects_changed_instructions_even_at_the_same_length():
+    old = surface_document([], [], [], [], instructions="before")
+    new = surface_document([], [], [], [], instructions="after!")
+
+    assert diff_surfaces(old, new) == ["~ server instructions"]
+
+
+@pytest.mark.parametrize(
+    ("tool_chars", "instructions_chars", "expected"),
+    [
+        (100, 1050, None),
+        (101, 952, "Model-visible tool surface"),
+        (100, 1051, "Server instructions"),
+    ],
+)
+def test_instruction_budget_is_separate_from_the_tool_budget(
+    tool_chars, instructions_chars, expected
+):
+    document = {
+        "summary": {
+            "model_visible_tool_chars": tool_chars,
+            "instructions_chars": instructions_chars,
+        }
+    }
+    budget = {"max_model_visible_tool_chars": 100, "max_instructions_chars": 1050}
+    violation = budget_violation(document, budget)
+    if expected is None:
+        assert violation is None
+    else:
+        assert violation is not None and violation.startswith(expected)
+
+
 @pytest.mark.parametrize(
     "tool_name",
     (

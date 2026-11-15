@@ -30,7 +30,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import patch
 
 SCHEMA = "groundworkers.agent-surface/v1"
@@ -103,6 +103,8 @@ def surface_document(
     prompts: list[dict[str, Any]],
     resources: list[dict[str, Any]],
     resource_templates: list[dict[str, Any]],
+    *,
+    instructions: str | None = None,
 ) -> dict[str, Any]:
     tools = sorted(tools, key=lambda t: t["name"])
     per_tool = {t["name"]: tool_metrics(t) for t in tools}
@@ -110,7 +112,9 @@ def surface_document(
     visible_chars = sum(m["model_visible_chars"] for m in per_tool.values())
     return {
         "schema": SCHEMA,
+        "instructions": instructions,
         "summary": {
+            "instructions_chars": len(instructions) if instructions is not None else 0,
             "tools": len(tools),
             "prompts": len(prompts),
             "resources": len(resources) + len(resource_templates),
@@ -148,25 +152,50 @@ def _dump(items: list[Any]) -> list[dict[str, Any]]:
 
 
 async def _collect(app: Any) -> dict[str, Any]:
-    from mcp.shared.memory import create_connected_server_and_client_session
+    import anyio
+    from mcp import ClientSession
+    from mcp.shared.memory import create_client_server_memory_streams
 
-    async with create_connected_server_and_client_session(app) as client:
-        tools = (await client.list_tools()).tools
-        prompts = (await client.list_prompts()).prompts
-        listed = (await client.list_resources()).resources
-        templates = (await client.list_resource_templates()).resourceTemplates
+    server = app._mcp_server
+    async with create_client_server_memory_streams() as (
+        client_streams,
+        server_streams,
+    ):
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(
+                server.run, *server_streams, server.create_initialization_options()
+            )
+            try:
+                async with ClientSession(*client_streams) as client:
+                    initialized = await client.initialize()
+                    tools = (await client.list_tools()).tools
+                    prompts = (await client.list_prompts()).prompts
+                    listed = (await client.list_resources()).resources
+                    templates = (
+                        await client.list_resource_templates()
+                    ).resourceTemplates
+            finally:
+                tasks.cancel_scope.cancel()
     return surface_document(
-        _dump(tools), _dump(prompts), _dump(listed), _dump(templates)
+        _dump(tools),
+        _dump(prompts),
+        _dump(listed),
+        _dump(templates),
+        instructions=initialized.instructions,
     )
 
 
-def collect_surface(server: Any) -> dict[str, Any]:
+def collect_surface(
+    server: Any,
+    *,
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
+) -> dict[str, Any]:
     """Serve *server* through FastMCP in memory and record what a client sees."""
     from mcp.server.fastmcp import FastMCP
 
     captured: dict[str, Any] = {}
     with patch.object(FastMCP, "run", lambda app, **kwargs: captured.update(app=app)):
-        server.run()
+        server.run(transport=transport)
     return asyncio.run(_collect(captured["app"]))
 
 
@@ -205,6 +234,8 @@ def live_surface(config_path: str | None = None) -> dict[str, Any]:
 def diff_surfaces(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     """Human-readable differences, most useful first. Empty means identical."""
     lines: list[str] = []
+    if old.get("instructions") != new.get("instructions"):
+        lines.append("~ server instructions")
     old_tools = {t["name"]: t for t in old.get("tools", [])}
     new_tools = {t["name"]: t for t in new.get("tools", [])}
     for name in sorted(new_tools.keys() - old_tools.keys()):
@@ -250,15 +281,19 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def budget_violation(document: dict[str, Any], budget: dict[str, Any]) -> str | None:
-    total = document["summary"]["model_visible_tool_chars"]
-    limit = budget["max_model_visible_tool_chars"]
-    if total <= limit:
-        return None
-    return (
-        f"Model-visible tool surface is {total} chars, over the {limit}-char budget in "
-        f"{BUDGET_PATH.relative_to(REPO_ROOT)}. Shrink the surface, or raise the "
-        "budget there with a dated reason."
-    )
+    for metric, label in (
+        ("model_visible_tool_chars", "Model-visible tool surface"),
+        ("instructions_chars", "Server instructions"),
+    ):
+        total = document["summary"][metric]
+        limit = budget[f"max_{metric}"]
+        if total > limit:
+            return (
+                f"{label} is {total} chars, over the {limit}-char budget in "
+                f"{BUDGET_PATH.relative_to(REPO_ROOT)}. Shrink the surface, or raise the "
+                "budget there with a dated reason."
+            )
+    return None
 
 
 def _print_summary(document: dict[str, Any]) -> None:

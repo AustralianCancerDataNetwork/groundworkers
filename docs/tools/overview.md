@@ -47,6 +47,14 @@ The one service that is not attached to `app.services` is `SemanticProjectionSer
 
 ## Availability and errors
 
+The MCP initialize response includes usage instructions assembled from the final
+registered tool names, including plugin registrations. Each section is sent only
+when every Groundworkers tool it names is available; partial deployments can omit
+the mapping section. Stdio, SSE and streamable HTTP use the same selection.
+`groundworkers --describe` reports their presence, character count and included
+sections. The section text and tool catalogue live in
+`src/groundworkers/server_instructions.py`.
+
 `system_status` and `system_vocabulary_catalogue` are always registered so a client can inspect the deployment before assuming optional capabilities exist. Other tool groups are omitted when their backing runtime is not configured. Use `groundworkers --describe` to inspect the exact active surface.
 
 MCP tools return a JSON-safe error object rather than raising across the transport boundary:
