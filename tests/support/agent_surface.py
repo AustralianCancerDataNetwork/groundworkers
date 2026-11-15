@@ -1,4 +1,4 @@
-"""Agent-surface snapshot (T0): exactly what an MCP client is shown.
+"""Local agent-surface snapshot: exactly what an MCP client is shown.
 
 The surface is collected through the real MCP protocol: the FastMCP app that
 ``GroundworkersMCPServer.run`` would serve is captured and queried with an
@@ -8,8 +8,8 @@ annotations are the ones an agent receives.
 Two surfaces:
 
 * ``reference`` -- a fixed stack (CDM + embedding store + chat model, no
-  plugins) built without live services. Deterministic, so CI can compare it
-  with the committed ``evaluation/surface/reference.json``.
+  plugins) built without live services. Optional comparisons use the local,
+  Git-ignored ``evaluation/surface/reference.json`` and ``budget.json``.
 * ``live`` -- whatever the local stack config and backend health produce.
   Evidence only; never gated.
 
@@ -80,7 +80,9 @@ def tool_metrics(tool: dict[str, Any]) -> dict[str, Any]:
         "chars": len(_compact(tool)),
         # What clients generally put in the model's context: name, description
         # and input schema. Output schemas and annotations often are not sent.
-        "model_visible_chars": len(tool["name"]) + len(description) + len(_compact(input_schema)),
+        "model_visible_chars": len(tool["name"])
+        + len(description)
+        + len(_compact(input_schema)),
         "description_chars": len(description),
         "input_schema_chars": len(_compact(input_schema)),
         "output_schema_chars": len(_compact(output_schema)) if output_schema else 0,
@@ -88,7 +90,9 @@ def tool_metrics(tool: dict[str, Any]) -> dict[str, Any]:
         "has_annotations": bool(tool.get("annotations")),
         # FastMCP derives an output schema even from ``dict[str, Any]``; only
         # one that names its fields tells a client anything.
-        "has_typed_output_schema": bool(output_schema and output_schema.get("properties")),
+        "has_typed_output_schema": bool(
+            output_schema and output_schema.get("properties")
+        ),
         "exposes_model_name": "model_name" in params,
         "unbounded_numeric_params": unbounded_numeric_params(input_schema),
     }
@@ -114,11 +118,15 @@ def surface_document(
             # Fixed chars/4 rule: comparable across runs, not a tokenizer count.
             "approx_model_visible_tokens": visible_chars // 4,
             "total_tool_chars": total_chars,
-            "tools_with_annotations": sum(m["has_annotations"] for m in per_tool.values()),
+            "tools_with_annotations": sum(
+                m["has_annotations"] for m in per_tool.values()
+            ),
             "tools_with_typed_output_schema": sum(
                 m["has_typed_output_schema"] for m in per_tool.values()
             ),
-            "tools_exposing_model_name": sum(m["exposes_model_name"] for m in per_tool.values()),
+            "tools_exposing_model_name": sum(
+                m["exposes_model_name"] for m in per_tool.values()
+            ),
             "unbounded_numeric_params": sum(
                 len(m["unbounded_numeric_params"]) for m in per_tool.values()
             ),
@@ -127,12 +135,16 @@ def surface_document(
         "tools": tools,
         "prompts": sorted(prompts, key=lambda p: p["name"]),
         "resources": sorted(resources, key=lambda r: r["uri"]),
-        "resource_templates": sorted(resource_templates, key=lambda r: r["uriTemplate"]),
+        "resource_templates": sorted(
+            resource_templates, key=lambda r: r["uriTemplate"]
+        ),
     }
 
 
 def _dump(items: list[Any]) -> list[dict[str, Any]]:
-    return [item.model_dump(mode="json", by_alias=True, exclude_none=True) for item in items]
+    return [
+        item.model_dump(mode="json", by_alias=True, exclude_none=True) for item in items
+    ]
 
 
 async def _collect(app: Any) -> dict[str, Any]:
@@ -143,7 +155,9 @@ async def _collect(app: Any) -> dict[str, Any]:
         prompts = (await client.list_prompts()).prompts
         listed = (await client.list_resources()).resources
         templates = (await client.list_resource_templates()).resourceTemplates
-    return surface_document(_dump(tools), _dump(prompts), _dump(listed), _dump(templates))
+    return surface_document(
+        _dump(tools), _dump(prompts), _dump(listed), _dump(templates)
+    )
 
 
 def collect_surface(server: Any) -> dict[str, Any]:
@@ -200,24 +214,34 @@ def diff_surfaces(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     for name in sorted(old_tools.keys() & new_tools.keys()):
         before, after = old_tools[name], new_tools[name]
         changed = sorted(
-            key for key in before.keys() | after.keys() if before.get(key) != after.get(key)
+            key
+            for key in before.keys() | after.keys()
+            if before.get(key) != after.get(key)
         )
         if changed:
             delta = len(_compact(after)) - len(_compact(before))
             lines.append(f"~ tool {name}: {', '.join(changed)} ({delta:+d} chars)")
-    for kind, key in (("prompt", "name"), ("resource", "uri"), ("resource_template", "uriTemplate")):
+    for kind, key in (
+        ("prompt", "name"),
+        ("resource", "uri"),
+        ("resource_template", "uriTemplate"),
+    ):
         plural = "resource_templates" if kind == "resource_template" else f"{kind}s"
         before = {item[key]: item for item in old.get(plural, [])}
         after = {item[key]: item for item in new.get(plural, [])}
         lines += [f"+ {kind} {k}" for k in sorted(after.keys() - before.keys())]
         lines += [f"- {kind} {k}" for k in sorted(before.keys() - after.keys())]
         lines += [
-            f"~ {kind} {k}" for k in sorted(before.keys() & after.keys()) if before[k] != after[k]
+            f"~ {kind} {k}"
+            for k in sorted(before.keys() & after.keys())
+            if before[k] != after[k]
         ]
     old_summary, new_summary = old.get("summary", {}), new.get("summary", {})
     for key in sorted(old_summary.keys() | new_summary.keys()):
         if old_summary.get(key) != new_summary.get(key):
-            lines.append(f"  summary.{key}: {old_summary.get(key)} -> {new_summary.get(key)}")
+            lines.append(
+                f"  summary.{key}: {old_summary.get(key)} -> {new_summary.get(key)}"
+            )
     return lines
 
 
@@ -245,11 +269,29 @@ def _print_summary(document: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--check", action="store_true", help="Compare the reference surface with the committed snapshot.")
-    mode.add_argument("--write", action="store_true", help="Write the reference surface to the committed snapshot.")
-    mode.add_argument("--live", action="store_true", help="Snapshot the surface of the local stack config.")
-    parser.add_argument("--output", type=Path, help="Where --live writes its snapshot (default: stdout summary only).")
-    parser.add_argument("--config-path", help="Stack config for --live (default: the usual locator).")
+    mode.add_argument(
+        "--check",
+        action="store_true",
+        help="Compare the reference surface with the local snapshot and budget.",
+    )
+    mode.add_argument(
+        "--write",
+        action="store_true",
+        help="Write the reference surface to the local snapshot.",
+    )
+    mode.add_argument(
+        "--live",
+        action="store_true",
+        help="Snapshot the surface of the local stack config.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Where --live writes its snapshot (default: stdout summary only).",
+    )
+    parser.add_argument(
+        "--config-path", help="Stack config for --live (default: the usual locator)."
+    )
     args = parser.parse_args(argv)
 
     if args.live:
@@ -278,7 +320,9 @@ def main(argv: list[str] | None = None) -> int:
     if violation:
         print(violation)
     if differences:
-        print(f"Agent surface differs from the snapshot. If intended: {REGENERATE_COMMAND}")
+        print(
+            f"Agent surface differs from the snapshot. If intended: {REGENERATE_COMMAND}"
+        )
     return 1 if differences or violation else 0
 
 

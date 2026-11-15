@@ -6,7 +6,7 @@ The knowledge tools are registered when at least one packs root is available. `k
 
 ## `knowledge_catalogue`
 
-Find packs whose applicability matches the supplied context. Omit filters to list all discovered packs.
+Find packs whose applicability matches the supplied context. Begin mapping and review jobs by discovering applicable packs with the involved domains, then load them before choosing candidates. Omit filters to list all discovered packs.
 
 ```json
 {

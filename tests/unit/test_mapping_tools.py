@@ -1,3 +1,12 @@
+import asyncio
+import json
+from copy import deepcopy
+from unittest.mock import AsyncMock
+
+import pytest
+from mcp.server.fastmcp import FastMCP
+from mcp.shared.memory import create_connected_server_and_client_session
+
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.mapping_tools import register_mapping_tools
@@ -13,7 +22,12 @@ class StubMappingService:
 
     def concept_candidate_bundle(self, query: str, **kwargs):
         self.calls.append(("concept_candidate_bundle", {"query": query, **kwargs}))
-        return {"query": query.strip(), "channels": {}, "candidate_union": [], "warnings": []}
+        return {
+            "query": query.strip(),
+            "channels": {},
+            "candidate_union": [],
+            "warnings": [],
+        }
 
     async def async_concept_candidate_bundle(self, query: str, **kwargs):
         return self.concept_candidate_bundle(query, **kwargs)
@@ -26,19 +40,39 @@ class StubMappingService:
         return self.concept_nearest_standard_ancestor(**kwargs)
 
     def concept_mapping_context(self, concept_id: int, **kwargs):
-        self.calls.append(("concept_mapping_context", {"concept_id": concept_id, **kwargs}))
+        self.calls.append(
+            ("concept_mapping_context", {"concept_id": concept_id, **kwargs})
+        )
         return {"concept": {"concept_id": concept_id}}
 
     def concept_map_to_value(self, vocabulary_id: str, concept_code: str):
-        self.calls.append(("concept_map_to_value", {"vocabulary_id": vocabulary_id, "concept_code": concept_code}))
+        self.calls.append(
+            (
+                "concept_map_to_value",
+                {"vocabulary_id": vocabulary_id, "concept_code": concept_code},
+            )
+        )
         return {"source_concept": {"concept_id": 1}, "maps_to_value": []}
 
     def concept_resolve_mapping_expression(self, items, **kwargs):
-        self.calls.append(("concept_resolve_mapping_expression", {"items": items, **kwargs}))
+        self.calls.append(
+            ("concept_resolve_mapping_expression", {"items": items, **kwargs})
+        )
         return {"resolved_concept_ids": []}
 
-    def mapping_evaluate_candidates(self, predicted_mappings, reference_mappings, **kwargs):
-        self.calls.append(("mapping_evaluate_candidates", {"predicted_mappings": predicted_mappings, "reference_mappings": reference_mappings, **kwargs}))
+    def mapping_evaluate_candidates(
+        self, predicted_mappings, reference_mappings, **kwargs
+    ):
+        self.calls.append(
+            (
+                "mapping_evaluate_candidates",
+                {
+                    "predicted_mappings": predicted_mappings,
+                    "reference_mappings": reference_mappings,
+                    **kwargs,
+                },
+            )
+        )
         return {"summary_metrics": {"accuracy": 1.0}}
 
 
@@ -46,6 +80,58 @@ def build_server(service=None) -> GroundworkersMCPServer:
     server = GroundworkersMCPServer("test-server")
     register_mapping_tools(server, service or StubMappingService())
     return server
+
+
+@pytest.mark.parametrize(
+    "channel_names", [(), ("exact",), ("exact", "normalized", "fulltext", "embedding")]
+)
+def test_candidate_bundle_mcp_counts_channels_without_changing_service_output(
+    monkeypatch, channel_names
+):
+    channels = {
+        "exact": {"available": True, "results": [{}, {}], "retrieval_notes": ["exact"]},
+        "normalized": {"available": True, "results": [{}], "retrieval_notes": []},
+        "fulltext": {"available": True, "results": [], "retrieval_notes": []},
+        "embedding": {"available": False, "results": [], "retrieval_notes": []},
+    }
+    full_result = {
+        "query": "demo",
+        "channels": {name: channels[name] for name in channel_names},
+        "candidate_union": [{"retrieved_by": ["exact", "normalized"]}],
+        "standardized_candidates": [{"synthetic": True}],
+        "constraints": {"standard_only": False},
+        "warnings": ["synthetic warning"],
+    }
+    original = deepcopy(full_result)
+    service = StubMappingService()
+    service.async_concept_candidate_bundle = AsyncMock(return_value=full_result)
+    server = build_server(service)
+    captured = {}
+    monkeypatch.setattr(FastMCP, "run", lambda app, **kwargs: captured.update(app=app))
+    server.run()
+
+    async def run():
+        async with create_connected_server_and_client_session(
+            captured["app"]
+        ) as client:
+            result = await client.call_tool(
+                "concept_candidate_bundle", {"query": "demo"}
+            )
+            assert not result.isError
+            assert json.loads(result.content[0].text) == result.structuredContent
+            return result.structuredContent
+
+    result = asyncio.run(run())
+    expected = {
+        **original,
+        "channels": {
+            name: {"available": channel["available"], "count": len(channel["results"])}
+            for name, channel in original["channels"].items()
+        },
+    }
+    assert result == expected
+    assert full_result == original
+    service.async_concept_candidate_bundle.assert_awaited_once()
 
 
 def test_concept_search_normalized_clamps_limit_and_calls_service():
@@ -92,7 +178,11 @@ def test_concept_candidate_bundle_rejects_invalid_input_from_service():
 
     result = server.call("concept_candidate_bundle", query="   ")
 
-    assert result == {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
+    assert result == {
+        "error": True,
+        "code": "INVALID_INPUT",
+        "message": "query must be a non-empty string",
+    }
 
 
 def test_concept_nearest_standard_ancestor_returns_groundworkers_error_dict():
@@ -147,7 +237,9 @@ def test_mapping_evaluate_candidates_calls_service():
     service = StubMappingService()
     server = build_server(service)
 
-    result = server.call("mapping_evaluate_candidates", predicted_mappings=[], reference_mappings=[])
+    result = server.call(
+        "mapping_evaluate_candidates", predicted_mappings=[], reference_mappings=[]
+    )
 
     assert result["summary_metrics"]["accuracy"] == 1.0
     assert service.calls[0][0] == "mapping_evaluate_candidates"

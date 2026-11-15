@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
@@ -11,32 +13,39 @@ from groundworkers.services.vocab import (
 )
 
 
-def register_search_tools(server: GroundworkersMCPServer, vocab_service: VocabService) -> None:
+def register_search_tools(
+    server: GroundworkersMCPServer, vocab_service: VocabService
+) -> None:
     """Register lexical search tools against the MCP server."""
 
     @server.tool("concept_search_exact")
     def concept_search_exact(
-        query: str,
-        domain: str | None = None,
-        vocabulary_id: str | None = None,
-        standard_only: bool = False,
-        include_synonyms: bool = True,
-        limit: int = 20,
+        query: Annotated[str, Field(description="Exact name or synonym to match.")],
+        domain: Annotated[
+            str | None, Field(description="OMOP domain_id filter.")
+        ] = None,
+        vocabulary_id: Annotated[
+            str | None, Field(description="Exact vocabulary_id filter.")
+        ] = None,
+        standard_only: Annotated[
+            bool, Field(description="Only standard concepts.")
+        ] = False,
+        include_synonyms: Annotated[
+            bool, Field(description="Also match synonyms.")
+        ] = True,
+        limit: Annotated[int, Field(description="Maximum results.")] = 20,
     ) -> dict[str, Any]:
-        """
-        Case-insensitive exact match of a query string against concept_name and
-        (optionally) concept_synonym_name.
-
-        Unlike concept_ground, standard_only defaults to false — results include
-        non-standard concepts so the caller can inspect the standard_concept flag
-        and decide whether to call concept_navigate_to_standard.
-
-        match_source is "name" when the concept_name matched, "synonym" when a
-        concept_synonym_name matched. matched_synonym contains the synonym string
-        that triggered the match.
-        """
+        """Exact, case-insensitive match on concept name or synonym. concept_candidate_bundle
+        already runs this channel; call it directly only to confirm that an exact name exists.
+        Returns non-standard concepts too; check standard_concept."""
+        # match_source distinguishes name and synonym hits; matched_synonym retains
+        # the triggering synonym text.
         if not query.strip():
-            return {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
+            return {
+                "error": True,
+                "code": "INVALID_INPUT",
+                "message": "query must be a non-empty string",
+            }
         safe_limit = max(1, min(limit, 50))
         try:
             results = vocab_service.search_exact(
@@ -47,7 +56,10 @@ def register_search_tools(server: GroundworkersMCPServer, vocab_service: VocabSe
                 include_synonyms=include_synonyms,
                 limit=safe_limit,
             )
-            return {"query": query.strip(), "results": [serialise_concept_match(r) for r in results]}
+            return {
+                "query": query.strip(),
+                "results": [serialise_concept_match(r) for r in results],
+            }
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
@@ -55,33 +67,40 @@ def register_search_tools(server: GroundworkersMCPServer, vocab_service: VocabSe
 
     @server.tool("concept_search_fulltext")
     def concept_search_fulltext(
-        query: str,
-        domain: str | None = None,
-        vocabulary_id: str | None = None,
-        standard_only: bool = False,
-        include_synonyms: bool = True,
-        min_rank: float = 0.0,
-        limit: int = 20,
+        query: Annotated[str, Field(description="Words to search for.")],
+        domain: Annotated[
+            str | None, Field(description="OMOP domain_id filter.")
+        ] = None,
+        vocabulary_id: Annotated[
+            str | None, Field(description="Exact vocabulary_id filter.")
+        ] = None,
+        standard_only: Annotated[
+            bool, Field(description="Only standard concepts.")
+        ] = False,
+        include_synonyms: Annotated[
+            bool, Field(description="Also search synonyms.")
+        ] = True,
+        min_rank: Annotated[
+            float, Field(description="Drop results below this ts_rank.")
+        ] = 0.0,
+        limit: Annotated[int, Field(description="Maximum results.")] = 20,
     ) -> dict[str, Any]:
-        """
-        PostgreSQL full-text search against the concept_name tsvector sidecar column.
-
-        Returns results with ts_rank exposed so the caller can apply its own quality
-        threshold (e.g. discard results where ts_rank < 0.05).
-
-        tsvector_available indicates whether the GIN-indexed sidecar column was
-        detected. When false, results is always [] and the caller should fall
-        through to embedding_search or concept_search_exact.
-
-        min_rank is an optional server-side pre-filter (avoids returning very
-        large result sets); the caller's own threshold may be stricter.
-
-        standard_only defaults to false — see concept_search_exact.
-        """
+        """Ranked word-based search on concept names (PostgreSQL full text).
+        concept_candidate_bundle already runs this channel; call it directly to see more
+        full-text results or to set min_rank. Returns non-standard concepts too. If
+        tsvector_available is false, results are always empty."""
         if not query.strip():
-            return {"error": True, "code": "INVALID_INPUT", "message": "query must be a non-empty string"}
+            return {
+                "error": True,
+                "code": "INVALID_INPUT",
+                "message": "query must be a non-empty string",
+            }
         if not (0.0 <= min_rank <= 1.0):
-            return {"error": True, "code": "INVALID_INPUT", "message": "min_rank must be between 0.0 and 1.0"}
+            return {
+                "error": True,
+                "code": "INVALID_INPUT",
+                "message": "min_rank must be between 0.0 and 1.0",
+            }
         safe_limit = max(1, min(limit, 50))
         try:
             results, fts_available = vocab_service.search_fulltext(
@@ -104,27 +123,28 @@ def register_search_tools(server: GroundworkersMCPServer, vocab_service: VocabSe
             return exc.to_dict()
 
     @server.tool("concept_navigate_to_standard")
-    def concept_navigate_to_standard(concept_ids: list[int]) -> dict[str, Any]:
-        """
-        Given a list of concept_ids, return their standard OMOP equivalents by
-        following "Maps to" relationship edges.
-
-        For concepts that are already standard: standard_concepts contains the
-        concept itself (relationship_id = "self").
-        For concepts with no "Maps to" mapping: standard_concepts is [].
-        concept_ids not found in the vocabulary are silently omitted from results.
-
-        This is the batch-by-concept-id form of concept_map_to_standard. Use it
-        after concept_search_exact, concept_search_fulltext, or embedding_search
-        to resolve non-standard candidates to their standard equivalents in a
-        single round-trip.
-        """
+    def concept_navigate_to_standard(
+        concept_ids: Annotated[
+            list[int], Field(description="List of concept_ids to resolve.")
+        ],
+    ) -> dict[str, Any]:
+        """Resolve concept_ids (for example non-standard search hits) to their standard equivalents
+        via Maps to, in one call. Standard concepts return themselves; unmapped concepts return
+        []; unknown ids are omitted."""
         if not concept_ids:
             return {"results": []}
         if len(concept_ids) > 100:
-            return {"error": True, "code": "INVALID_INPUT", "message": "concept_ids must contain at most 100 entries"}
+            return {
+                "error": True,
+                "code": "INVALID_INPUT",
+                "message": "concept_ids must contain at most 100 entries",
+            }
         if any(cid <= 0 for cid in concept_ids):
-            return {"error": True, "code": "INVALID_INPUT", "message": "all concept_ids must be positive integers"}
+            return {
+                "error": True,
+                "code": "INVALID_INPUT",
+                "message": "all concept_ids must be positive integers",
+            }
         try:
             mappings = vocab_service.navigate_to_standard(concept_ids)
             return {"results": [serialise_standard_mapping(m) for m in mappings]}

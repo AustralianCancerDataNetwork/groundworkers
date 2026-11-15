@@ -13,6 +13,7 @@ Resources:
   vocabularies://catalogue — full OMOP vocabulary/domain/concept-class
     catalogue with concept counts. Requires omop_graph to be configured.
 """
+
 from __future__ import annotations
 
 import json
@@ -58,11 +59,13 @@ def register_system_resources(
     )
     def vocabularies_catalogue() -> str:
         if graph_adapter is None:
-            return json.dumps({
-                "error": True,
-                "code": "BACKEND_UNAVAIL",
-                "message": "omop_graph backend is not configured",
-            })
+            return json.dumps(
+                {
+                    "error": True,
+                    "code": "BACKEND_UNAVAIL",
+                    "message": "omop_graph backend is not configured",
+                }
+            )
         try:
             return json.dumps(graph_adapter.get_vocabulary_catalogue())
         except GroundworkersError as exc:
@@ -113,19 +116,12 @@ def register_system_tools(
 
     @server.tool("system_status")
     async def system_status() -> dict[str, Any]:
-        """Returns availability and live health of each configured backend.
-
-        overall is one of:
-          "healthy"     — all configured components available
-          "degraded"    — at least one configured component unavailable
-          "unavailable" — no components available (or none configured)
-
-        components only contains entries for configured backends.
-        Live full-text and embedding probes are cached briefly to avoid making
-        every health request call the model provider or vocabulary database.
-        omop_graph.embedding_resolver_active is true only when the graph accepted a
-        complete read-only vector-store and resolved-model configuration.
-        """
+        """Health of each configured backend (overall: healthy, degraded or unavailable). Call it
+        when a capability seems missing."""
+        # Only configured backends appear in components. Full-text and embedding live
+        # probes are briefly cached. embedding_resolver_active requires a complete
+        # read-only vector-store and resolved-model configuration accepted by the graph.
+        # No configured or available components yields overall=unavailable.
         components: dict[str, Any] = {}
         embedding_live: tuple[bool, str | None] | None = None
 
@@ -161,12 +157,11 @@ def register_system_tools(
                     )
                 store_available = status["available"]
                 live_available = (
-                    embedding_live[0]
-                    if embedding_live is not None
-                    else None
+                    embedding_live[0] if embedding_live is not None else None
                 )
                 components["omop_emb"] = {
-                    "available": store_available and (live_available is None or live_available),
+                    "available": store_available
+                    and (live_available is None or live_available),
                     "store_available": store_available,
                     "live_query_available": live_available,
                     "backend_type": status.get("backend_type"),
@@ -186,9 +181,7 @@ def register_system_tools(
                     "backend_type": None,
                     "model_count": 0,
                     "model_backend_configured": emb_adapter.has_model_backend(),
-                    "detail": (
-                        "Embedding status failed with " f"{type(exc).__name__}."
-                    ),
+                    "detail": (f"Embedding status failed with {type(exc).__name__}."),
                 }
         elif embedding_configuration_detail is not None:
             components["omop_emb"] = {
@@ -213,7 +206,9 @@ def register_system_tools(
                     "available": status["available"],
                     "provider": status.get("provider"),
                     "default_model": status.get("default_model"),
-                    "structured_output_supported": status.get("structured_output_supported"),
+                    "structured_output_supported": status.get(
+                        "structured_output_supported"
+                    ),
                     "detail": status.get("detail"),
                 }
             except Exception as exc:

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from groundworkers.base.ancestry import (
     AncestorDepth,
@@ -24,28 +25,43 @@ def register_mapping_tools(
 ) -> None:
     @server.tool("concept_search_normalized")
     def concept_search_normalized(
-        query: str,
-        domain: str | None = None,
-        vocabulary_id: str | None = None,
-        parent_ids: list[int] | None = None,
-        standard_only: bool = False,
-        include_synonyms: bool = False,
-        normalization_profile: NormalizationProfile = NormalizationProfile.VERBATIM,
-        remove_stop_phrases: bool = True,
-        limit: int = 20,
-        allow_unindexed_scan: bool = False,
+        query: Annotated[str, Field(description="Text to match after normalization.")],
+        domain: Annotated[
+            str | None, Field(description="OMOP domain_id filter.")
+        ] = None,
+        vocabulary_id: Annotated[
+            str | None, Field(description="Exact vocabulary_id filter.")
+        ] = None,
+        parent_ids: Annotated[
+            list[int] | None,
+            Field(description="Keep only descendants of these concept_ids."),
+        ] = None,
+        standard_only: Annotated[
+            bool, Field(description="Only standard concepts.")
+        ] = False,
+        include_synonyms: Annotated[
+            bool, Field(description="Also match synonyms.")
+        ] = False,
+        normalization_profile: Annotated[
+            NormalizationProfile,
+            Field(description="Normalization profile; default verbatim."),
+        ] = NormalizationProfile.VERBATIM,
+        remove_stop_phrases: Annotated[
+            bool, Field(description="Strip common stop phrases before matching.")
+        ] = True,
+        limit: Annotated[int, Field(description="Maximum results.")] = 20,
+        allow_unindexed_scan: Annotated[
+            bool,
+            Field(
+                description="Allow a slow unscoped scan when no normalized index exists."
+            ),
+        ] = False,
     ) -> dict[str, Any]:
-        """Deterministic near-verbatim concept search after text normalization.
-
-        Both the query and candidate concept names are normalized before comparison,
-        making this more robust to punctuation and whitespace variation than
-        concept_search_exact while remaining fully deterministic (no ranking).
-
-        Filters are optional when the normalized-name index exists. Without it,
-        pass domain, vocabulary_id, or parent_ids for a time-limited scoped scan.
-        A domain is useful when known. Set allow_unindexed_scan=True to accept an
-        unscoped scan deliberately.
-        """
+        """Near-verbatim search after normalizing punctuation and whitespace; deterministic,
+        unranked. concept_candidate_bundle already runs this channel; call it directly only for
+        a strict near-exact check."""
+        # Without a normalized index, use a domain, vocabulary or parent scope for a
+        # time-limited scan; an unscoped scan requires explicit opt-in.
         safe_limit = max(1, min(limit, 50))
         try:
             return mapping_service.concept_search_normalized(
@@ -67,36 +83,79 @@ def register_mapping_tools(
 
     @server.tool("concept_candidate_bundle")
     async def concept_candidate_bundle(
-        query: str,
-        domain: str | None = None,
-        vocabulary_id: str | None = None,
-        standard_only: bool = False,
-        active_only: bool = True,
-        include_synonyms: bool = True,
-        include_normalized: bool = True,
-        include_fulltext: bool = True,
-        include_embedding: bool = True,
-        include_standard_mappings: bool = True,
-        include_hierarchy_context: bool = False,
-        include_relationship_summary: bool = False,
-        parent_ids: list[int] | None = None,
-        per_channel_limit: int = 10,
-        overall_limit: int = 30,
-        model_name: str | None = None,
+        query: Annotated[str, Field(description="The source term text, as written.")],
+        domain: Annotated[
+            str | None,
+            Field(
+                description="OMOP domain_id to restrict to, for example Measurement, Drug or Condition. Use it when known."
+            ),
+        ] = None,
+        vocabulary_id: Annotated[
+            str | None, Field(description="Restrict to one exact vocabulary_id.")
+        ] = None,
+        standard_only: Annotated[
+            bool,
+            Field(
+                description="true returns only standard concepts. The default false also returns non-standard hits (with their standard mapping when include_standard_mappings is true)."
+            ),
+        ] = False,
+        active_only: Annotated[
+            bool, Field(description="Exclude retired (invalid) concepts. Default true.")
+        ] = True,
+        include_synonyms: Annotated[
+            bool, Field(description="Also match concept synonyms.")
+        ] = True,
+        include_normalized: Annotated[
+            bool, Field(description="Run the normalized channel.")
+        ] = True,
+        include_fulltext: Annotated[
+            bool, Field(description="Run the full-text channel.")
+        ] = True,
+        include_embedding: Annotated[
+            bool, Field(description="Run the embedding channel.")
+        ] = True,
+        include_standard_mappings: Annotated[
+            bool,
+            Field(description="Attach each candidate's Maps-to standard concept(s)."),
+        ] = True,
+        include_hierarchy_context: Annotated[
+            bool,
+            Field(
+                description="Attach ancestors to the first five candidates (larger output)."
+            ),
+        ] = False,
+        include_relationship_summary: Annotated[
+            bool,
+            Field(
+                description="Attach a relationship summary to the first five candidates (larger output)."
+            ),
+        ] = False,
+        parent_ids: Annotated[
+            list[int] | None,
+            Field(
+                description="Keep only descendants of these concept_ids. Applies to the exact, normalized and full-text channels, not embedding."
+            ),
+        ] = None,
+        per_channel_limit: Annotated[
+            int, Field(description="Maximum results per channel.")
+        ] = 10,
+        overall_limit: Annotated[
+            int, Field(description="Maximum candidates in the merged list.")
+        ] = 30,
+        model_name: Annotated[
+            str | None,
+            Field(description="Embedding model; omit to use the configured default."),
+        ] = None,
     ) -> dict[str, Any]:
-        """Aggregate candidates from multiple search channels into a single deduplicated set.
-
-        Runs exact, normalized, fulltext, and embedding channels in parallel and merges
-        results. Optionally enriches each candidate with its standard mapping, ancestor
-        hierarchy, and relationship summary. Use this to gather a broad candidate set
-        before applying a mapping decision.
-
-        parent_ids restricts lexical channels (exact, normalized, fulltext) to descendants of
-        the specified concept_ids; the embedding channel does not apply this filter.
-        active_only filters out retired (invalid) concepts.
-        """
+        """Default first search for a source term. Runs exact, normalized, full-text and embedding
+        search together and returns one deduplicated candidate list; retrieved_by shows which
+        channels found each candidate. Pass domain when known. Candidates are leads: check
+        standard_concept and domain_id, then the hierarchy (concept_mapping_context,
+        concept_descendants) before choosing."""
+        # Keep channel results in the service response for in-process and REST callers.
+        # Only the MCP boundary below replaces them with availability and counts.
         try:
-            return await mapping_service.async_concept_candidate_bundle(
+            result = await mapping_service.async_concept_candidate_bundle(
                 query,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
@@ -114,6 +173,16 @@ def register_mapping_tools(
                 overall_limit=overall_limit,
                 model_name=model_name,
             )
+            return {
+                **result,
+                "channels": {
+                    name: {
+                        "available": channel["available"],
+                        "count": len(channel["results"]),
+                    }
+                    for name, channel in result["channels"].items()
+                },
+            }
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
@@ -168,23 +237,40 @@ def register_mapping_tools(
 
     @server.tool("concept_nearest_standard_ancestor")
     async def concept_nearest_standard_ancestor(
-        query: str | None = None,
-        concept_id: int | None = None,
-        domain: str | None = None,
-        vocabulary_id: str | None = None,
-        parent_ids: list[int] | None = None,
-        max_depth: AncestorDepth = 5,
-        candidate_limit: int = 10,
+        query: Annotated[
+            str | None,
+            Field(description="Free text to ground first (use this or concept_id)."),
+        ] = None,
+        concept_id: Annotated[
+            int | None, Field(description="Start concept (use this or query).")
+        ] = None,
+        domain: Annotated[
+            str | None, Field(description="OMOP domain_id filter.")
+        ] = None,
+        vocabulary_id: Annotated[
+            str | None,
+            Field(
+                description="Restrict grounded seeds in query mode to one exact vocabulary_id."
+            ),
+        ] = None,
+        parent_ids: Annotated[
+            list[int] | None,
+            Field(
+                description="Keep only grounded seeds in query mode that are descendants of these concept_ids."
+            ),
+        ] = None,
+        max_depth: Annotated[
+            AncestorDepth, Field(description="Maximum stored separation, 0-20.")
+        ] = 5,
+        candidate_limit: Annotated[
+            int, Field(description="Maximum grounded seeds retrieved in query mode.")
+        ] = 10,
     ) -> dict[str, Any]:
-        """Find a nearest active standard ancestor using stored OMOP separation.
-
-        Accepts either a free-text query or a concept_id. Reads stored concept_ancestor
-        distances within max_depth to find a closest standard ancestor.
-        max_depth=0..20 uses stored minimum separation, including zero-distance
-        ancestry. Equal nearest-distance targets remain ambiguous. Query mode uses
-        the first ranked grounded seed and reports that seed policy explicitly.
-        A Maps-to fallback is reported separately from ancestry evidence.
-        """
+        """When no standard concept matches the source at its precision, find the closest broader
+        standard concept, from a concept_id or a free-text query. Equally near candidates are
+        reported as ambiguous."""
+        # Stored separation includes zero-distance ancestry. Query mode uses the
+        # first ranked seed; Maps-to fallback is reported separately from ancestry.
         safe_depth = validate_ancestor_depth(max_depth)
         safe_limit = max(1, min(candidate_limit, 20))
         try:
@@ -204,26 +290,46 @@ def register_mapping_tools(
 
     @server.tool("concept_mapping_context")
     def concept_mapping_context(
-        concept_id: int,
-        include_standard_mapping: bool = True,
-        include_ancestors: bool = True,
-        include_descendants: bool = False,
-        include_relationship_summary: bool = True,
-        include_neighbors: bool = True,
-        include_embedding_neighbors: bool = False,
-        ancestor_limit: AncestorLimit = 5,
-        ancestor_max_depth: AncestorDepth = 5,
-        descendant_limit: int = 10,
-        neighbor_limit: int = 15,
-        embedding_neighbor_limit: int = 10,
-        model_name: str | None = None,
+        concept_id: Annotated[int, Field(description="The candidate to review.")],
+        include_standard_mapping: Annotated[
+            bool, Field(description="Include its Maps-to target.")
+        ] = True,
+        include_ancestors: Annotated[
+            bool, Field(description="Include broader concepts.")
+        ] = True,
+        include_descendants: Annotated[
+            bool, Field(description="Include more specific concepts (default false).")
+        ] = False,
+        include_relationship_summary: Annotated[
+            bool, Field(description="Include counts of relationship types.")
+        ] = True,
+        include_neighbors: Annotated[
+            bool, Field(description="Include graph neighbours.")
+        ] = True,
+        include_embedding_neighbors: Annotated[
+            bool, Field(description="Include nearest concepts by embedding.")
+        ] = False,
+        ancestor_limit: Annotated[
+            AncestorLimit, Field(description="Maximum ancestors.")
+        ] = 5,
+        ancestor_max_depth: Annotated[
+            AncestorDepth, Field(description="Maximum ancestor separation.")
+        ] = 5,
+        descendant_limit: Annotated[
+            int, Field(description="Maximum descendants.")
+        ] = 10,
+        neighbor_limit: Annotated[int, Field(description="Maximum neighbours.")] = 15,
+        embedding_neighbor_limit: Annotated[
+            int, Field(description="Maximum embedding neighbours.")
+        ] = 10,
+        model_name: Annotated[
+            str | None,
+            Field(description="Embedding model; omit to use the configured default."),
+        ] = None,
     ) -> dict[str, Any]:
-        """Return a rich context bundle for a single concept to support mapping decisions.
-
-        Assembles standard mapping, ancestors, descendants, relationship summary, graph
-        neighbors, and (optionally) embedding neighbors for one concept_id in a single call.
-        Use this to gather everything an agent needs to evaluate or justify a mapping choice.
-        """
+        """One-call review of a candidate before committing to it: standard mapping, ancestors,
+        relationship summary and graph neighbours. Set include_descendants=true to also list
+        more specific concepts."""
         try:
             return mapping_service.concept_mapping_context(
                 concept_id,

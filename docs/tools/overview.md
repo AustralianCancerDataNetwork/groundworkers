@@ -1,5 +1,7 @@
 # Tools overview
 
+MCP mapping tools provide parameter guidance, concise candidate-channel counts and a recovery hint for missing vocabulary codes.
+
 The MCP surface is organized by the job a caller is trying to do. Tool registration follows the active runtime: core vocabulary and graph tools require the CDM runtime, while embedding, chat, knowledge-pack, and semantic-projection tools appear only when their prerequisites are available.
 
 ## Choose a workflow

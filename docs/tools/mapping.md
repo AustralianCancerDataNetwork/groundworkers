@@ -31,13 +31,13 @@ flowchart TD
 
 ## `concept_ground` vs mapping tools
 
-`concept_ground` is the simplest choice for a single ranked grounding result.
+Start source-term searches with `concept_candidate_bundle`. Use `concept_ground` for a fast lead from the first matching resolver tier.
 
 The mapping tools are better when you want to inspect evidence and make an explicit selection.
 
 | If you want... | Prefer... |
 |---|---|
-| One best-answer grounding result | `concept_ground` |
+| A fast lead from the first matching tier | `concept_ground` |
 | Multiple retrieval channels in one packet | `concept_candidate_bundle` |
 | Deterministic normalized matching before ranked retrieval | `concept_search_normalized` |
 | Rich context for a selected concept | `concept_mapping_context` |
@@ -66,7 +66,7 @@ Useful response fields:
 
 ## `concept_candidate_bundle`
 
-Builds one evidence packet by combining:
+The default source-term search builds one evidence packet by combining:
 
 - exact search
 - normalized search
@@ -90,10 +90,21 @@ Builds one evidence packet by combining:
 
 Representative response sections:
 
-- `channels`
+- `channels`: each MCP channel contains only `available` and `count`
 - `standardized_candidates`
 - `candidate_union`
 - `warnings`
+
+In the MCP response, `channels` has the shape
+`{"exact": {"available": true, "count": 2}}`, with one entry per channel
+that ran. Counts describe the channel results before deduplication or the
+merged-list limit. Candidate details remain in `candidate_union`, where
+`retrieved_by` identifies their channels. `standardized_candidates`,
+`constraints` and `warnings` retain their existing shapes. The direct Python
+service and REST endpoint continue to return full channel result lists.
+
+Hierarchy previews and relationship summaries enrich only the first five
+merged candidates.
 
 ## `concept_nearest_standard_ancestor`
 
@@ -106,6 +117,10 @@ Finds the nearest active standard ancestor using stored OMOP separation, abstain
   "max_depth": 5
 }
 ```
+
+In query mode, `vocabulary_id` and `parent_ids` constrain grounded seeds; they
+do not filter ancestor targets. `candidate_limit` bounds the retrieved seed
+list, and only its first candidate is used for ancestor selection.
 
 Useful response fields:
 

@@ -6,7 +6,7 @@ If you already have a known identifier, use [Concept Tools](concept.md) instead.
 
 ## `concept_ground`
 
-Full-featured free-text grounding for clinical terms and source labels.
+Use this tiered resolver for a fast candidate lead. For the default search across retrieval channels, use `concept_candidate_bundle`.
 
 ```json
 {
