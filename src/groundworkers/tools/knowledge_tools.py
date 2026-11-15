@@ -17,6 +17,7 @@ from pydantic import Field
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
 from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
+from groundworkers.toolsets import Toolset
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ def register_knowledge_tools(
             }
         )
 
-    @server.tool("knowledge_catalogue")
+    @server.tool("knowledge_catalogue", toolsets=(Toolset.KNOWLEDGE,))
     def knowledge_catalogue(
         source_system: Annotated[
             str | None,
@@ -169,7 +170,7 @@ def register_knowledge_tools(
         except Exception:
             raise
 
-    @server.tool("knowledge_pack")
+    @server.tool("knowledge_pack", toolsets=(Toolset.KNOWLEDGE,))
     def knowledge_pack(
         name: Annotated[
             str,

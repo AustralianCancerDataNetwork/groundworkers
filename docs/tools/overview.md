@@ -39,6 +39,28 @@ The MCP surface is organized by the job a caller is trying to do. Tool registrat
 
 The source-planning resources `source-planning://canonical-headers`, `source-planning://column-roles`, and `source-planning://ingestion-strategies` are also registered independently of the tool table. Text preprocessing prompts are available through MCP prompt discovery when the server starts.
 
+## Toolsets
+
+Tools can belong to several toolsets. `groundworkers --describe` lists each tool's memberships.
+
+| Name | Purpose |
+|---|---|
+| `system` | Deployment status and vocabulary catalogue; always registered. |
+| `lookup` | Fetch a concept by id or by vocabulary code. |
+| `search` | Find candidate concepts for text. |
+| `mapping` | Source-to-standard mapping workflow: candidates, mapping context, hierarchy checks, standard targets. |
+| `mapping_advanced` | Less common mapping utilities: mapping by vocabulary code, value mapping, mapping expressions, shared standard ancestors. |
+| `graph` | Concept hierarchy, relationships and paths. |
+| `embedding` | Embedding index search and neighbours. |
+| `llm` | Language-model text helpers. |
+| `source` | Source-file planning. |
+| `knowledge` | Convention packs. |
+| `semantic` | Semantic projection (optional). |
+| `offline` | Evaluation and diagnostics, not intended for agents. |
+
+Usage instructions follow the available tools.
+Selection can exclude toolsets; exclusion wins when a tool also belongs to an included toolset.
+
 ## MCP, REST, and Python
 
 MCP is the broad, discovery-oriented surface. REST intentionally exposes only curated workflow operations: candidate bundles and assisted source planning, plus `/healthz`. Direct Python callers should use `app.services.*` for domain workflows and should not import MCP tool modules to avoid a transport-shaped API.
@@ -52,7 +74,7 @@ registered tool names, including plugin registrations. Each section is sent only
 when every Groundworkers tool it names is available; partial deployments can omit
 the mapping section. Stdio, SSE and streamable HTTP use the same selection.
 `groundworkers --describe` reports their presence, character count and included
-sections. The section text and tool catalogue live in
+sections. The section text and declared tool dependencies live in
 `src/groundworkers/server_instructions.py`.
 
 `system_status` and `system_vocabulary_catalogue` are always registered so a client can inspect the deployment before assuming optional capabilities exist. Other tool groups are omitted when their backing runtime is not configured. Use `groundworkers --describe` to inspect the exact active surface.

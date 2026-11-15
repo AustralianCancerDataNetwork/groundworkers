@@ -105,7 +105,8 @@ def create_server(
         state = app.plugins.get(plugin.name)
         if state is not None:
             try:
-                plugin.register(server, state)
+                with server.plugin_registration(plugin.name):
+                    plugin.register(server, state)
             except Exception:
                 logger.exception(
                     "Groundworkers plugin %s failed during MCP registration.",

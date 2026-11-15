@@ -17,6 +17,7 @@ from groundworkers.services.source_planning.serialisation import (
     decode_content,
     serialize_pre_ingest_bundle,
 )
+from groundworkers.toolsets import Toolset
 
 _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
     IngestionStrategy.DATA_DICT_IDEAL: "Table has codes plus enough semantic context for direct data-dictionary ingestion.",
@@ -32,7 +33,7 @@ def register_source_planning_tools(
     server: GroundworkersMCPServer,
     source_planning_service: SourcePlanningService,
 ) -> None:
-    @server.tool("source_plan")
+    @server.tool("source_plan", toolsets=(Toolset.SOURCE,))
     def source_plan(
         content: str,
         filename: str | None = None,
@@ -64,7 +65,7 @@ def register_source_planning_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("source_plan_assisted")
+    @server.tool("source_plan_assisted", toolsets=(Toolset.SOURCE, Toolset.LLM))
     async def source_plan_assisted(
         content: Annotated[
             str,

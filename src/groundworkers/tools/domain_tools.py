@@ -7,12 +7,13 @@ from pydantic import Field
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.domain import DomainService
+from groundworkers.toolsets import Toolset
 
 
 def register_domain_tools(
     server: GroundworkersMCPServer, domain_service: DomainService
 ) -> None:
-    @server.tool("domain_classify")
+    @server.tool("domain_classify", toolsets=(Toolset.LLM,))
     async def domain_classify(
         label_values: Annotated[
             dict[str, list[str]],

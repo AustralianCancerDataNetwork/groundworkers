@@ -28,6 +28,7 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.config import AppConfig
 from groundworkers.services.vocab import VocabService
+from groundworkers.toolsets import Toolset
 
 _HEALTH_PROBE_CACHE_SECONDS = 30.0
 
@@ -114,7 +115,7 @@ def register_system_tools(
         probe_cache[key] = (now, result)
         return result
 
-    @server.tool("system_status")
+    @server.tool("system_status", toolsets=(Toolset.SYSTEM,))
     async def system_status() -> dict[str, Any]:
         """Health of each configured backend (overall: healthy, degraded or unavailable). Call it
         when a capability seems missing."""
@@ -231,7 +232,7 @@ def register_system_tools(
 
         return {"overall": overall, "components": components}
 
-    @server.tool("system_vocabulary_catalogue")
+    @server.tool("system_vocabulary_catalogue", toolsets=(Toolset.SYSTEM,))
     def system_vocabulary_catalogue() -> dict[str, Any]:
         """Returns all OMOP vocabularies, domains, and concept classes."""
         if graph_adapter is None:

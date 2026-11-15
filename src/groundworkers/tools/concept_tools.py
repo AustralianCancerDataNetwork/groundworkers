@@ -12,6 +12,7 @@ from groundworkers.base.ancestry import (
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.graph import GraphService
+from groundworkers.toolsets import Toolset
 
 
 def register_concept_tools(
@@ -26,7 +27,7 @@ def register_concept_tools(
     For direct lexical search with retrieval signals see search_tools.py.
     """
 
-    @server.tool("concept_get")
+    @server.tool("concept_get", toolsets=(Toolset.LOOKUP,))
     def concept_get(
         concept_id: Annotated[int, Field(description="OMOP concept_id.")],
     ) -> dict[str, Any]:
@@ -51,7 +52,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_by_code")
+    @server.tool("concept_by_code", toolsets=(Toolset.LOOKUP,))
     def concept_by_code(
         vocabulary_id: Annotated[
             str, Field(description="Exact vocabulary_id, for example ICD10CM or LOINC.")
@@ -92,7 +93,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_ancestors")
+    @server.tool("concept_ancestors", toolsets=(Toolset.GRAPH, Toolset.MAPPING))
     def concept_ancestors(
         concept_id: Annotated[
             PositiveConceptId, Field(description="The more specific concept.")
@@ -127,7 +128,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_descendants")
+    @server.tool("concept_descendants", toolsets=(Toolset.GRAPH, Toolset.MAPPING))
     def concept_descendants(
         concept_id: Annotated[int, Field(description="The broader concept.")],
         max_depth: Annotated[
@@ -152,7 +153,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_relationships")
+    @server.tool("concept_relationships", toolsets=(Toolset.GRAPH,))
     def concept_relationships(concept_id: int) -> dict[str, Any]:
         """Returns all relationships for a concept grouped by direction (inbound/outbound).
 
@@ -172,7 +173,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_equivalency_path")
+    @server.tool("concept_equivalency_path", toolsets=(Toolset.GRAPH,))
     def concept_equivalency_path(
         source_id: int,
         target_id: int,
@@ -200,7 +201,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_path")
+    @server.tool("concept_path", toolsets=(Toolset.GRAPH,))
     def concept_path(
         source_id: int,
         target_id: int,
@@ -225,7 +226,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_neighbors")
+    @server.tool("concept_neighbors", toolsets=(Toolset.GRAPH,))
     def concept_neighbors(
         concept_id: int,
         max_depth: int = 2,
@@ -260,7 +261,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_associations")
+    @server.tool("concept_associations", toolsets=(Toolset.GRAPH,))
     def concept_associations(
         concept_id: int,
         direction: str = "out",
@@ -299,7 +300,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_extended_inheritance")
+    @server.tool("concept_extended_inheritance", toolsets=(Toolset.GRAPH,))
     def concept_extended_inheritance(
         concept_id: int,
         direction: str = "out",
@@ -338,7 +339,7 @@ def register_concept_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_map_to_standard")
+    @server.tool("concept_map_to_standard", toolsets=(Toolset.MAPPING_ADVANCED,))
     def concept_map_to_standard(
         vocabulary_id: Annotated[
             str, Field(description="Exact vocabulary_id of the code.")

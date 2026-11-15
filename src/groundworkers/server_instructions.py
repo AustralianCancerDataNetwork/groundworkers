@@ -1,58 +1,11 @@
 """Usage instructions selected from the final registered MCP tool surface."""
 
 from collections.abc import Collection
-from string import punctuation
 
-# Keep the catalogue independent of configured backends. Tests compare it with
-# every built-in registration so tool renames cannot silently weaken selection.
-TOOL_CATALOGUE = frozenset(
-    {
-        "concept_ancestors",
-        "concept_associations",
-        "concept_by_code",
-        "concept_candidate_bundle",
-        "concept_descendants",
-        "concept_equivalency_path",
-        "concept_extended_inheritance",
-        "concept_get",
-        "concept_ground",
-        "concept_map_to_standard",
-        "concept_map_to_value",
-        "concept_mapping_context",
-        "concept_navigate_to_standard",
-        "concept_nearest_standard_ancestor",
-        "concept_neighbors",
-        "concept_path",
-        "concept_relationships",
-        "concept_resolve_mapping_expression",
-        "concept_search_exact",
-        "concept_search_fulltext",
-        "concept_search_normalized",
-        "concept_shared_standard_ancestor",
-        "domain_classify",
-        "embedding_encode",
-        "embedding_index_status",
-        "embedding_neighbours",
-        "embedding_search",
-        "embedding_search_batch",
-        "knowledge_catalogue",
-        "knowledge_pack",
-        "mapping_evaluate_candidates",
-        "semantic_project",
-        "source_plan",
-        "source_plan_assisted",
-        "system_status",
-        "system_vocabulary_catalogue",
-        "text_decompose",
-        "text_disambiguate",
-        "text_mapping_cleanup",
-        "text_normalize",
-    }
-)
-
-INSTRUCTION_SECTIONS: tuple[tuple[str, str], ...] = (
+INSTRUCTION_SECTIONS: tuple[tuple[str, frozenset[str], str], ...] = (
     (
         "intro",
+        frozenset({"system_status"}),
         (
             "Groundworkers gives deterministic access to an OMOP vocabulary: search, "
             "grounding, the concept graph and convention packs. system_status shows what "
@@ -61,6 +14,7 @@ INSTRUCTION_SECTIONS: tuple[tuple[str, str], ...] = (
     ),
     (
         "knowledge",
+        frozenset({"knowledge_catalogue", "knowledge_pack"}),
         (
             "Before mapping, load conventions once per job: knowledge_catalogue with the "
             "domains involved, then knowledge_pack for each pack that applies. Pack rules"
@@ -69,6 +23,14 @@ INSTRUCTION_SECTIONS: tuple[tuple[str, str], ...] = (
     ),
     (
         "mapping",
+        frozenset(
+            {
+                "concept_candidate_bundle",
+                "concept_mapping_context",
+                "concept_descendants",
+                "concept_nearest_standard_ancestor",
+            }
+        ),
         (
             "To map a source term:\n"
             "1. Note every qualifier it states (specimen, site, laterality, route, form, "
@@ -86,13 +48,6 @@ INSTRUCTION_SECTIONS: tuple[tuple[str, str], ...] = (
         ),
     ),
 )
-_WORD_SEPARATORS = str.maketrans({char: " " for char in punctuation if char != "_"})
-
-
-def instruction_requirements(text: str) -> frozenset[str]:
-    """Match whole tool names from the catalogue, leaving field names alone."""
-    words = text.translate(_WORD_SEPARATORS).split()
-    return TOOL_CATALOGUE.intersection(words)
 
 
 def build_instructions(
@@ -102,8 +57,8 @@ def build_instructions(
     registered = frozenset(registered_tools)
     included = [
         (name, text)
-        for name, text in INSTRUCTION_SECTIONS
-        if instruction_requirements(text) <= registered
+        for name, tools, text in INSTRUCTION_SECTIONS
+        if tools <= registered
     ]
     if not included:
         return None, ()

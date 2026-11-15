@@ -11,6 +11,7 @@ from groundworkers.services.vocab import (
     serialise_concept_match,
     serialise_standard_mapping,
 )
+from groundworkers.toolsets import Toolset
 
 
 def register_search_tools(
@@ -18,7 +19,7 @@ def register_search_tools(
 ) -> None:
     """Register lexical search tools against the MCP server."""
 
-    @server.tool("concept_search_exact")
+    @server.tool("concept_search_exact", toolsets=(Toolset.SEARCH,))
     def concept_search_exact(
         query: Annotated[str, Field(description="Exact name or synonym to match.")],
         domain: Annotated[
@@ -65,7 +66,7 @@ def register_search_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_search_fulltext")
+    @server.tool("concept_search_fulltext", toolsets=(Toolset.SEARCH,))
     def concept_search_fulltext(
         query: Annotated[str, Field(description="Words to search for.")],
         domain: Annotated[
@@ -122,7 +123,7 @@ def register_search_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_navigate_to_standard")
+    @server.tool("concept_navigate_to_standard", toolsets=(Toolset.MAPPING,))
     def concept_navigate_to_standard(
         concept_ids: Annotated[
             list[int], Field(description="List of concept_ids to resolve.")

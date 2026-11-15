@@ -10,6 +10,7 @@ from groundworkers.services.semantic_projection.models import (
     SemanticProjectionRequest,
     SemanticProjectionResult,
 )
+from groundworkers.toolsets import Toolset
 
 
 class SemanticProjector(Protocol):
@@ -20,7 +21,7 @@ class SemanticProjector(Protocol):
 
 
 def register_semantic_projection_tools(server: GroundworkersMCPServer, service: SemanticProjector) -> None:
-    @server.tool("semantic_project")
+    @server.tool("semantic_project", toolsets=(Toolset.SEMANTIC,))
     def semantic_project(
         grounded_concept_id: int,
         grounded_domain: str,

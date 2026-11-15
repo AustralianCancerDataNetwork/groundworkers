@@ -3,6 +3,7 @@
 import ast
 import json
 from importlib.resources import files
+from string import punctuation
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -13,16 +14,14 @@ from groundworkers.bootstrap import build_app_config_from_stack
 from groundworkers.server import create_server, main
 from groundworkers.server_instructions import (
     INSTRUCTION_SECTIONS,
-    TOOL_CATALOGUE,
     build_instructions,
-    instruction_requirements,
 )
 from groundworkers.tools.concept_tools import register_concept_tools
 from groundworkers.tools.system_tools import register_system_tools
 from tests.support.agent_surface import collect_surface, reference_server
 from tests.support.stack_config import build_cdm_stack
 
-SECTIONS = dict(INSTRUCTION_SECTIONS)
+SECTIONS = {name: text for name, _, text in INSTRUCTION_SECTIONS}
 REQUIREMENTS = {
     "intro": {"system_status"},
     "knowledge": {"knowledge_catalogue", "knowledge_pack"},
@@ -40,7 +39,7 @@ def _stub_tool() -> dict:
     return {}
 
 
-def test_catalogue_matches_every_builtin_tool_registration():
+def _builtin_tool_names():
     registered = set()
     for path in files("groundworkers.tools").iterdir():
         if not path.name.endswith(".py"):
@@ -55,10 +54,19 @@ def test_catalogue_matches_every_builtin_tool_registration():
                 and isinstance(node.args[0], ast.Constant)
             ):
                 registered.add(node.args[0].value)
-    assert TOOL_CATALOGUE == registered
-    for name, text in INSTRUCTION_SECTIONS:
-        assert instruction_requirements(text) == REQUIREMENTS[name]
-        assert REQUIREMENTS[name] <= registered
+    return frozenset(registered)
+
+
+def _mentioned_tools(text):
+    separators = str.maketrans({char: " " for char in punctuation if char != "_"})
+    return _builtin_tool_names().intersection(text.translate(separators).split())
+
+
+def test_sections_declare_exactly_the_builtin_tools_they_mention():
+    registered = _builtin_tool_names()
+    for name, tools, text in INSTRUCTION_SECTIONS:
+        assert tools == _mentioned_tools(text) == REQUIREMENTS[name]
+        assert tools <= registered
 
 
 @pytest.mark.parametrize(
@@ -72,15 +80,15 @@ def test_catalogue_matches_every_builtin_tool_registration():
         ),
     ],
 )
-def test_requirements_match_catalogue_names_without_treating_fields_as_tools(
+def test_mentions_match_whole_builtin_names_without_treating_fields_as_tools(
     text, expected
 ):
-    assert instruction_requirements(text) == expected
+    assert _mentioned_tools(text) == expected
 
 
 @pytest.mark.parametrize("missing", sorted(set().union(*REQUIREMENTS.values())))
 def test_every_named_tool_is_required_before_its_section_is_sent(missing):
-    registered = TOOL_CATALOGUE - {missing}
+    registered = _builtin_tool_names() - {missing}
     text, names = build_instructions(registered)
     for name in names:
         assert REQUIREMENTS[name] <= registered
@@ -105,8 +113,8 @@ def test_full_reference_initialize_receives_exact_sections_for_every_transport(
     assert surface["summary"]["instructions_chars"] == len(EXPECTED_TEXT) == 952
     assert surface["summary"]["instructions_chars"] <= 1050
     registered = {tool["name"] for tool in surface["tools"]}
-    for text in SECTIONS.values():
-        assert instruction_requirements(text) <= registered
+    for _, tools, _ in INSTRUCTION_SECTIONS:
+        assert tools <= registered
 
 
 def test_initialize_without_knowledge_receives_intro_and_mapping():

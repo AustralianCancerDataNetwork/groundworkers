@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from typing import Annotated, Any, Literal, get_origin, get_type_hints
@@ -18,6 +19,7 @@ from groundworkers.base.errors import (
     scrub_error_message,
 )
 from groundworkers.server_instructions import build_instructions
+from groundworkers.toolsets import ToolMeta, select_tools
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,8 @@ class GroundworkersMCPServer:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
         self._tool_annotations: dict[str, ToolAnnotations | None] = {}
+        self._tool_metadata: dict[str, ToolMeta] = {}
+        self._registration_toolsets: frozenset[str] = frozenset()
         self._prompts: dict[str, _RegisteredPrompt] = {}
         self._resources: dict[str, tuple[Callable[..., Any], str | None]] = {}
 
@@ -63,6 +67,7 @@ class GroundworkersMCPServer:
         self,
         name: str | None = None,
         *,
+        toolsets: Collection[str] = (),
         annotations: ToolAnnotations | None = None,
         result_model: type[BaseModel] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -111,9 +116,24 @@ class GroundworkersMCPServer:
             _advertise_tool_signature(func, guarded, result_model)
             self._tools[tool_name] = guarded
             self._tool_annotations[tool_name] = annotations
+            self._tool_metadata[tool_name] = self._tool_meta(toolsets)
             return guarded
 
         return decorator
+
+    def _tool_meta(self, toolsets: Collection[str]) -> ToolMeta:
+        """Freeze explicit toolsets or inherit the current registration default."""
+        return ToolMeta(frozenset(toolsets) or self._registration_toolsets)
+
+    @contextmanager
+    def plugin_registration(self, plugin_name: str) -> Iterator[None]:
+        """Default untagged tools to their plugin during its registration."""
+        previous = self._registration_toolsets
+        self._registration_toolsets = frozenset({f"plugin:{plugin_name}"})
+        try:
+            yield
+        finally:
+            self._registration_toolsets = previous
 
     def prompt(
         self,
@@ -148,7 +168,15 @@ class GroundworkersMCPServer:
         return decorator
 
     def list_tools(self) -> list[str]:
-        return sorted(self._tools.keys())
+        return sorted(self.available_tools())
+
+    def available_tools(self) -> frozenset[str]:
+        """Return the registered tool names available for advertisement."""
+        return select_tools(
+            {name: self._tool_metadata[name].toolsets for name in self._tools},
+            include=None,
+            exclude=(),
+        )
 
     def list_prompts(self) -> list[str]:
         return sorted(self._prompts.keys())
@@ -178,11 +206,11 @@ class GroundworkersMCPServer:
     @property
     def instructions(self) -> str | None:
         # Resolve against the final tool registry, including late plugin registration.
-        text, _ = build_instructions(self._tools)
+        text, _ = build_instructions(self.available_tools())
         return text
 
     def describe_instructions(self) -> dict[str, Any]:
-        text, sections = build_instructions(self._tools)
+        text, sections = build_instructions(self.available_tools())
         return {
             "present": text is not None,
             "chars": len(text) if text is not None else 0,
@@ -191,11 +219,15 @@ class GroundworkersMCPServer:
 
     def describe_tools(self) -> dict[str, dict[str, Any]]:
         description: dict[str, dict[str, Any]] = {}
+        available = self.available_tools()
         for name, func in self._tools.items():
+            if name not in available:
+                continue
             signature = inspect.signature(func)
             description[name] = {
                 "signature": str(signature),
                 "doc": inspect.getdoc(func) or "",
+                "toolsets": sorted(self._tool_metadata[name].toolsets),
             }
             if (annotations := self._tool_annotations.get(name)) is not None:
                 description[name]["annotations"] = annotations.model_dump()
@@ -262,7 +294,10 @@ class GroundworkersMCPServer:
             json_response=transport == "streamable-http",
             stateless_http=True,
         )
+        available = self.available_tools()
         for tool_name, func in self._tools.items():
+            if tool_name not in available:
+                continue
             app.tool(
                 name=tool_name,
                 description=inspect.getdoc(func) or "",

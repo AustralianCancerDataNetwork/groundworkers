@@ -1,0 +1,71 @@
+{
+  "deterministic": {
+    "include": null,
+    "exclude": [
+      "llm",
+      "offline",
+      "semantic"
+    ],
+    "tools": [
+      "concept_ancestors",
+      "concept_associations",
+      "concept_by_code",
+      "concept_candidate_bundle",
+      "concept_descendants",
+      "concept_equivalency_path",
+      "concept_extended_inheritance",
+      "concept_get",
+      "concept_ground",
+      "concept_map_to_standard",
+      "concept_map_to_value",
+      "concept_mapping_context",
+      "concept_navigate_to_standard",
+      "concept_nearest_standard_ancestor",
+      "concept_neighbors",
+      "concept_path",
+      "concept_relationships",
+      "concept_resolve_mapping_expression",
+      "concept_search_exact",
+      "concept_search_fulltext",
+      "concept_search_normalized",
+      "concept_shared_standard_ancestor",
+      "embedding_index_status",
+      "embedding_neighbours",
+      "embedding_search",
+      "embedding_search_batch",
+      "knowledge_catalogue",
+      "knowledge_pack",
+      "source_plan",
+      "system_status",
+      "system_vocabulary_catalogue"
+    ]
+  },
+  "mapping_workflow": {
+    "include": [
+      "knowledge",
+      "lookup",
+      "mapping",
+      "system"
+    ],
+    "exclude": [],
+    "tools": [
+      "concept_ancestors",
+      "concept_by_code",
+      "concept_candidate_bundle",
+      "concept_descendants",
+      "concept_get",
+      "concept_mapping_context",
+      "concept_navigate_to_standard",
+      "concept_nearest_standard_ancestor",
+      "knowledge_catalogue",
+      "knowledge_pack",
+      "system_status",
+      "system_vocabulary_catalogue"
+    ],
+    "sections": [
+      "intro",
+      "knowledge",
+      "mapping"
+    ]
+  }
+}

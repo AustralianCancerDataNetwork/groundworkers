@@ -8,6 +8,7 @@ from pydantic import Field
 from groundworkers.adapters.omop_emb import OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
+from groundworkers.toolsets import Toolset
 
 
 def register_embedding_resources(
@@ -34,7 +35,7 @@ def register_embedding_resources(
 def register_embedding_tools(
     server: GroundworkersMCPServer, emb_adapter: OmopEmbAdapter
 ) -> None:
-    @server.tool("embedding_index_status")
+    @server.tool("embedding_index_status", toolsets=(Toolset.EMBEDDING,))
     def embedding_index_status() -> dict[str, Any]:
         """Returns status of the embedding backend and registered models."""
         try:
@@ -42,7 +43,7 @@ def register_embedding_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("embedding_neighbours")
+    @server.tool("embedding_neighbours", toolsets=(Toolset.EMBEDDING,))
     def embedding_neighbours(
         concept_id: int,
         limit: int = 10,
@@ -79,7 +80,7 @@ def register_embedding_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("embedding_search")
+    @server.tool("embedding_search", toolsets=(Toolset.SEARCH, Toolset.EMBEDDING))
     async def embedding_search(
         query: Annotated[str, Field(description="Text to search for by meaning.")],
         limit: Annotated[int, Field(description="Maximum results.")] = 10,
@@ -125,7 +126,7 @@ def register_embedding_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("embedding_search_batch")
+    @server.tool("embedding_search_batch", toolsets=(Toolset.SEARCH, Toolset.EMBEDDING))
     async def embedding_search_batch(
         queries: list[str],
         limit: int = 10,
@@ -180,7 +181,7 @@ def register_embedding_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("embedding_encode")
+    @server.tool("embedding_encode", toolsets=(Toolset.OFFLINE,))
     async def embedding_encode(
         text: str,
         model_name: Annotated[

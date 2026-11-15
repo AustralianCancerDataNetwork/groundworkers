@@ -9,6 +9,7 @@ from pydantic import Field
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.grounding import ConceptGroundingService
+from groundworkers.toolsets import Toolset
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def register_resolver_tools(
     For direct lexical search with retrieval signals see search_tools.py.
     """
 
-    @server.tool("concept_ground")
+    @server.tool("concept_ground", toolsets=(Toolset.SEARCH,))
     async def concept_ground(
         query: Annotated[str, Field(description="The source term text.")],
         limit: Annotated[int, Field(description="Maximum results.")] = 5,

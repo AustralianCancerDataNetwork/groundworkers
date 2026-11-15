@@ -18,12 +18,13 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.base.sql import NormalizationProfile
 from groundworkers.services import MappingService
+from groundworkers.toolsets import Toolset
 
 
 def register_mapping_tools(
     server: GroundworkersMCPServer, mapping_service: MappingService
 ) -> None:
-    @server.tool("concept_search_normalized")
+    @server.tool("concept_search_normalized", toolsets=(Toolset.SEARCH,))
     def concept_search_normalized(
         query: Annotated[str, Field(description="Text to match after normalization.")],
         domain: Annotated[
@@ -81,7 +82,7 @@ def register_mapping_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_candidate_bundle")
+    @server.tool("concept_candidate_bundle", toolsets=(Toolset.SEARCH, Toolset.MAPPING))
     async def concept_candidate_bundle(
         query: Annotated[str, Field(description="The source term text, as written.")],
         domain: Annotated[
@@ -190,6 +191,7 @@ def register_mapping_tools(
 
     @server.tool(
         "concept_shared_standard_ancestor",
+        toolsets=(Toolset.MAPPING_ADVANCED,),
         annotations=ToolAnnotations(
             readOnlyHint=True,
             destructiveHint=False,
@@ -235,7 +237,7 @@ def register_mapping_tools(
         # Registration advertises and validates the typed envelope after guarding.
         return {"data": result}
 
-    @server.tool("concept_nearest_standard_ancestor")
+    @server.tool("concept_nearest_standard_ancestor", toolsets=(Toolset.MAPPING,))
     async def concept_nearest_standard_ancestor(
         query: Annotated[
             str | None,
@@ -288,7 +290,7 @@ def register_mapping_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_mapping_context")
+    @server.tool("concept_mapping_context", toolsets=(Toolset.MAPPING,))
     def concept_mapping_context(
         concept_id: Annotated[int, Field(description="The candidate to review.")],
         include_standard_mapping: Annotated[
@@ -351,7 +353,7 @@ def register_mapping_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_map_to_value")
+    @server.tool("concept_map_to_value", toolsets=(Toolset.MAPPING_ADVANCED,))
     def concept_map_to_value(vocabulary_id: str, concept_code: str) -> dict[str, Any]:
         """Return "Maps to value" target concepts for a given vocabulary/code pair."""
         try:
@@ -361,7 +363,9 @@ def register_mapping_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("concept_resolve_mapping_expression")
+    @server.tool(
+        "concept_resolve_mapping_expression", toolsets=(Toolset.MAPPING_ADVANCED,)
+    )
     def concept_resolve_mapping_expression(
         items: list[dict[str, Any]],
         domain: str | None = None,
@@ -387,7 +391,7 @@ def register_mapping_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("mapping_evaluate_candidates")
+    @server.tool("mapping_evaluate_candidates", toolsets=(Toolset.OFFLINE,))
     def mapping_evaluate_candidates(
         predicted_mappings: Annotated[
             list[dict[str, Any]],

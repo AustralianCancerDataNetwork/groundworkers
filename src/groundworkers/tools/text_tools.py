@@ -8,12 +8,13 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.text import TextService
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
+from groundworkers.toolsets import Toolset
 
 
 def register_text_tools(
     server: GroundworkersMCPServer, text_service: TextService
 ) -> None:
-    @server.tool("text_normalize")
+    @server.tool("text_normalize", toolsets=(Toolset.LLM,))
     async def text_normalize(
         text: str,
         domain_hint: Annotated[
@@ -38,7 +39,7 @@ def register_text_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("text_mapping_cleanup")
+    @server.tool("text_mapping_cleanup", toolsets=(Toolset.LLM,))
     async def text_mapping_cleanup(
         text: str,
         context: Annotated[
@@ -67,7 +68,7 @@ def register_text_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("text_decompose")
+    @server.tool("text_decompose", toolsets=(Toolset.LLM,))
     async def text_decompose(
         text: str,
         domain_hint: Annotated[
@@ -98,7 +99,7 @@ def register_text_tools(
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("text_disambiguate")
+    @server.tool("text_disambiguate", toolsets=(Toolset.LLM,))
     async def text_disambiguate(
         text: str,
         domain_hint: Annotated[

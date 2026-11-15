@@ -196,7 +196,13 @@ def collect_surface(
     captured: dict[str, Any] = {}
     with patch.object(FastMCP, "run", lambda app, **kwargs: captured.update(app=app)):
         server.run(transport=transport)
-    return asyncio.run(_collect(captured["app"]))
+    document = asyncio.run(_collect(captured["app"]))
+    descriptions = server.describe_tools()
+    document["toolsets"] = {
+        tool["name"]: descriptions[tool["name"]]["toolsets"]
+        for tool in document["tools"]
+    }
+    return document
 
 
 @contextmanager
@@ -236,6 +242,10 @@ def diff_surfaces(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     if old.get("instructions") != new.get("instructions"):
         lines.append("~ server instructions")
+    old_toolsets, new_toolsets = old.get("toolsets", {}), new.get("toolsets", {})
+    for name in sorted(old_toolsets.keys() | new_toolsets.keys()):
+        if old_toolsets.get(name) != new_toolsets.get(name):
+            lines.append(f"~ tool {name}: toolsets")
     old_tools = {t["name"]: t for t in old.get("tools", [])}
     new_tools = {t["name"]: t for t in new.get("tools", [])}
     for name in sorted(new_tools.keys() - old_tools.keys()):
