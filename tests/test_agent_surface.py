@@ -99,6 +99,14 @@ def test_diff_reports_added_removed_and_changed_tools():
         "concept_equivalency_path",
         "concept_path",
         "system_status",
+        "domain_classify",
+        "embedding_encode",
+        "mapping_evaluate_candidates",
+        "source_plan_assisted",
+        "text_decompose",
+        "text_disambiguate",
+        "text_mapping_cleanup",
+        "text_normalize",
     ),
 )
 def test_mapping_workflow_tools_have_descriptions(surface, tool_name):
@@ -107,27 +115,41 @@ def test_mapping_workflow_tools_have_descriptions(surface, tool_name):
 
 
 @pytest.mark.parametrize(
-    "tool_name",
-    (
-        "concept_get",
-        "concept_by_code",
-        "concept_candidate_bundle",
-        "concept_ground",
-        "concept_search_exact",
-        "concept_search_fulltext",
-        "concept_search_normalized",
-        "embedding_search",
-        "concept_descendants",
-        "concept_ancestors",
-        "concept_mapping_context",
-        "concept_nearest_standard_ancestor",
-        "concept_navigate_to_standard",
-        "concept_map_to_standard",
-        "knowledge_catalogue",
-        "knowledge_pack",
-    ),
+    ("tool_name", "parameter_names"),
+    [
+        ("concept_get", None),
+        ("concept_by_code", None),
+        ("concept_candidate_bundle", None),
+        ("concept_ground", None),
+        ("concept_search_exact", None),
+        ("concept_search_fulltext", None),
+        ("concept_search_normalized", None),
+        ("embedding_search", None),
+        ("concept_descendants", None),
+        ("concept_ancestors", None),
+        ("concept_mapping_context", None),
+        ("concept_nearest_standard_ancestor", None),
+        ("concept_navigate_to_standard", None),
+        ("concept_map_to_standard", None),
+        ("knowledge_catalogue", None),
+        ("knowledge_pack", None),
+        ("domain_classify", ("label_values",)),
+        ("embedding_encode", ("model_name",)),
+        (
+            "mapping_evaluate_candidates",
+            ("predicted_mappings", "reference_mappings", "top_k"),
+        ),
+        ("source_plan_assisted", ("content", "caller_hint")),
+        ("text_decompose", ("domain_hint", "max_terms")),
+        ("text_disambiguate", ("domain_hint", "max_interpretations")),
+        ("text_mapping_cleanup", ("context",)),
+        ("text_normalize", ("domain_hint",)),
+    ],
 )
-def test_mapping_workflow_tools_document_all_parameters(surface, tool_name):
+def test_mapping_workflow_tools_document_parameters(
+    surface, tool_name, parameter_names
+):
     tool = next(tool for tool in surface["tools"] if tool["name"] == tool_name)
-    for name, prop in tool["inputSchema"]["properties"].items():
-        assert prop.get("description", "").strip(), f"{tool_name}.{name}"
+    props = tool["inputSchema"]["properties"]
+    for name in props if parameter_names is None else parameter_names:
+        assert props[name].get("description", "").strip(), f"{tool_name}.{name}"

@@ -180,8 +180,9 @@ def register_concept_tools(
         max_depth: int = 8,
     ) -> dict[str, Any]:
         """Shortest equivalence path between two concepts over identity edges (Maps to, same_as,
-        poss_eq). With allow_hierarchical_traversal=true it may also step up or down the
-        hierarchy, so the link found can be broader than an exact equivalence."""
+        cross-vocabulary equivalence and replacement links). With
+        allow_hierarchical_traversal=true it may also step up or down the hierarchy, so the link
+        found can be broader than an exact equivalence."""
         # Identity traversal always allows cross-domain edges and excludes attribute,
         # composition and association edges. Hierarchy traversal is optional.
         if source_id <= 0 or target_id <= 0:
@@ -345,7 +346,8 @@ def register_concept_tools(
         concept_code: Annotated[str, Field(description="The source code.")],
     ) -> dict[str, Any]:
         """Resolve a vocabulary_id and concept_code (for example a source code) to its standard
-        concept(s) via Maps to."""
+        concept(s) via identity relationships, which include Maps to value; for the Maps to
+        target alone, use concept_navigate_to_standard."""
         if not vocabulary_id.strip():
             return {
                 "error": True,

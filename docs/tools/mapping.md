@@ -190,7 +190,9 @@ Expands a simple list of concept items with support for:
 
 ## `mapping_evaluate_candidates`
 
-Compares predicted mappings with a reference mapping set using `standard_concept_id` agreement.
+Compares predicted mappings with a reference mapping set using hit-at-k agreement: the reference ID must occur within the first `top_k` predicted IDs. Omitting `top_k` uses all predictions. IDs are compared in memory without checking the vocabulary.
+
+Rows are paired by `source_key`, `source_id` or `source_term`, in that order. Reference rows require `reference_standard_concept_id`; prediction rows use a ranked `predicted_standard_concept_ids` list (or `predicted_concept_ids`).
 
 ```json
 {

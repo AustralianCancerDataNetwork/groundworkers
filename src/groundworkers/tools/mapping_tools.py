@@ -389,18 +389,31 @@ def register_mapping_tools(
 
     @server.tool("mapping_evaluate_candidates")
     def mapping_evaluate_candidates(
-        predicted_mappings: list[dict[str, Any]],
-        reference_mappings: list[dict[str, Any]],
+        predicted_mappings: Annotated[
+            list[dict[str, Any]],
+            Field(
+                description="Rows with source_key (or source_id or source_term), predicted_standard_concept_ids as a ranked list, optional domain_id."
+            ),
+        ],
+        reference_mappings: Annotated[
+            list[dict[str, Any]],
+            Field(
+                description="Rows with source_key (or source_id or source_term), reference_standard_concept_id (required), optional domain_id."
+            ),
+        ],
         match_mode: str = "standard_concept_id",
-        top_k: int | None = None,
+        top_k: Annotated[
+            int | None,
+            Field(
+                description="Count a match within the first top_k predictions; omit to use all."
+            ),
+        ] = None,
         group_by_domain: bool = True,
     ) -> dict[str, Any]:
-        """Evaluate predicted concept mappings against reference mappings.
-
-        Computes accuracy and coverage by comparing predicted concept_ids against
-        a reference set. group_by_domain breaks metrics down per OMOP domain.
-        top_k evaluates only the top-k predictions per source term.
-        """
+        """Score predicted mappings against reference mappings: accuracy (the reference standard
+        concept_id is among the first top_k predictions), coverage and agreement cases,
+        optionally by domain. An evaluation utility; concept_ids are not checked against the
+        vocabulary."""
         try:
             return mapping_service.mapping_evaluate_candidates(
                 predicted_mappings,

@@ -182,9 +182,16 @@ def register_embedding_tools(
 
     @server.tool("embedding_encode")
     async def embedding_encode(
-        text: str, model_name: str | None = None
+        text: str,
+        model_name: Annotated[
+            str | None,
+            Field(
+                description="Omit to use the configured live model; no other model is accepted."
+            ),
+        ] = None,
     ) -> dict[str, Any]:
-        """Encodes free text into one embedding vector using the configured model client."""
+        """Return the raw embedding vector for a text, using the configured embedding model. For
+        diagnostics only: embedding_search encodes internally. The vector is large."""
         if not text.strip():
             return {
                 "error": True,

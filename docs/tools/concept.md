@@ -140,7 +140,7 @@ Returns the shortest path between two concepts traversing only identity (and opt
 
 All parameters except `source_id` and `target_id` are optional.
 
-`allow_hierarchical_traversal=false` (default): only IDENTITY predicates (`Maps to`, `Concept same_as`, `Concept poss_eq`, etc.). The connection found represents a direct cross-vocabulary equivalence with no loss of specificity.
+`allow_hierarchical_traversal=false` (default): only IDENTITY predicates, including `Maps to`, `Concept same_as`, cross-vocabulary equivalence and replacement links. `Concept poss_eq` is an ASSOCIATION predicate and is excluded.
 
 `allow_hierarchical_traversal=true`: also allows HIERARCHY predicates (`Is a` / `Subsumes`). A path may then step up or down the ancestry chain; the connection may be at a broader level of abstraction.
 
@@ -307,7 +307,7 @@ Use the ancestor/descendant tools for the usual “what is this a kind of?” qu
 
 ## `concept_map_to_standard`
 
-Maps a non-standard concept (identified by vocabulary + code) to its standard OMOP equivalent via IDENTITY-type relationship edges.
+Resolves a vocabulary/code pair through all IDENTITY-type relationship edges. These include `Maps to value` and `Maps to unit`, so standard value or unit targets can appear alongside the `Maps to` target. For `Maps to` targets alone, use `concept_navigate_to_standard` with the source concept ID.
 
 ```json
 {"vocabulary_id": "ICD10CM", "concept_code": "C34.1"}

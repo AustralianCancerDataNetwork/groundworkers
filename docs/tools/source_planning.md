@@ -31,7 +31,7 @@ Runs the same pipeline with an explicit LLM-assisted classification step. Use it
 }
 ```
 
-This path returns `BACKEND_UNAVAIL` if no configured chat model can perform the assisted step. The deterministic `source_plan` path does not require an LLM.
+For extracted tables, this path returns `BACKEND_UNAVAIL` when no chat model is configured or `source_planning_llm_assisted_enabled` is false. A source with no extracted tables returns its plan without requiring model assistance. The deterministic `source_plan` path does not require an LLM.
 
 ## Supporting MCP resources
 

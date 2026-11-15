@@ -10,7 +10,7 @@ It is a thin wrapper over `DomainService`.
 
 ## `domain_classify`
 
-Classifies field labels into OMOP domains using the label text and any example response values supplied by the caller.
+Uses a language model to guess the domain of each field from its label and at most the first 10 example values.
 
 ```json
 {
@@ -25,7 +25,7 @@ Classifies field labels into OMOP domains using the label text and any example r
 
 `label_values` is required. It maps each field label to a list of example response-value strings. Use an empty list when no values are known.
 
-`model_name` is optional and overrides the default model from the LLM config for this call.
+`model_name` is optional and accepts only the configured chat model or null.
 
 **Response:**
 
@@ -39,7 +39,7 @@ Classifies field labels into OMOP domains using the label text and any example r
 }
 ```
 
-Only confident classifications are returned. Labels that the model cannot place confidently into a single OMOP domain are omitted so the caller can continue with fallback logic.
+Assignments with null or invalid domain values are omitted. There is no confidence score or confidence threshold, and model-returned label keys are not checked against the input labels.
 
 Valid returned domains are:
 
@@ -66,7 +66,7 @@ Prefer text tools when you need to normalize or decompose clinical phrases. Pref
 
 | Error code | Condition |
 |---|---|
-| `BACKEND_UNAVAIL` | LLM API unreachable, authentication failure, or LLM backend not configured |
+| `BACKEND_UNAVAIL` | Configured LLM API unreachable or authentication failure |
 | `QUERY_ERROR` | Model API error or response could not be parsed |
 
 ## Typical downstream use

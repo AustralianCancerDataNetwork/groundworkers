@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
@@ -8,25 +10,22 @@ from groundworkers.services.text import TextService
 from groundworkers.services.text.prompts import SYSTEM_PROMPTS, build_user_prompt
 
 
-def register_text_tools(server: GroundworkersMCPServer, text_service: TextService) -> None:
+def register_text_tools(
+    server: GroundworkersMCPServer, text_service: TextService
+) -> None:
     @server.tool("text_normalize")
     async def text_normalize(
         text: str,
-        domain_hint: str | None = None,
+        domain_hint: Annotated[
+            str | None,
+            Field(description="Optional context, used only to resolve ambiguity."),
+        ] = None,
         model_name: str | None = None,
     ) -> dict[str, Any]:
-        """Normalize a clinical term, abbreviation, lay phrase, or misspelling to a standard OMOP-compatible form.
-
-        Expands abbreviations (e.g. MI → myocardial infarction), converts informal or lay language
-        to clinical terminology, and corrects common misspellings — returning a single normalized phrase
-        ready to pass to concept grounding tools.
-
-        domain_hint optionally scopes normalization to a specific OMOP domain (e.g. Condition, Drug,
-        Measurement) when the term is likely to be domain-specific.
-
-        The result preserves the original text and includes the normalized phrase,
-        the model's categorical confidence, and optional notes about ambiguity.
-        """
+        """Language-model expansion of a short term: clear abbreviations, lay wording and obvious
+        misspellings, keeping meaning and specificity. Use it when word-based search fails on
+        shorthand; embedding search already tolerates much of this. Returns the normalised text
+        with a confidence."""
         try:
             result = await text_service.async_normalize(
                 text,
@@ -42,20 +41,19 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
     @server.tool("text_mapping_cleanup")
     async def text_mapping_cleanup(
         text: str,
-        context: dict[str, Any] | None = None,
+        context: Annotated[
+            dict[str, Any] | None,
+            Field(
+                description="Optional object with surrounding information, for example the parent label, sibling values or source code."
+            ),
+        ] = None,
         domain_hint: str | None = None,
         model_name: str | None = None,
     ) -> dict[str, Any]:
-        """Rewrite source text into the best single search phrase for downstream OMOP mapping.
-
-        Preserves meaning while stripping formatting noise, score prefixes, duplicated
-        fragments, or value-label boilerplate when context shows they are not essential.
-        Accepts optional context such as parent label, sibling values, child values,
-        source code, or preferred domain to keep the rewrite faithful to the source.
-
-        The result includes the replacement phrase, whether it changed, the model's
-        categorical confidence, and optional notes.
-        """
+        """Language-model rewrite of one data-dictionary label or value into the best single search
+        phrase, removing form noise (scoring syntax, code prefixes, duplicated fragments) while
+        keeping meaning and specificity. Returns the phrase, a confidence and the model's own
+        changed flag."""
         try:
             result = await text_service.async_mapping_cleanup(
                 text,
@@ -72,23 +70,21 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
     @server.tool("text_decompose")
     async def text_decompose(
         text: str,
-        domain_hint: str | None = None,
-        max_terms: int = 10,
+        domain_hint: Annotated[
+            str | None,
+            Field(
+                description="Optional context such as a domain name; it guides the model and is not a filter."
+            ),
+        ] = None,
+        max_terms: Annotated[
+            int, Field(description="Requested maximum number of terms, 1-20.")
+        ] = 10,
         model_name: str | None = None,
     ) -> dict[str, Any]:
-        """Decompose a free-text clinical description into a list of normalized search terms.
-
-        Useful when a query describes a multi-concept scenario (e.g. a cohort definition, study
-        inclusion criteria, or clinical note excerpt). Each returned term is normalized to a standard
-        OMOP-compatible clinical name, ready to pass individually to concept_ground or
-        concept_candidate_bundle.
-
-        domain_hint optionally scopes extraction to a specific OMOP domain.
-        max_terms controls the upper bound on terms returned (clamped 1-20).
-
-        The result contains normalized terms with optional domain hints and the
-        original input text.
-        """
+        """Language-model split of free text naming several concepts (criteria, note excerpts) into
+        the distinct clinical terms it states, each normalised, to ground one by one with
+        concept_candidate_bundle. The terms are model text, not OMOP concepts; max_terms is a
+        request to the model, not an enforced limit."""
         try:
             result = await text_service.async_decompose(
                 text,
@@ -105,26 +101,27 @@ def register_text_tools(server: GroundworkersMCPServer, text_service: TextServic
     @server.tool("text_disambiguate")
     async def text_disambiguate(
         text: str,
-        domain_hint: str | None = None,
-        max_interpretations: int = 5,
+        domain_hint: Annotated[
+            str | None,
+            Field(
+                description="Optional context such as a domain name; it guides the model and is not a filter."
+            ),
+        ] = None,
+        max_interpretations: Annotated[
+            int, Field(description="Requested maximum number of meanings, 1-10.")
+        ] = 5,
         model_name: str | None = None,
     ) -> dict[str, Any]:
-        """Return all plausible clinical interpretations of an ambiguous term or abbreviation.
-
-        Where text_normalize picks the single most likely meaning, text_disambiguate surfaces
-        multiple candidate interpretations ranked by clinical frequency. Use this when a term
-        is known to be ambiguous (e.g. MS, PCP, SOB) and the correct reading cannot be inferred
-        from context — returning the ranked list to the caller to resolve.
-
-        domain_hint optionally scopes disambiguation to a specific OMOP domain.
-        max_interpretations controls the upper bound on candidates returned (clamped 1-10).
-
-        The result contains ranked interpretations with optional domain hints and
-        context clues, plus the original input and an ambiguity flag.
-        """
+        """Language-model list of the plausible meanings of an ambiguous term or abbreviation, most
+        likely first given the context (no frequency data is used), with is_ambiguous. Ground
+        each meaning separately; max_interpretations is a request to the model, not an enforced
+        limit."""
         try:
             result = await text_service.async_disambiguate(
-                text, domain_hint=domain_hint, max_interpretations=max_interpretations, model_name=model_name,
+                text,
+                domain_hint=domain_hint,
+                max_interpretations=max_interpretations,
+                model_name=model_name,
             )
             return result.model_dump()
         except ValueError as exc:
@@ -160,7 +157,9 @@ def register_text_prompts(server: GroundworkersMCPServer) -> None:
     ) -> list[dict]:
         system = SYSTEM_PROMPTS["normalize"]
         user = build_user_prompt("normalize", text, domain_hint=domain_hint or None)
-        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
+        return [
+            {"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}
+        ]
 
     @server.prompt(
         "cleanup_mapping_text",
@@ -175,8 +174,15 @@ def register_text_prompts(server: GroundworkersMCPServer) -> None:
         context: dict[str, Any] | None = None,
     ) -> list[dict]:
         system = SYSTEM_PROMPTS["mapping_cleanup"]
-        user = build_user_prompt("mapping_cleanup", text, domain_hint=domain_hint or None, context=context or {})
-        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
+        user = build_user_prompt(
+            "mapping_cleanup",
+            text,
+            domain_hint=domain_hint or None,
+            context=context or {},
+        )
+        return [
+            {"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}
+        ]
 
     @server.prompt(
         "decompose_clinical_text",
@@ -191,8 +197,12 @@ def register_text_prompts(server: GroundworkersMCPServer) -> None:
         max_terms: int = 10,
     ) -> list[dict]:
         system = SYSTEM_PROMPTS["decompose"]
-        user = build_user_prompt("decompose", text, domain_hint=domain_hint or None, max_terms=max_terms)
-        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
+        user = build_user_prompt(
+            "decompose", text, domain_hint=domain_hint or None, max_terms=max_terms
+        )
+        return [
+            {"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}
+        ]
 
     @server.prompt(
         "disambiguate_clinical_term",
@@ -208,6 +218,11 @@ def register_text_prompts(server: GroundworkersMCPServer) -> None:
     ) -> list[dict]:
         system = SYSTEM_PROMPTS["disambiguate"]
         user = build_user_prompt(
-            "disambiguate", text, domain_hint=domain_hint or None, max_interpretations=max_interpretations
+            "disambiguate",
+            text,
+            domain_hint=domain_hint or None,
+            max_interpretations=max_interpretations,
         )
-        return [{"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}]
+        return [
+            {"role": "user", "content": {"type": "text", "text": f"{system}\n\n{user}"}}
+        ]
