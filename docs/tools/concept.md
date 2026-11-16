@@ -69,22 +69,35 @@ Returns stored non-self ancestors up to minimum separation `max_depth` (default 
 
 ---
 
-Ancestry is read directly from the stored OMOP closure, with non-self
-zero-separation ancestors retained. `max_depth` accepts 0..20 and measures stored
-minimum separation; invalid values are rejected. The response preserves
-`ancestors` and reports `ancestry_source`, `distance_metric`, effective `max_depth`
-and `include_self=false`. A zero-distance link does not imply interchangeability.
-Parent/child primitives and descendant traversal keep their existing semantics.
+Ancestry is read directly from the stored OMOP closure, with non-self zero-separation ancestors retained. `max_depth` accepts 0..20 and measures stored minimum separation; invalid values are rejected. The response preserves `ancestors` and reports `ancestry_source`, `distance_metric`, effective `max_depth` and `include_self=false`. A zero-distance link does not imply interchangeability. Parent/child primitives expose direct graph relationships. Descendant results use the stored `concept_ancestor` table.
 
 ## `concept_descendants`
 
-Returns descendants of a concept up to `max_depth` hops (default 3, max 10).
+Returns descendants from the stored `concept_ancestor` table (default depth 3, range 1..10). `depth` is the stored minimum separation, not a count of graph relationship hops. Results are ordered by depth and then concept ID. Use `limit` (default 50, range 1..500) and `offset` (default 0, minimum 0) to page through the stored ancestry. `concept_class_ids` optionally filters by exact `concept_class_id` before paging; `total` counts only matching descendants. For drug concepts, filter by classes such as `["Clinical Drug"]` because greater depth does not mean greater drug specificity. Unknown class IDs are rejected.
 
 ```json
-{"concept_id": 441484, "max_depth": 2}
+{"concept_id": 1503297, "max_depth": 3, "limit": 50, "offset": 0, "concept_class_ids": ["Clinical Drug"]}
 ```
 
-**Response**: same shape as ancestors, with `"descendants"` key instead of `"ancestors"`.
+**Response**:
+
+```json
+{
+  "concept_id": 441484,
+  "descendants": [
+    {"concept_id": 441485, "depth": 1},
+    {"concept_id": 441486, "depth": 1}
+  ],
+  "total": 12,
+  "returned": 2,
+  "truncated": true,
+  "limit": 50,
+  "offset": 0,
+  "max_depth": 2
+}
+```
+
+`total` counts all descendants within `max_depth`; `truncated` is true when more rows remain after the returned page. Results are ordered by minimum depth, then `concept_id`.
 
 ---
 

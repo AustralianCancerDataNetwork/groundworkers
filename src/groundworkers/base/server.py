@@ -22,6 +22,20 @@ from groundworkers.server_instructions import build_instructions
 from groundworkers.toolsets import ToolMeta, select_tools
 
 logger = logging.getLogger(__name__)
+_READ_ONLY_TOOL_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
+
+def _tool_annotations_or_default(
+    annotations: ToolAnnotations | None,
+) -> ToolAnnotations:
+    if annotations is not None:
+        return annotations
+    return _READ_ONLY_TOOL_ANNOTATIONS
 
 
 @dataclass(frozen=True)
@@ -115,7 +129,9 @@ class GroundworkersMCPServer:
 
             _advertise_tool_signature(func, guarded, result_model)
             self._tools[tool_name] = guarded
-            self._tool_annotations[tool_name] = annotations
+            self._tool_annotations[tool_name] = _tool_annotations_or_default(
+                annotations
+            )
             self._tool_metadata[tool_name] = self._tool_meta(toolsets)
             return guarded
 

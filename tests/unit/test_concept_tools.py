@@ -1,6 +1,9 @@
+import asyncio
 from unittest.mock import Mock
 
 import pytest
+from mcp.server.fastmcp import FastMCP
+from mcp.shared.memory import create_connected_server_and_client_session
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
@@ -84,11 +87,36 @@ class StubGraphAdapter:
             },
         ]
 
-    def get_descendants(self, concept_id: int, max_depth: int):
+    def get_descendants(
+        self,
+        concept_id: int,
+        max_depth: int,
+        **kwargs,
+    ):
+        limit = kwargs.get("limit")
+        offset = kwargs.get("offset", 0)
+        concept_class_ids = kwargs.get("concept_class_ids")
         self.calls.append(
-            ("get_descendants", {"concept_id": concept_id, "max_depth": max_depth})
+            (
+                "get_descendants",
+                {
+                    "concept_id": concept_id,
+                    "max_depth": max_depth,
+                    "limit": limit,
+                    "offset": offset,
+                    "concept_class_ids": concept_class_ids,
+                },
+            )
         )
-        return []
+        if concept_id == 999:
+            raise GroundworkersError("NOT_FOUND", "Concept 999 was not found")
+        descendants = [_concept(10), _concept(20), _concept(30)]
+        if limit is None:
+            return descendants
+        return {
+            "descendants": descendants[offset : offset + limit],
+            "total": len(descendants),
+        }
 
     def map_to_standard(self, vocabulary_id: str, code: str) -> dict:
         self.calls.append(("map_to_standard", (vocabulary_id, code)))
@@ -411,23 +439,98 @@ def test_concept_ancestors_returns_depth_annotated_list():
     assert adapter.calls == [("get_ancestors", {"concept_id": 123, "max_depth": 5})]
 
 
-def test_concept_descendants_leaf_returns_empty_list():
+def test_concept_descendants_returns_limited_page_with_total_and_scope():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    result = server.call("concept_descendants", concept_id=321, max_depth=3)
+    first = server.call(
+        "concept_descendants", concept_id=321, max_depth=3, limit=2, offset=0
+    )
+    second = server.call(
+        "concept_descendants", concept_id=321, max_depth=3, limit=2, offset=2
+    )
+    unpaged = server.call(
+        "concept_descendants", concept_id=321, max_depth=3, limit=500, offset=0
+    )
 
-    assert result == {"concept_id": 321, "descendants": []}
-    assert adapter.calls == [("get_descendants", {"concept_id": 321, "max_depth": 3})]
+    assert [row["concept_id"] for row in first["descendants"]] == [10, 20]
+    assert first["total"] == unpaged["total"] == 3
+    assert first["returned"] == 2
+    assert first["truncated"] is True
+    assert first["limit"] == 2
+    assert first["offset"] == 0
+    assert first["max_depth"] == 3
+    assert [row["concept_id"] for row in second["descendants"]] == [30]
+    assert second["truncated"] is False
+    assert {row["concept_id"] for row in first["descendants"]}.isdisjoint(
+        row["concept_id"] for row in second["descendants"]
+    )
+    assert [
+        row["concept_id"]
+        for page in (first, second)
+        for row in page["descendants"]
+    ] == [row["concept_id"] for row in unpaged["descendants"]]
+    assert [call[1]["limit"] for call in adapter.calls] == [2, 2, 500]
 
 
-def test_concept_descendants_clamps_max_depth_to_ten():
+def test_concept_descendants_filters_and_echoes_concept_classes():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    server.call("concept_descendants", concept_id=321, max_depth=100)
+    result = server.call(
+        "concept_descendants",
+        concept_id=321,
+        concept_class_ids=["Clinical Finding"],
+    )
 
-    assert adapter.calls == [("get_descendants", {"concept_id": 321, "max_depth": 10})]
+    assert result["concept_class_ids"] == ["Clinical Finding"]
+    assert result["total"] == 3
+    assert adapter.calls[-1][1]["concept_class_ids"] == ["Clinical Finding"]
+
+
+def test_concept_descendants_unknown_concept_returns_not_found():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_descendants", concept_id=999)
+
+    assert (result["error"], result["code"]) == (True, "NOT_FOUND")
+
+
+def test_concept_descendants_schema_rejects_out_of_range_paging_values(monkeypatch):
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+    captured = {}
+    monkeypatch.setattr(FastMCP, "run", lambda app, **kwargs: captured.update(app=app))
+    server.run()
+
+    async def run():
+        async with create_connected_server_and_client_session(captured["app"]) as client:
+            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+            schema = tools["concept_descendants"].inputSchema["properties"]
+            assert schema["limit"]["minimum"] == 1
+            assert schema["limit"]["maximum"] == 500
+            assert schema["offset"]["minimum"] == 0
+            assert schema["max_depth"]["minimum"] == 1
+            assert schema["max_depth"]["maximum"] == 10
+            class_list_schema = schema["concept_class_ids"]["anyOf"][0]
+            assert class_list_schema["minItems"] == 1
+            assert class_list_schema["maxItems"] == 20
+            for args in (
+                {"concept_id": 321, "limit": 0},
+                {"concept_id": 321, "limit": 501},
+                {"concept_id": 321, "offset": -1},
+                {"concept_id": 321, "max_depth": 0},
+                {"concept_id": 321, "max_depth": 11},
+                {"concept_id": 321, "concept_class_ids": []},
+                {"concept_id": 321, "concept_class_ids": [""]},
+                {"concept_id": 321, "concept_class_ids": ["Class"] * 21},
+            ):
+                result = await client.call_tool("concept_descendants", args)
+                assert result.isError
+
+    asyncio.run(run())
+    assert adapter.calls == []
 
 
 def test_concept_ancestors_rejects_out_of_range_depth():

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, overload
 
 from omop_alchemy.cdm.model import normalised_flag
 from omop_alchemy.cdm.model.vocabulary import Concept, Concept_Relationship
@@ -178,45 +177,59 @@ class GraphService:
             key=lambda row: (row["depth"], row["concept_id"]),
         )
 
-    def get_descendants(self, concept_id: int, max_depth: int) -> list[dict[str, Any]]:
+    @overload
+    def get_descendants(
+        self,
+        concept_id: int,
+        max_depth: int,
+        *,
+        concept_class_ids: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    @overload
+    def get_descendants(
+        self,
+        concept_id: int,
+        max_depth: int,
+        *,
+        limit: int,
+        offset: int = 0,
+        concept_class_ids: Sequence[str] | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_descendants(
+        self,
+        concept_id: int,
+        max_depth: int,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        concept_class_ids: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        """Return stored descendants, optionally filtered by class or paged."""
         if self._adapter.get_concept(concept_id) is None:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
-        queue: deque[tuple[int, int]] = deque(
-            (child_id, 1) for child_id in self._adapter.children(concept_id)
+        if limit is None and offset != 0:
+            raise ValueError("offset requires a limit")
+        rows, total = self._adapter.descendant_rows(
+            concept_id,
+            max_depth,
+            limit=limit,
+            offset=offset,
+            concept_class_ids=concept_class_ids,
         )
-        return self._walk_hierarchy(
-            queue=queue, neighbour_getter=self._adapter.children, max_depth=max_depth
-        )
-
-    def _walk_hierarchy(
-        self,
-        *,
-        queue: deque[tuple[int, int]],
-        neighbour_getter: Callable[[int], tuple[int, ...]],
-        max_depth: int,
-    ) -> list[dict[str, Any]]:
-        # BFS to discover each reachable concept and its shallowest depth, then
-        # batch-fetch views once (rather than one lookup per node).
-        depth_by_id: dict[int, int] = {}
-        while queue:
-            current_id, depth = queue.popleft()
-            if current_id in depth_by_id or depth > max_depth:
-                continue
-            depth_by_id[current_id] = depth
-            if depth < max_depth:
-                for next_id in neighbour_getter(current_id):
-                    if next_id not in depth_by_id:
-                        queue.append((int(next_id), depth + 1))
-
-        views = self._adapter.concept_views(tuple(depth_by_id))
-        results: list[dict[str, Any]] = []
-        for concept_id, depth in depth_by_id.items():
-            view = views.get(concept_id)
-            if view is None:
-                continue
-            results.append({**project_payload(view, detail="flags"), "depth": depth})
-        results.sort(key=lambda item: (item["depth"], item["concept_id"]))
-        return results
+        concept_ids = [row["descendant_concept_id"] for row in rows]
+        views = self._adapter.concept_views(concept_ids, strict=True)
+        descendants = [
+            {
+                **project_payload(views[row["descendant_concept_id"]], detail="flags"),
+                "depth": row["min_levels_of_separation"],
+            }
+            for row in rows
+        ]
+        if limit is None:
+            return descendants
+        return {"descendants": descendants, "total": total}
 
     # ------------------------------------------------------------------
     # Edges

@@ -14,6 +14,15 @@ from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.graph import GraphService
 from groundworkers.toolsets import Toolset
 
+_ConceptClassIds = Annotated[
+    list[Annotated[str, Field(min_length=1)]] | None,
+    Field(
+        min_length=1,
+        max_length=20,
+        description="Only descendants in these concept classes, for example ['Clinical Drug']. Use for drugs, where depth is not specificity.",
+    ),
+]
+
 
 def register_concept_tools(
     server: GroundworkersMCPServer, graph_service: GraphService
@@ -133,23 +142,58 @@ def register_concept_tools(
         concept_id: Annotated[int, Field(description="The broader concept.")],
         max_depth: Annotated[
             int,
-            Field(description="Levels below to include (hierarchy hops). Default 3."),
+            Field(
+                ge=1,
+                le=10,
+                description="Levels below to include (hierarchy hops). Default 3.",
+            ),
         ] = 3,
+        limit: Annotated[
+            int,
+            Field(ge=1, le=500, description="Maximum descendants to return."),
+        ] = 50,
+        offset: Annotated[
+            int,
+            Field(ge=0, description="Number of descendants to skip."),
+        ] = 0,
+        concept_class_ids: _ConceptClassIds = None,
     ) -> dict[str, Any]:
         """List more specific concepts below a concept (stored OMOP hierarchy, up to max_depth
         levels). Use it after picking a candidate, to check whether a more specific standard
         concept matches every qualifier the source states (for example specimen, site, route or
-        form). Each result has domain_id, standard_concept and depth."""
+        form). Each result has domain_id, standard_concept and depth. Results are ordered by depth
+        then concept_id; limit defaults to 50 (range 1..500), offset defaults to 0, and the response
+        includes total, returned and truncated."""
         if concept_id <= 0:
             return {
                 "error": True,
                 "code": "INVALID_INPUT",
                 "message": "concept_id must be a positive integer",
             }
-        safe_depth = max(1, min(max_depth, 10))
         try:
-            descendants = graph_service.get_descendants(concept_id, safe_depth)
-            return {"concept_id": concept_id, "descendants": descendants}
+            page = graph_service.get_descendants(
+                concept_id,
+                max_depth,
+                limit=limit,
+                offset=offset,
+                concept_class_ids=concept_class_ids,
+            )
+            descendants = page["descendants"]
+            returned = len(descendants)
+            class_filter = (
+                {"concept_class_ids": concept_class_ids} if concept_class_ids else {}
+            )
+            return {
+                "concept_id": concept_id,
+                "descendants": descendants,
+                "total": page["total"],
+                "returned": returned,
+                "truncated": offset + returned < page["total"],
+                "limit": limit,
+                "offset": offset,
+                "max_depth": max_depth,
+                **class_filter,
+            }
         except GroundworkersError as exc:
             return exc.to_dict()
 

@@ -56,6 +56,18 @@ def test_server_registers_concept_tools_for_a_resolved_cdm_database():
     assert "concept_descendants" in names
 
 
+def test_every_reference_server_tool_has_read_only_annotations():
+    from tests.support.agent_surface import reference_server
+
+    with reference_server() as server:
+        tools = server.describe_tools()
+
+    assert tools
+    assert all(
+        tool["annotations"]["readOnlyHint"] is True for tool in tools.values()
+    )
+
+
 def test_server_registers_embedding_tools_when_enabled(tmp_path: Path):
     stack = build_embedding_stack()
     stack.connections["embedding_main"].database_name = str(tmp_path / "omop_emb.db")

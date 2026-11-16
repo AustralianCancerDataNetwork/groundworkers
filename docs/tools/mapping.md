@@ -95,13 +95,7 @@ Representative response sections:
 - `candidate_union`
 - `warnings`
 
-In the MCP response, `channels` has the shape
-`{"exact": {"available": true, "count": 2}}`, with one entry per channel
-that ran. Counts describe the channel results before deduplication or the
-merged-list limit. Candidate details remain in `candidate_union`, where
-`retrieved_by` identifies their channels. `standardized_candidates`,
-`constraints` and `warnings` retain their existing shapes. The direct Python
-service and REST endpoint continue to return full channel result lists.
+In the MCP response, `channels` has the shape `{"exact": {"available": true, "count": 2}}`, with one entry per channel that ran. Counts describe the channel results before deduplication or the merged-list limit. Candidate details remain in `candidate_union`, where `retrieved_by` identifies their channels. `standardized_candidates`, `constraints` and `warnings` retain their existing shapes. The direct Python service and REST endpoint continue to return full channel result lists.
 
 Hierarchy previews and relationship summaries enrich only the first five
 merged candidates.
@@ -118,9 +112,7 @@ Finds the nearest active standard ancestor using stored OMOP separation, abstain
 }
 ```
 
-In query mode, `vocabulary_id` and `parent_ids` constrain grounded seeds; they
-do not filter ancestor targets. `candidate_limit` bounds the retrieved seed
-list, and only its first candidate is used for ancestor selection.
+In query mode, `vocabulary_id` and `parent_ids` constrain grounded seeds; they do not filter ancestor targets. `candidate_limit` bounds the retrieved seed list, and only its first candidate is used for ancestor selection.
 
 Useful response fields:
 
@@ -155,6 +147,20 @@ Possible sections include:
 - `neighbors`
 - `embedding_neighbors`
 - `warnings`
+
+Set `include_descendants=true` to include up to `descendant_limit` rows (default 10, range 1..10) from three stored hierarchy levels. `descendant_scope` reports `max_depth`, `limit`, the full `total`, and whether more rows remain in `truncated`. The row limit does not change which descendants qualify.
+
+```json
+{
+  "descendants": [{"concept_id": 441484, "depth": 1}],
+  "descendant_scope": {
+    "max_depth": 3,
+    "limit": 1,
+    "total": 12,
+    "truncated": true
+  }
+}
+```
 
 ## `concept_map_to_value`
 
@@ -238,51 +244,22 @@ context = mapping.concept_mapping_context(201826)
 
 ## `concept_shared_standard_ancestor`
 
-Read-only, deterministic common-ancestor selection for alternative concept IDs
-representing one source record. It needs a configured vocabulary/graph, not an
-embedding or LLM backend. Do not use separate combination ingredients as if they
-were alternative product candidates.
+Read-only, deterministic common-ancestor selection for alternative concept IDs representing one source record. It needs a configured vocabulary/graph, not an embedding or LLM backend. Do not use separate combination ingredients as if they were alternative product candidates.
 
-Supply `concept_ids` (2..200 positive strict integers, at least two distinct),
-`max_depth` (0..20, default 5), optional `concept_class_ids` / `vocabulary_ids`,
-and display `limit` (1..50, default 10) / `offset` (default 0). Filters must use
-exact installed catalogue IDs; null is unrestricted, empty/blank/unknown filters
-are invalid. RxNorm alone does not include RxNorm Extension.
+Supply `concept_ids` (2..200 positive strict integers, at least two distinct), `max_depth` (0..20, default 5), optional `concept_class_ids` / `vocabulary_ids`, and display `limit` (1..50, default 10) / `offset` (default 0). Filters must use exact installed catalogue IDs; null is unrestricted, empty/blank/unknown filters are invalid. RxNorm alone does not include RxNorm Extension.
 
 ```json
 {"concept_ids": [40166038, 41038881], "concept_class_ids": ["Clinical Drug"], "vocabulary_ids": ["RxNorm", "RxNorm Extension"], "max_depth": 5}
 ```
 
-The response is `{error, code, message, data}`. On success `data.status` is
-`selected`, `ambiguous`, `no_match`, or `incompatible_inputs`. `found` indicates a
-unique selection, so it is false for an ancestry tie. Eligible targets must be
-active standard concepts in the same domain as every input. The response echoes
-constraints, complete-set counts and per-input distances for any selected target.
+The response is `{error, code, message, data}`. On success `data.status` is `selected`, `ambiguous`, `no_match`, or `incompatible_inputs`. `found` indicates a unique selection, so it is false for an ancestry tie. Eligible targets must be active standard concepts in the same domain as every input. The response echoes constraints, complete-set counts and per-input distances for any selected target.
 
-Distances are stored minimum separation from `CONCEPT_ANCESTOR`. Include each
-seed itself at zero; retain distinct zero-separation ancestors. Such a connection
-does not prove clinical interchangeability. Nearest means the lowest maximum
-distance across all inputs. Equal nearest distances abstain. Display pagination
-never changes that computation; `limit=1` cannot force a selection. A selected
-concept is returned independently of the candidate display page.
+Distances are stored minimum separation from `CONCEPT_ANCESTOR`. Include each seed itself at zero; retain distinct zero-separation ancestors. Such a connection does not prove clinical interchangeability. Nearest means the lowest maximum distance across all inputs. Equal nearest distances abstain. Display pagination never changes that computation; `limit=1` cannot force a selection. A selected concept is returned independently of the candidate display page.
 
-Native MCP argument/schema errors set `isError=true`. Errors from the service
-use the typed envelope with `error=true` and `data=null`. Backend failure is never
-a no-match. Text and structured payloads are normalized to the same envelope.
+Native MCP argument/schema errors set `isError=true`. Errors from the service use the typed envelope with `error=true` and `data=null`. Backend failure is never a no-match. Text and structured payloads are normalized to the same envelope.
 
 ### Ancestry consistency changes
 
-`concept_nearest_standard_ancestor` and hierarchy previews now use the same stored
-ancestry as `concept_ancestors`. Nearest-standard ties abstain instead of selecting
-the first row. Query mode still starts from the first grounded candidate, which
-is disclosed as `seed_selection_policy`; source-concept ambiguity remains the
-agent's responsibility. Maps-to fallback is labelled `evidence_route=maps_to`,
-with multiple targets left ambiguous. Missing relationship paths do not invalidate
-stored ancestor evidence and are reported separately.
+`concept_nearest_standard_ancestor` and hierarchy previews now use the same stored ancestry as `concept_ancestors`. Nearest-standard ties abstain instead of selecting the first row. Query mode still starts from the first grounded candidate, which is disclosed as `seed_selection_policy`; source-concept ambiguity remains the agent's responsibility. Maps-to fallback is labelled `evidence_route=maps_to`, with multiple targets left ambiguous. Missing relationship paths do not invalidate stored ancestor evidence and are reported separately.
 
-`concept_mapping_context` uses `ancestor_limit` only as a display count (1..50).
-`ancestor_max_depth` independently sets stored separation (0..20, default 5).
-`ancestor_scope` reports the full count and whether the display was truncated.
-Ancestor bounds now reject invalid values rather than silently clamping them.
-For the runtime contract and bounded relationship-neighborhood behavior see
-[stored ancestry and shared targets](../adapters/ancestry.md).
+`concept_mapping_context` uses `ancestor_limit` only as a display count (1..50). `ancestor_max_depth` independently sets stored separation (0..20, default 5). `ancestor_scope` reports the full count and whether the display was truncated. Ancestor bounds now reject invalid values rather than silently clamping them. Descendants use a fixed stored-ancestry depth of 3; `descendant_limit` remains a row count (1..10), and `descendant_scope` reports the full count and truncation. For the runtime contract and bounded relationship-neighborhood behavior see [stored ancestry and shared targets](../adapters/ancestry.md).
