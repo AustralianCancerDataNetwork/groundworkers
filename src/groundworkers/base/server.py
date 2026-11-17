@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 from collections.abc import Callable, Collection, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from difflib import get_close_matches
 from functools import wraps
 from typing import Annotated, Any, Literal, get_origin, get_type_hints
 
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel
 
 from groundworkers.base.errors import (
@@ -36,6 +38,54 @@ def _tool_annotations_or_default(
     if annotations is not None:
         return annotations
     return _READ_ONLY_TOOL_ANNOTATIONS
+
+
+def _install_mcp_argument_validation(app: Any) -> Any:
+    """Reject unregistered keys before the MCP SDK drops them from arguments."""
+    tool_manager = getattr(app, "_tool_manager", None)
+    if tool_manager is None:
+        return app
+
+    call_tool = tool_manager.call_tool
+
+    async def validate_tool_arguments(
+        name: str,
+        arguments: dict[str, Any],
+        context: Any = None,
+        convert_result: bool = False,
+    ) -> Any:
+        tool = tool_manager.get_tool(name)
+        if tool is not None:
+            declared = set(tool.fn_metadata.arg_model.model_fields)
+            undeclared = sorted(set(arguments) - declared)
+            if undeclared:
+                details = []
+                for argument in undeclared:
+                    matches = get_close_matches(argument, sorted(declared))
+                    hint = f" (did you mean '{matches[0]}'?)" if matches else ""
+                    details.append(argument + hint)
+                error_result = GroundworkersError(
+                    "INVALID_INPUT",
+                    "Undeclared tool argument(s): " + ", ".join(details),
+                ).to_dict()
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text=json.dumps(error_result, indent=2),
+                        )
+                    ],
+                    isError=True,
+                )
+        return await call_tool(
+            name,
+            arguments,
+            context=context,
+            convert_result=convert_result,
+        )
+
+    tool_manager.call_tool = validate_tool_arguments
+    return app
 
 
 @dataclass(frozen=True)
@@ -351,7 +401,8 @@ class GroundworkersMCPServer:
             )
         for uri, (func, description) in self._resources.items():
             app.resource(uri, description=description or "")(func)
-        app.run(transport=transport)
+
+        _install_mcp_argument_validation(app).run(transport=transport)
 
 
 def _prompt_arguments(

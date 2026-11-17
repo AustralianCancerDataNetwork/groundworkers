@@ -11,6 +11,16 @@ from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.mapping_tools import register_mapping_tools
 
+CANDIDATE_OPTIONAL_ARGS = {
+    "domain": "Condition",
+    "vocabulary_id": "SNOMED",
+    "standard_only": True,
+    "include_synonyms": False,
+    "include_embedding": False,
+    "per_channel_limit": 5,
+    "overall_limit": 12,
+}
+
 
 class StubMappingService:
     def __init__(self) -> None:
@@ -115,7 +125,8 @@ def test_candidate_bundle_mcp_counts_channels_without_changing_service_output(
             captured["app"]
         ) as client:
             result = await client.call_tool(
-                "concept_candidate_bundle", {"query": "demo"}
+                "concept_candidate_bundle",
+                {"query": "demo", **CANDIDATE_OPTIONAL_ARGS},
             )
             assert not result.isError
             assert json.loads(result.content[0].text) == result.structuredContent
@@ -132,6 +143,10 @@ def test_candidate_bundle_mcp_counts_channels_without_changing_service_output(
     assert result == expected
     assert full_result == original
     service.async_concept_candidate_bundle.assert_awaited_once()
+    forwarded = service.async_concept_candidate_bundle.await_args.kwargs
+    assert {name: forwarded[name] for name in CANDIDATE_OPTIONAL_ARGS} == (
+        CANDIDATE_OPTIONAL_ARGS
+    )
 
 
 def test_concept_search_normalized_clamps_limit_and_calls_service():
