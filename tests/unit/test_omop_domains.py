@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from importlib.resources import files
 
@@ -17,7 +18,9 @@ from groundworkers.omop_domains import (
 )
 from groundworkers.services import domain as domain_service
 
-ROUTING_PACK = files("groundworkers") / "knowledge" / "packs" / "core" / "domain-routing"
+ROUTING_PACK = (
+    files("groundworkers") / "knowledge" / "packs" / "core" / "domain-routing"
+)
 
 
 def test_classifiable_domains_are_routed_domains() -> None:
@@ -36,8 +39,13 @@ def test_routing_table_is_read_only() -> None:
 
 @pytest.mark.parametrize(
     ("domain_id", "table"),
-    [("Condition", "CONDITION_OCCURRENCE"), ("Specimen", "SPECIMEN"), ("Metadata", None),
-     ("Meas Value", None), (None, None)],
+    [
+        ("Condition", "CONDITION_OCCURRENCE"),
+        ("Specimen", "SPECIMEN"),
+        ("Metadata", None),
+        ("Meas Value", None),
+        (None, None),
+    ],
 )
 def test_table_for_domain(domain_id, table) -> None:
     assert table_for_domain(domain_id) == table
@@ -59,7 +67,9 @@ def test_knowledge_pack_guidance_table_matches_the_routing_table() -> None:
 
 def test_domain_classify_accepts_exactly_the_published_outputs() -> None:
     assert domain_service._VALID_DOMAINS == DOMAIN_CLASSIFY_OUTPUTS
-    schema_enum = domain_service._DOMAIN_RESPONSE_SCHEMA["additionalProperties"]["oneOf"][0]["enum"]
+    schema_enum = domain_service._DOMAIN_RESPONSE_SCHEMA["additionalProperties"][
+        "oneOf"
+    ][0]["enum"]
     assert set(schema_enum) == DOMAIN_CLASSIFY_OUTPUTS
 
 
@@ -70,9 +80,21 @@ def test_domain_classify_prompt_describes_exactly_the_published_outputs() -> Non
 
 
 def test_domain_classify_tool_description_lists_exactly_the_published_outputs() -> None:
-    source = files("groundworkers.tools").joinpath("domain_tools.py").read_text(encoding="utf-8")
-    listed = re.search(r"Valid domains: ([^.]+)\.", source)
-    assert listed is not None
-    names = {name.strip() for name in listed.group(1).replace("\n", " ").split(",")}
+    source = (
+        files("groundworkers.tools")
+        .joinpath("domain_tools.py")
+        .read_text(encoding="utf-8")
+    )
+    tool = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "domain_classify"
+    )
+    description = ast.get_docstring(tool)
+    assert description is not None
+    domain_names = "|".join(
+        re.escape(name) for name in set(DOMAIN_TO_TABLE) | set(NON_CLINICAL)
+    )
+    names = set(re.findall(rf"\b(?:{domain_names})\b", description))
 
     assert names == DOMAIN_CLASSIFY_OUTPUTS

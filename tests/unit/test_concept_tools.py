@@ -1,3 +1,10 @@
+import asyncio
+from unittest.mock import Mock
+
+import pytest
+from mcp.server.fastmcp import FastMCP
+from mcp.shared.memory import create_connected_server_and_client_session
+
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.concept_tools import register_concept_tools
@@ -19,7 +26,9 @@ def _concept(concept_id: int, *, name: str = "Demo concept") -> dict:
     }
 
 
-def _ground_result(concept_id: int, *, name: str, score: float, match_kind: str = "EXACT") -> dict:
+def _ground_result(
+    concept_id: int, *, name: str, score: float, match_kind: str = "EXACT"
+) -> dict:
     return {
         "concept_id": concept_id,
         "concept_name": name,
@@ -56,7 +65,9 @@ class StubGraphAdapter:
         return [_concept(123, name="Matched concept")]
 
     def get_ancestors(self, concept_id: int, max_depth: int):
-        self.calls.append(("get_ancestors", {"concept_id": concept_id, "max_depth": max_depth}))
+        self.calls.append(
+            ("get_ancestors", {"concept_id": concept_id, "max_depth": max_depth})
+        )
         return [
             {
                 "concept_id": 2,
@@ -76,16 +87,48 @@ class StubGraphAdapter:
             },
         ]
 
-    def get_descendants(self, concept_id: int, max_depth: int):
-        self.calls.append(("get_descendants", {"concept_id": concept_id, "max_depth": max_depth}))
-        return []
+    def get_descendants(
+        self,
+        concept_id: int,
+        max_depth: int,
+        **kwargs,
+    ):
+        limit = kwargs.get("limit")
+        offset = kwargs.get("offset", 0)
+        concept_class_ids = kwargs.get("concept_class_ids")
+        self.calls.append(
+            (
+                "get_descendants",
+                {
+                    "concept_id": concept_id,
+                    "max_depth": max_depth,
+                    "limit": limit,
+                    "offset": offset,
+                    "concept_class_ids": concept_class_ids,
+                },
+            )
+        )
+        if concept_id == 999:
+            raise GroundworkersError("NOT_FOUND", "Concept 999 was not found")
+        descendants = [_concept(10), _concept(20), _concept(30)]
+        if limit is None:
+            return descendants
+        return {
+            "descendants": descendants[offset : offset + limit],
+            "total": len(descendants),
+        }
 
     def map_to_standard(self, vocabulary_id: str, code: str) -> dict:
         self.calls.append(("map_to_standard", (vocabulary_id, code)))
         if code == "unknown":
-            raise GroundworkersError("NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found")
+            raise GroundworkersError(
+                "NOT_FOUND", f"Concept {vocabulary_id}:{code} was not found"
+            )
         source = _concept(123, name="Source concept")
-        return {"source": source, "standard_concepts": [_concept(456, name="Standard concept")]}
+        return {
+            "source": source,
+            "standard_concepts": [_concept(456, name="Standard concept")],
+        }
 
     def get_edges(self, concept_id: int) -> dict:
         self.calls.append(("get_edges", (concept_id,)))
@@ -112,40 +155,86 @@ class StubGraphAdapter:
             ],
         }
 
-    def get_associations(self, concept_id, *, direction="out", predicate_subkinds=None, active_only=True, limit=50):
-        self.calls.append(("get_associations", {
-            "concept_id": concept_id, "direction": direction,
-            "predicate_subkinds": predicate_subkinds, "active_only": active_only, "limit": limit,
-        }))
+    def get_associations(
+        self,
+        concept_id,
+        *,
+        direction="out",
+        predicate_subkinds=None,
+        active_only=True,
+        limit=50,
+    ):
+        self.calls.append(
+            (
+                "get_associations",
+                {
+                    "concept_id": concept_id,
+                    "direction": direction,
+                    "predicate_subkinds": predicate_subkinds,
+                    "active_only": active_only,
+                    "limit": limit,
+                },
+            )
+        )
         if concept_id == 999:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
         result = {"concept_id": concept_id, "predicate_kind": "Association"}
         if direction in ("out", "both"):
-            result["outbound"] = [{
-                "relationship_id": "Has cytotox chemo Rx", "predicate_subkind": "Therapeutic",
-                "target_concept_id": 955632, "target_concept_name": "fluorouracil",
-                "vocabulary_id": "RxNorm", "domain_id": "Drug", "concept_class_id": "Ingredient",
-                "standard_concept": "S", "valid": True,
-            }]
+            result["outbound"] = [
+                {
+                    "relationship_id": "Has cytotox chemo Rx",
+                    "predicate_subkind": "Therapeutic",
+                    "target_concept_id": 955632,
+                    "target_concept_name": "fluorouracil",
+                    "vocabulary_id": "RxNorm",
+                    "domain_id": "Drug",
+                    "concept_class_id": "Ingredient",
+                    "standard_concept": "S",
+                    "valid": True,
+                }
+            ]
         if direction in ("in", "both"):
             result["inbound"] = []
         return result
 
-    def get_extended_inheritance(self, concept_id, *, direction="out", predicate_subkinds=None, active_only=True, limit=50):
-        self.calls.append(("get_extended_inheritance", {
-            "concept_id": concept_id, "direction": direction,
-            "predicate_subkinds": predicate_subkinds, "active_only": active_only, "limit": limit,
-        }))
+    def get_extended_inheritance(
+        self,
+        concept_id,
+        *,
+        direction="out",
+        predicate_subkinds=None,
+        active_only=True,
+        limit=50,
+    ):
+        self.calls.append(
+            (
+                "get_extended_inheritance",
+                {
+                    "concept_id": concept_id,
+                    "direction": direction,
+                    "predicate_subkinds": predicate_subkinds,
+                    "active_only": active_only,
+                    "limit": limit,
+                },
+            )
+        )
         if concept_id == 999:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
         result = {"concept_id": concept_id, "predicate_kind": "Hierarchy"}
         if direction in ("out", "both"):
-            result["outbound"] = [{
-                "relationship_id": "Is a", "predicate_subkind": "Taxonomic - up",
-                "target_concept_id": 200, "target_concept_name": "Diabetes mellitus",
-                "vocabulary_id": "SNOMED", "domain_id": "Condition", "concept_class_id": "Clinical Finding",
-                "standard_concept": True, "valid": True,
-            }]
+            result["outbound"] = [
+                {
+                    "relationship_id": "Is a",
+                    "predicate_subkind": "Taxonomic - up",
+                    "target_concept_id": 200,
+                    "target_concept_name": "Diabetes mellitus",
+                    "vocabulary_id": "SNOMED",
+                    "domain_id": "Condition",
+                    "concept_class_id": "Clinical Finding",
+                    "standard_concept": True,
+                    "valid": True,
+                }
+            ]
         if direction in ("in", "both"):
             result["inbound"] = []
         return result
@@ -158,26 +247,54 @@ class StubGraphAdapter:
         max_nodes: int,
         include_edges: bool,
     ) -> dict:
-        self.calls.append(("get_neighbors", {
-            "concept_id": concept_id,
-            "max_depth": max_depth,
-            "predicate_kinds": predicate_kinds,
-            "max_nodes": max_nodes,
-            "include_edges": include_edges,
-        }))
+        self.calls.append(
+            (
+                "get_neighbors",
+                {
+                    "concept_id": concept_id,
+                    "max_depth": max_depth,
+                    "predicate_kinds": predicate_kinds,
+                    "max_nodes": max_nodes,
+                    "include_edges": include_edges,
+                },
+            )
+        )
         if concept_id == 999:
             raise GroundworkersError("NOT_FOUND", f"Concept {concept_id} was not found")
         if predicate_kinds and "BADKIND" in predicate_kinds:
-            raise GroundworkersError("INVALID_INPUT", "Unknown predicate_kind 'BADKIND'. Valid values: ...")
+            raise GroundworkersError(
+                "INVALID_INPUT", "Unknown predicate_kind 'BADKIND'. Valid values: ..."
+            )
         neighbors = [
-            {"concept_id": 200, "concept_name": "Diabetes mellitus", "vocabulary_id": "SNOMED",
-             "domain_id": "Condition", "concept_class_id": "Clinical Finding", "standard_concept": True},
-            {"concept_id": 201, "concept_name": "T2DM with complication", "vocabulary_id": "SNOMED",
-             "domain_id": "Condition", "concept_class_id": "Clinical Finding", "standard_concept": True},
+            {
+                "concept_id": 200,
+                "concept_name": "Diabetes mellitus",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+            },
+            {
+                "concept_id": 201,
+                "concept_name": "T2DM with complication",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "concept_class_id": "Clinical Finding",
+                "standard_concept": True,
+            },
         ]
-        edges = [
-            {"subject_id": concept_id, "predicate_id": "Is a", "predicate_kind": "HIERARCHY", "object_id": 200},
-        ] if include_edges else []
+        edges = (
+            [
+                {
+                    "subject_id": concept_id,
+                    "predicate_id": "Is a",
+                    "predicate_kind": "HIERARCHY",
+                    "object_id": 200,
+                },
+            ]
+            if include_edges
+            else []
+        )
         return {
             "concept_id": concept_id,
             "neighbor_count": len(neighbors),
@@ -188,8 +305,19 @@ class StubGraphAdapter:
             "terminated_reason": None,
         }
 
-    def find_path(self, source_id: int, target_id: int, max_depth: int, within_domain: bool = True) -> dict:
-        self.calls.append(("find_path", {"source_id": source_id, "target_id": target_id, "max_depth": max_depth}))
+    def find_path(
+        self, source_id: int, target_id: int, max_depth: int, within_domain: bool = True
+    ) -> dict:
+        self.calls.append(
+            (
+                "find_path",
+                {
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "max_depth": max_depth,
+                },
+            )
+        )
         if source_id == target_id:
             return {"found": True, "paths": [{"length": 0, "steps": []}]}
         if source_id == 999 or target_id == 999:
@@ -230,19 +358,28 @@ class StubGroundingService:
         active_only: bool = False,
         include_embedding: bool = True,
     ) -> dict:
-        self.calls.append(("ground", {
-            "query": query,
-            "limit": limit,
-            "domain": domain,
-            "vocabulary_id": vocabulary_id,
-            "parent_ids": parent_ids,
-            "standard_only": standard_only,
-            "active_only": active_only,
-            "include_embedding": include_embedding,
-        }))
+        self.calls.append(
+            (
+                "ground",
+                {
+                    "query": query,
+                    "limit": limit,
+                    "domain": domain,
+                    "vocabulary_id": vocabulary_id,
+                    "parent_ids": parent_ids,
+                    "standard_only": standard_only,
+                    "active_only": active_only,
+                    "include_embedding": include_embedding,
+                },
+            )
+        )
         all_results = [
-            _ground_result(100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"),
-            _ground_result(101, name="Diabetes mellitus type 2", score=0.8, match_kind="PARTIAL"),
+            _ground_result(
+                100, name="Type 2 diabetes mellitus", score=1.0, match_kind="EXACT"
+            ),
+            _ground_result(
+                101, name="Diabetes mellitus type 2", score=0.8, match_kind="PARTIAL"
+            ),
         ]
         return {
             "results": all_results[:limit],
@@ -302,23 +439,98 @@ def test_concept_ancestors_returns_depth_annotated_list():
     assert adapter.calls == [("get_ancestors", {"concept_id": 123, "max_depth": 5})]
 
 
-def test_concept_descendants_leaf_returns_empty_list():
+def test_concept_descendants_returns_limited_page_with_total_and_scope():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    result = server.call("concept_descendants", concept_id=321, max_depth=3)
+    first = server.call(
+        "concept_descendants", concept_id=321, max_depth=3, limit=2, offset=0
+    )
+    second = server.call(
+        "concept_descendants", concept_id=321, max_depth=3, limit=2, offset=2
+    )
+    unpaged = server.call(
+        "concept_descendants", concept_id=321, max_depth=3, limit=500, offset=0
+    )
 
-    assert result == {"concept_id": 321, "descendants": []}
-    assert adapter.calls == [("get_descendants", {"concept_id": 321, "max_depth": 3})]
+    assert [row["concept_id"] for row in first["descendants"]] == [10, 20]
+    assert first["total"] == unpaged["total"] == 3
+    assert first["returned"] == 2
+    assert first["truncated"] is True
+    assert first["limit"] == 2
+    assert first["offset"] == 0
+    assert first["max_depth"] == 3
+    assert [row["concept_id"] for row in second["descendants"]] == [30]
+    assert second["truncated"] is False
+    assert {row["concept_id"] for row in first["descendants"]}.isdisjoint(
+        row["concept_id"] for row in second["descendants"]
+    )
+    assert [
+        row["concept_id"]
+        for page in (first, second)
+        for row in page["descendants"]
+    ] == [row["concept_id"] for row in unpaged["descendants"]]
+    assert [call[1]["limit"] for call in adapter.calls] == [2, 2, 500]
 
 
-def test_concept_descendants_clamps_max_depth_to_ten():
+def test_concept_descendants_filters_and_echoes_concept_classes():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    server.call("concept_descendants", concept_id=321, max_depth=100)
+    result = server.call(
+        "concept_descendants",
+        concept_id=321,
+        concept_class_ids=["Clinical Finding"],
+    )
 
-    assert adapter.calls == [("get_descendants", {"concept_id": 321, "max_depth": 10})]
+    assert result["concept_class_ids"] == ["Clinical Finding"]
+    assert result["total"] == 3
+    assert adapter.calls[-1][1]["concept_class_ids"] == ["Clinical Finding"]
+
+
+def test_concept_descendants_unknown_concept_returns_not_found():
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+
+    result = server.call("concept_descendants", concept_id=999)
+
+    assert (result["error"], result["code"]) == (True, "NOT_FOUND")
+
+
+def test_concept_descendants_schema_rejects_out_of_range_paging_values(monkeypatch):
+    adapter = StubGraphAdapter()
+    server = build_server(adapter)
+    captured = {}
+    monkeypatch.setattr(FastMCP, "run", lambda app, **kwargs: captured.update(app=app))
+    server.run()
+
+    async def run():
+        async with create_connected_server_and_client_session(captured["app"]) as client:
+            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+            schema = tools["concept_descendants"].inputSchema["properties"]
+            assert schema["limit"]["minimum"] == 1
+            assert schema["limit"]["maximum"] == 500
+            assert schema["offset"]["minimum"] == 0
+            assert schema["max_depth"]["minimum"] == 1
+            assert schema["max_depth"]["maximum"] == 10
+            class_list_schema = schema["concept_class_ids"]["anyOf"][0]
+            assert class_list_schema["minItems"] == 1
+            assert class_list_schema["maxItems"] == 20
+            for args in (
+                {"concept_id": 321, "limit": 0},
+                {"concept_id": 321, "limit": 501},
+                {"concept_id": 321, "offset": -1},
+                {"concept_id": 321, "max_depth": 0},
+                {"concept_id": 321, "max_depth": 11},
+                {"concept_id": 321, "concept_class_ids": []},
+                {"concept_id": 321, "concept_class_ids": [""]},
+                {"concept_id": 321, "concept_class_ids": ["Class"] * 21},
+            ):
+                result = await client.call_tool("concept_descendants", args)
+                assert result.isError
+
+    asyncio.run(run())
+    assert adapter.calls == []
 
 
 def test_concept_ancestors_rejects_out_of_range_depth():
@@ -352,11 +564,60 @@ def test_concept_by_code_rejects_empty_vocabulary_id():
     assert adapter.calls == []
 
 
+def test_concept_by_code_not_found_has_recovery_hint():
+    server = build_server(StubGraphAdapter())
+
+    result = server.call(
+        "concept_by_code", vocabulary_id="test", concept_code="missing"
+    )
+
+    assert result == {
+        "error": True,
+        "code": "NOT_FOUND",
+        "message": "Concept test:missing was not found",
+        "hint": (
+            "No concept has that code in that vocabulary. If the code was recalled "
+            "from memory rather than seen in the source or a tool result, search "
+            "by meaning with concept_candidate_bundle instead."
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("concept_by_code", {"vocabulary_id": "", "concept_code": "missing"}),
+        ("concept_by_code", {"vocabulary_id": "test", "concept_code": ""}),
+        ("concept_get", {"concept_id": 999}),
+        ("concept_get", {"concept_id": 0}),
+    ],
+)
+def test_other_lookup_errors_have_no_recovery_hint(tool, arguments):
+    result = build_server(StubGraphAdapter()).call(tool, **arguments)
+    assert result["error"]
+    assert "hint" not in result
+
+
+def test_backend_not_found_error_has_no_recovery_hint(monkeypatch):
+    adapter = StubGraphAdapter()
+    error = GroundworkersError("NOT_FOUND", "Synthetic backend error")
+    assert "hint" not in error.to_dict()
+    monkeypatch.setattr(adapter, "get_concept_by_code", Mock(side_effect=error))
+
+    result = build_server(adapter).call(
+        "concept_by_code", vocabulary_id="test", concept_code="missing"
+    )
+
+    assert result == error.to_dict()
+
+
 def test_concept_by_code_always_returns_list_shape():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    result = server.call("concept_by_code", vocabulary_id="SNOMED", concept_code="valid")
+    result = server.call(
+        "concept_by_code", vocabulary_id="SNOMED", concept_code="valid"
+    )
 
     assert "concepts" in result
     assert isinstance(result["concepts"], list)
@@ -551,7 +812,9 @@ def test_concept_neighbors_invalid_predicate_kind_returns_error():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    result = server.call("concept_neighbors", concept_id=100, predicate_kinds=["BADKIND"])
+    result = server.call(
+        "concept_neighbors", concept_id=100, predicate_kinds=["BADKIND"]
+    )
 
     assert result["error"] is True
     assert result["code"] == "INVALID_INPUT"
@@ -634,7 +897,9 @@ def test_concept_map_to_standard_unknown_code_returns_not_found():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    result = server.call("concept_map_to_standard", vocabulary_id="ICD10CM", concept_code="unknown")
+    result = server.call(
+        "concept_map_to_standard", vocabulary_id="ICD10CM", concept_code="unknown"
+    )
 
     assert result["error"] is True
     assert result["code"] == "NOT_FOUND"
@@ -644,7 +909,9 @@ def test_concept_map_to_standard_returns_source_and_standard_concepts():
     adapter = StubGraphAdapter()
     server = build_server(adapter)
 
-    result = server.call("concept_map_to_standard", vocabulary_id="ICD10CM", concept_code="E11.9")
+    result = server.call(
+        "concept_map_to_standard", vocabulary_id="ICD10CM", concept_code="E11.9"
+    )
 
     assert "source" in result
     assert "standard_concepts" in result

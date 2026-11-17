@@ -510,6 +510,11 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
     )
 
     assert set(result["channels"]) >= {"exact", "normalized", "fulltext", "embedding"}
+    for channel in result["channels"].values():
+        assert isinstance(channel["results"], list)
+        assert channel["results"]
+        assert "retrieval_notes" in channel
+        assert "count" not in channel
     assert any(row["concept_id"] == 102 for row in result["candidate_union"])
     non_standard = next(
         row for row in result["candidate_union"] if row["concept_id"] == 102

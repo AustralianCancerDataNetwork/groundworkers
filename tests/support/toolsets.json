@@ -1,0 +1,144 @@
+{
+  "toolsets": {
+    "system": "Deployment status and vocabulary catalogue; always registered.",
+    "lookup": "Fetch a concept by id or by vocabulary code.",
+    "search": "Find candidate concepts for text.",
+    "mapping": "Source-to-standard mapping workflow: candidates, mapping context, hierarchy checks, standard targets.",
+    "mapping_advanced": "Less common mapping utilities: mapping by vocabulary code, value mapping, mapping expressions, shared standard ancestors.",
+    "graph": "Concept hierarchy, relationships and paths.",
+    "embedding": "Embedding index search and neighbours.",
+    "llm": "Language-model text helpers.",
+    "source": "Source-file planning.",
+    "knowledge": "Convention packs.",
+    "semantic": "Semantic projection (optional).",
+    "offline": "Evaluation and diagnostics, not intended for agents."
+  },
+  "tools": {
+    "system_status": [
+      "system"
+    ],
+    "system_vocabulary_catalogue": [
+      "system"
+    ],
+    "concept_get": [
+      "lookup"
+    ],
+    "concept_by_code": [
+      "lookup"
+    ],
+    "concept_ground": [
+      "search"
+    ],
+    "concept_search_exact": [
+      "search"
+    ],
+    "concept_search_fulltext": [
+      "search"
+    ],
+    "concept_search_normalized": [
+      "search"
+    ],
+    "concept_candidate_bundle": [
+      "search",
+      "mapping"
+    ],
+    "embedding_search": [
+      "search",
+      "embedding"
+    ],
+    "embedding_search_batch": [
+      "search",
+      "embedding"
+    ],
+    "embedding_neighbours": [
+      "embedding"
+    ],
+    "embedding_index_status": [
+      "embedding"
+    ],
+    "concept_map_to_standard": [
+      "mapping_advanced"
+    ],
+    "concept_map_to_value": [
+      "mapping_advanced"
+    ],
+    "concept_navigate_to_standard": [
+      "mapping"
+    ],
+    "concept_resolve_mapping_expression": [
+      "mapping_advanced"
+    ],
+    "concept_nearest_standard_ancestor": [
+      "mapping"
+    ],
+    "concept_shared_standard_ancestor": [
+      "mapping_advanced"
+    ],
+    "concept_mapping_context": [
+      "mapping"
+    ],
+    "concept_ancestors": [
+      "graph",
+      "mapping"
+    ],
+    "concept_descendants": [
+      "graph",
+      "mapping"
+    ],
+    "concept_relationships": [
+      "graph"
+    ],
+    "concept_associations": [
+      "graph"
+    ],
+    "concept_extended_inheritance": [
+      "graph"
+    ],
+    "concept_neighbors": [
+      "graph"
+    ],
+    "concept_path": [
+      "graph"
+    ],
+    "concept_equivalency_path": [
+      "graph"
+    ],
+    "text_normalize": [
+      "llm"
+    ],
+    "text_disambiguate": [
+      "llm"
+    ],
+    "text_decompose": [
+      "llm"
+    ],
+    "text_mapping_cleanup": [
+      "llm"
+    ],
+    "domain_classify": [
+      "llm"
+    ],
+    "source_plan": [
+      "source"
+    ],
+    "source_plan_assisted": [
+      "source",
+      "llm"
+    ],
+    "knowledge_catalogue": [
+      "knowledge"
+    ],
+    "knowledge_pack": [
+      "knowledge"
+    ],
+    "semantic_project": [
+      "semantic"
+    ],
+    "embedding_encode": [
+      "offline"
+    ],
+    "mapping_evaluate_candidates": [
+      "offline"
+    ]
+  }
+}

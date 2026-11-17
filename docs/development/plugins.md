@@ -88,6 +88,11 @@ The concept-embedding row and the free-text-embedding row look similar but are n
 
 Use `context.cdm_session_factory` for role-tagged OMOP queries. `context.cdm_engine` remains available for primary-role access. On split-vocabulary stacks, plugins must use the routed factory; an Engine-based OmopGraphAdapter or DomainNameResolver cannot route vocabulary queries and will fail with upgrade guidance.
 
+Plugins may pass `toolsets=("my_toolset",)` to `server.tool()` to declare their
+own toolsets. When omitted or empty during plugin registration, the server uses
+`plugin:<name>`, where `<name>` is the plugin's registered name. Toolsets appear in
+`--describe` and stay outside MCP tool definitions.
+
 `register()` adds MCP tools, prompts, or resources against the state returned by `build()`. The shared MCP registration wrapper supplies the same safe error translation used by core tools. Code-defined prompts can continue to derive their arguments from the callable signature. A plugin publishing data-defined prompts can pass explicit string metadata with `PromptArgument`; this keeps dynamic pack fields out of Python closure signatures:
 
 ```python

@@ -115,4 +115,4 @@ Encodes a text string into one query embedding vector.
 }
 ```
 
-Like `embedding_search`, this requires a configured `embedding_model_name` and a live provider client.
+Like `embedding_search`, this requires a configured `embedding_model_name` and a live provider client. Encoding accepts only that configured live model, even when other models are registered for stored-vector operations.

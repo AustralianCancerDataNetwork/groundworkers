@@ -13,7 +13,9 @@ Use them only when the source text needs model-assisted interpretation. Exact, n
 | A phrase containing several separate concepts | `text_decompose` | Multiple normalized terms with domain hints |
 | An abbreviation with several plausible meanings | `text_disambiguate` | Ranked interpretations and context clues |
 
-All four tools accept `text`. `domain_hint` narrows the model's interpretation, and `model_name` optionally selects a configured model. The model name does not change the downstream retrieval policy.
+All four tools accept `text`. `domain_hint` provides model context rather than an OMOP filter. `model_name` accepts only the configured chat model or null; it does not select another model or change downstream retrieval.
+
+The `original` fields are echoed by the model. Cleanup's `changed` flag is also model-reported: the service does not populate those fields by copying the input or comparing strings. Normalization and cleanup return categorical confidence (`high`, `medium`, or `low`) and optional notes about ambiguity.
 
 ## `text_normalize`
 
@@ -73,7 +75,7 @@ Typical response:
 }
 ```
 
-Pass each returned term and its domain hint to a search, candidate-bundle, or grounding call. `max_terms` defaults to 10 and is clamped to 1–20.
+Pass each returned term and its domain hint to a search, candidate-bundle, or grounding call. `max_terms` defaults to 10; the requested count is clamped to 1–20 in the prompt, and the returned list is not truncated by code.
 
 ## `text_disambiguate`
 
@@ -81,14 +83,14 @@ Pass each returned term and its domain hint to a search, candidate-bundle, or gr
 {"text": "MS"}
 ```
 
-The response contains ranked `interpretations`, each with an optional `domain_hint` and `context_clues`, plus `is_ambiguous`. Present these alternatives to a caller or reviewer when context is insufficient to choose one interpretation safely. `max_interpretations` defaults to 5 and is clamped to 1–10.
+The response contains ranked `interpretations`, each with an optional `domain_hint` and `context_clues`, plus `is_ambiguous`. Present these alternatives to a caller or reviewer when context is insufficient to choose one interpretation safely. `max_interpretations` defaults to 5; the requested count is clamped to 1–10 in the prompt, and the returned list is not truncated by code. Ranking is requested from likely use in context, or common clinical use when context is absent; no frequency data or numerical rank score is used.
 
 ## Errors
 
 | Code | Meaning |
 |---|---|
 | `INVALID_INPUT` | Empty or whitespace-only text, returned before the model is called |
-| `BACKEND_UNAVAIL` | The LLM endpoint is unavailable, unauthenticated, or not configured |
+| `BACKEND_UNAVAIL` | The configured LLM endpoint is unavailable or unauthenticated |
 | `QUERY_ERROR` | The model request failed or its structured response could not be parsed |
 
 ## Typical flow
