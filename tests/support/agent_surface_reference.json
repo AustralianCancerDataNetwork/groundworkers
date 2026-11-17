@@ -117,17 +117,17 @@
   ],
   "schema": "groundworkers.agent-surface/v1",
   "summary": {
-    "approx_model_visible_tokens": 9020,
+    "approx_model_visible_tokens": 9046,
     "instructions_chars": 952,
-    "model_visible_tool_chars": 36083,
+    "model_visible_tool_chars": 36184,
     "prompts": 4,
     "resources": 7,
     "tools": 39,
     "tools_exposing_model_name": 11,
     "tools_with_annotations": 39,
     "tools_with_typed_output_schema": 1,
-    "total_tool_chars": 50204,
-    "unbounded_numeric_params": 40
+    "total_tool_chars": 50305,
+    "unbounded_numeric_params": 36
   },
   "tool_metrics": {
     "concept_ancestors": {
@@ -285,20 +285,17 @@
       "unbounded_numeric_params": []
     },
     "concept_mapping_context": {
-      "chars": 2333,
+      "chars": 2409,
       "description_chars": 193,
       "exposes_model_name": true,
       "has_annotations": true,
       "has_typed_output_schema": false,
-      "input_schema_chars": 1863,
-      "model_visible_chars": 2079,
+      "input_schema_chars": 1939,
+      "model_visible_chars": 2155,
       "output_schema_chars": 89,
       "params": 13,
       "unbounded_numeric_params": [
-        "concept_id",
-        "descendant_limit",
-        "embedding_neighbor_limit",
-        "neighbor_limit"
+        "concept_id"
       ]
     },
     "concept_navigate_to_standard": {
@@ -401,17 +398,16 @@
       ]
     },
     "concept_search_fulltext": {
-      "chars": 1434,
+      "chars": 1459,
       "description_chars": 277,
       "exposes_model_name": false,
       "has_annotations": true,
       "has_typed_output_schema": false,
-      "input_schema_chars": 879,
-      "model_visible_chars": 1179,
+      "input_schema_chars": 904,
+      "model_visible_chars": 1204,
       "output_schema_chars": 89,
       "params": 7,
       "unbounded_numeric_params": [
-        "limit",
         "min_rank"
       ]
     },
@@ -1342,12 +1338,16 @@
           "descendant_limit": {
             "default": 10,
             "description": "Maximum descendants.",
+            "maximum": 10,
+            "minimum": 1,
             "title": "Descendant Limit",
             "type": "integer"
           },
           "embedding_neighbor_limit": {
             "default": 10,
             "description": "Maximum embedding neighbours.",
+            "maximum": 20,
+            "minimum": 1,
             "title": "Embedding Neighbor Limit",
             "type": "integer"
           },
@@ -1403,6 +1403,8 @@
           "neighbor_limit": {
             "default": 15,
             "description": "Maximum neighbours.",
+            "maximum": 100,
+            "minimum": 1,
             "title": "Neighbor Limit",
             "type": "integer"
           }
@@ -1843,6 +1845,8 @@
           "limit": {
             "default": 20,
             "description": "Maximum results.",
+            "maximum": 30,
+            "minimum": 1,
             "title": "Limit",
             "type": "integer"
           },

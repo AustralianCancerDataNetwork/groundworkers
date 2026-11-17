@@ -318,11 +318,13 @@ def register_mapping_tools(
             AncestorDepth, Field(description="Maximum ancestor separation.")
         ] = 5,
         descendant_limit: Annotated[
-            int, Field(description="Maximum descendants.")
+            int, Field(ge=1, le=10, description="Maximum descendants.")
         ] = 10,
-        neighbor_limit: Annotated[int, Field(description="Maximum neighbours.")] = 15,
+        neighbor_limit: Annotated[
+            int, Field(ge=1, le=100, description="Maximum neighbours.")
+        ] = 15,
         embedding_neighbor_limit: Annotated[
-            int, Field(description="Maximum embedding neighbours.")
+            int, Field(ge=1, le=20, description="Maximum embedding neighbours.")
         ] = 10,
         model_name: Annotated[
             str | None,

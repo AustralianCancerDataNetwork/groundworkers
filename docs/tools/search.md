@@ -68,7 +68,7 @@ PostgreSQL full-text search against the `concept_name_tsvector` GIN-indexed side
 }
 ```
 
-All parameters except `query` are optional. `min_rank` must be in `[0.0, 1.0]` and is applied server-side before returning results (useful to avoid very large result sets); set to `0.0` to disable.
+All parameters except `query` are optional. `limit` defaults to 20 (1..30). `min_rank` must be in `[0.0, 1.0]` and is applied server-side before returning results (useful to avoid very large result sets); set to `0.0` to disable.
 
 `tsvector_available` in the response indicates whether the sidecar column was detected. When `false`, `results` is always `[]` and the caller should fall through to `embedding_search` or `concept_search_exact`.
 

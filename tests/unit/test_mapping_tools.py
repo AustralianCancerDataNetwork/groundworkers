@@ -1,7 +1,7 @@
 import asyncio
 import json
 from copy import deepcopy
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from mcp.server.fastmcp import FastMCP
@@ -10,6 +10,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.tools.mapping_tools import register_mapping_tools
+from groundworkers.tools.search_tools import register_search_tools
 
 CANDIDATE_OPTIONAL_ARGS = {
     "domain": "Condition",
@@ -246,6 +247,77 @@ def test_concept_mapping_context_separates_ancestor_depth_from_limit():
             },
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "parameter", "minimum", "maximum", "default"),
+    [
+        ("concept_search_fulltext", "limit", 1, 30, 20),
+        ("concept_mapping_context", "descendant_limit", 1, 10, 10),
+        ("concept_mapping_context", "neighbor_limit", 1, 100, 15),
+        ("concept_mapping_context", "embedding_neighbor_limit", 1, 20, 10),
+    ],
+)
+def test_tool_parameter_bounds_are_advertised_and_enforced_over_mcp(
+    monkeypatch, tool_name, parameter, minimum, maximum, default
+):
+    mapping_service = StubMappingService()
+    server = build_server(mapping_service)
+    vocab_service = Mock()
+    vocab_service.search_fulltext.return_value = ([], True)
+    register_search_tools(server, vocab_service)
+    captured = {}
+    monkeypatch.setattr(FastMCP, "run", lambda app, **kwargs: captured.update(app=app))
+    server.run()
+
+    async def exercise_client():
+        async with create_connected_server_and_client_session(
+            captured["app"]
+        ) as client:
+            tools = (await client.list_tools()).tools
+            tool = next(item for item in tools if item.name == tool_name)
+            schema = tool.inputSchema["properties"][parameter]
+            assert schema["minimum"] == minimum
+            assert schema["maximum"] == maximum
+            assert schema["default"] == default
+
+            base_arguments = (
+                {"query": "diabetes"}
+                if tool_name == "concept_search_fulltext"
+                else {"concept_id": 123}
+            )
+            for value in (minimum, maximum):
+                result = await client.call_tool(
+                    tool_name, {**base_arguments, parameter: value}
+                )
+                assert not result.isError
+                if tool_name == "concept_search_fulltext":
+                    assert (
+                        vocab_service.search_fulltext.call_args.kwargs["limit"] == value
+                    )
+                else:
+                    assert mapping_service.calls[-1][1][parameter] == value
+
+            result = await client.call_tool(tool_name, base_arguments)
+            assert not result.isError
+            if tool_name == "concept_search_fulltext":
+                assert (
+                    vocab_service.search_fulltext.call_args.kwargs["limit"] == default
+                )
+            else:
+                assert mapping_service.calls[-1][1][parameter] == default
+
+            for value in (0, maximum + 1):
+                mapping_calls_before = len(mapping_service.calls)
+                search_calls_before = vocab_service.search_fulltext.call_count
+                result = await client.call_tool(
+                    tool_name, {**base_arguments, parameter: value}
+                )
+                assert result.isError
+                assert len(mapping_service.calls) == mapping_calls_before
+                assert vocab_service.search_fulltext.call_count == search_calls_before
+
+    asyncio.run(exercise_client())
 
 
 def test_mapping_evaluate_candidates_calls_service():

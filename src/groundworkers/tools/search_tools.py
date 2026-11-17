@@ -84,7 +84,9 @@ def register_search_tools(
         min_rank: Annotated[
             float, Field(description="Drop results below this ts_rank.")
         ] = 0.0,
-        limit: Annotated[int, Field(description="Maximum results.")] = 20,
+        limit: Annotated[
+            int, Field(ge=1, le=30, description="Maximum results.")
+        ] = 20,
     ) -> dict[str, Any]:
         """Ranked word-based search on concept names (PostgreSQL full text).
         concept_candidate_bundle already runs this channel; call it directly to see more
@@ -102,7 +104,7 @@ def register_search_tools(
                 "code": "INVALID_INPUT",
                 "message": "min_rank must be between 0.0 and 1.0",
             }
-        safe_limit = max(1, min(limit, 50))
+        safe_limit = max(1, min(limit, 30))
         try:
             results, fts_available = vocab_service.search_fulltext(
                 query,

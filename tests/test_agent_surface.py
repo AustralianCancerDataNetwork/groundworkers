@@ -53,12 +53,6 @@ UNBOUNDED_NUMERIC_PARAM_ALLOWLIST = {
         "identifier",
         "OMOP concept identifier",
     ),
-    ("concept_mapping_context", "descendant_limit"): ("gap", "descendant count"),
-    ("concept_mapping_context", "embedding_neighbor_limit"): (
-        "gap",
-        "embedding neighbor count",
-    ),
-    ("concept_mapping_context", "neighbor_limit"): ("gap", "graph neighbor count"),
     ("concept_nearest_standard_ancestor", "candidate_limit"): (
         "gap",
         "candidate count",
@@ -75,7 +69,6 @@ UNBOUNDED_NUMERIC_PARAM_ALLOWLIST = {
     ("concept_path", "target_id"): ("identifier", "target concept identifier"),
     ("concept_relationships", "concept_id"): ("identifier", "OMOP concept identifier"),
     ("concept_search_exact", "limit"): ("gap", "search result count"),
-    ("concept_search_fulltext", "limit"): ("gap", "search result count"),
     ("concept_search_fulltext", "min_rank"): ("gap", "minimum relevance score"),
     ("concept_search_normalized", "limit"): ("gap", "search result count"),
     ("concept_shared_standard_ancestor", "offset"): (
