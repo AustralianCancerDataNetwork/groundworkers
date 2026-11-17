@@ -1,0 +1,3501 @@
+{
+  "instructions": "Groundworkers gives deterministic access to an OMOP vocabulary: search, grounding, the concept graph and convention packs. system_status shows what is available.\n\nBefore mapping, load conventions once per job: knowledge_catalogue with the domains involved, then knowledge_pack for each pack that applies. Pack rules override habit.\n\nTo map a source term:\n1. Note every qualifier it states (specimen, site, laterality, route, form, unit, method).\n2. Gather candidates with concept_candidate_bundle; keep standard concepts in the right domain.\n3. Check the hierarchy before deciding (concept_mapping_context, concept_descendants): pick the most detailed standard concept the source supports. A child that keeps a stated qualifier beats its parent; never add detail the source lacks.\n4. Vocabulary is not a preference by itself; packs decide between equally precise concepts.\n5. No fit: concept_nearest_standard_ancestor, or say no standard concept fits.\n",
+  "prompts": [
+    {
+      "arguments": [
+        {
+          "name": "text",
+          "required": true
+        },
+        {
+          "name": "domain_hint",
+          "required": false
+        },
+        {
+          "name": "context",
+          "required": false
+        }
+      ],
+      "description": "Return the message sequence for rewriting source text into a clean OMOP-grounding search phrase.",
+      "name": "cleanup_mapping_text"
+    },
+    {
+      "arguments": [
+        {
+          "name": "text",
+          "required": true
+        },
+        {
+          "name": "domain_hint",
+          "required": false
+        },
+        {
+          "name": "max_terms",
+          "required": false
+        }
+      ],
+      "description": "Return the message sequence for decomposing a free-text clinical description into a list of normalized search terms.",
+      "name": "decompose_clinical_text"
+    },
+    {
+      "arguments": [
+        {
+          "name": "text",
+          "required": true
+        },
+        {
+          "name": "domain_hint",
+          "required": false
+        },
+        {
+          "name": "max_interpretations",
+          "required": false
+        }
+      ],
+      "description": "Return the message sequence for listing all plausible clinical interpretations of an ambiguous term or abbreviation.",
+      "name": "disambiguate_clinical_term"
+    },
+    {
+      "arguments": [
+        {
+          "name": "text",
+          "required": true
+        },
+        {
+          "name": "domain_hint",
+          "required": false
+        }
+      ],
+      "description": "Return the message sequence for normalizing a clinical term, abbreviation, or lay phrase to its OMOP-compatible equivalent.",
+      "name": "normalize_clinical_term"
+    }
+  ],
+  "resource_templates": [],
+  "resources": [
+    {
+      "description": "Sanitised view of the active server configuration: which adapters are wired up (omop_graph, omop_emb, llm), their key settings, and the effective min_fulltext_overlap. API keys are masked.",
+      "mimeType": "text/plain",
+      "name": "active_config",
+      "uri": "config://active"
+    },
+    {
+      "description": "List all locally available embedding models with their backend type, provider, dimensions, and indexed concept count.",
+      "mimeType": "text/plain",
+      "name": "embedding_models",
+      "uri": "embedding://models"
+    },
+    {
+      "description": "Full index of all available knowledge packs across all namespaces (core, specialisation, source, localisation). Each entry includes name, layer, version, shareability, scope_summary, mechanisms, applicability conditions, and see_also cross-references. Read this to understand what knowledge is available before querying with knowledge_catalogue. Use knowledge_catalogue to filter by job context.",
+      "mimeType": "text/plain",
+      "name": "knowledge_catalogue_resource",
+      "uri": "knowledge://catalogue"
+    },
+    {
+      "description": "Authoritative Tier A canonical header catalogue used for deterministic source-planning classification.",
+      "mimeType": "text/plain",
+      "name": "source_planning_canonical_headers",
+      "uri": "source-planning://canonical-headers"
+    },
+    {
+      "description": "ColumnRole values and descriptions for interpreting annotated source-planning outputs.",
+      "mimeType": "text/plain",
+      "name": "source_planning_column_roles",
+      "uri": "source-planning://column-roles"
+    },
+    {
+      "description": "IngestionStrategy values and descriptions for interpreting source-planning route decisions.",
+      "mimeType": "text/plain",
+      "name": "source_planning_ingestion_strategies",
+      "uri": "source-planning://ingestion-strategies"
+    },
+    {
+      "description": "Full OMOP vocabulary/domain/concept-class catalogue with concept counts. Read this before filtering searches by vocabulary or domain. Requires omop_graph to be configured.",
+      "mimeType": "text/plain",
+      "name": "vocabularies_catalogue",
+      "uri": "vocabularies://catalogue"
+    }
+  ],
+  "schema": "groundworkers.agent-surface/v1",
+  "summary": {
+    "approx_model_visible_tokens": 9020,
+    "instructions_chars": 952,
+    "model_visible_tool_chars": 36083,
+    "prompts": 4,
+    "resources": 7,
+    "tools": 39,
+    "tools_exposing_model_name": 11,
+    "tools_with_annotations": 39,
+    "tools_with_typed_output_schema": 1,
+    "total_tool_chars": 50204,
+    "unbounded_numeric_params": 40
+  },
+  "tool_metrics": {
+    "concept_ancestors": {
+      "chars": 933,
+      "description_chars": 307,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 360,
+      "model_visible_chars": 684,
+      "output_schema_chars": 83,
+      "params": 2,
+      "unbounded_numeric_params": [
+        "concept_id"
+      ]
+    },
+    "concept_associations": {
+      "chars": 1013,
+      "description_chars": 262,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 479,
+      "model_visible_chars": 761,
+      "output_schema_chars": 86,
+      "params": 5,
+      "unbounded_numeric_params": [
+        "concept_id",
+        "limit"
+      ]
+    },
+    "concept_by_code": {
+      "chars": 850,
+      "description_chars": 238,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 351,
+      "model_visible_chars": 604,
+      "output_schema_chars": 81,
+      "params": 2,
+      "unbounded_numeric_params": []
+    },
+    "concept_candidate_bundle": {
+      "chars": 3287,
+      "description_chars": 371,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 2635,
+      "model_visible_chars": 3030,
+      "output_schema_chars": 90,
+      "params": 16,
+      "unbounded_numeric_params": [
+        "overall_limit",
+        "per_channel_limit"
+      ]
+    },
+    "concept_descendants": {
+      "chars": 1653,
+      "description_chars": 480,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 901,
+      "model_visible_chars": 1400,
+      "output_schema_chars": 85,
+      "params": 5,
+      "unbounded_numeric_params": [
+        "concept_id",
+        "offset"
+      ]
+    },
+    "concept_equivalency_path": {
+      "chars": 943,
+      "description_chars": 280,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 383,
+      "model_visible_chars": 687,
+      "output_schema_chars": 90,
+      "params": 4,
+      "unbounded_numeric_params": [
+        "max_depth",
+        "source_id",
+        "target_id"
+      ]
+    },
+    "concept_extended_inheritance": {
+      "chars": 1058,
+      "description_chars": 283,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 487,
+      "model_visible_chars": 798,
+      "output_schema_chars": 94,
+      "params": 5,
+      "unbounded_numeric_params": [
+        "concept_id",
+        "limit"
+      ]
+    },
+    "concept_get": {
+      "chars": 618,
+      "description_chars": 190,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 175,
+      "model_visible_chars": 376,
+      "output_schema_chars": 77,
+      "params": 1,
+      "unbounded_numeric_params": [
+        "concept_id"
+      ]
+    },
+    "concept_ground": {
+      "chars": 1938,
+      "description_chars": 437,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 1240,
+      "model_visible_chars": 1691,
+      "output_schema_chars": 80,
+      "params": 8,
+      "unbounded_numeric_params": [
+        "limit"
+      ]
+    },
+    "concept_map_to_standard": {
+      "chars": 808,
+      "description_chars": 216,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 315,
+      "model_visible_chars": 554,
+      "output_schema_chars": 89,
+      "params": 2,
+      "unbounded_numeric_params": []
+    },
+    "concept_map_to_value": {
+      "chars": 573,
+      "description_chars": 72,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 230,
+      "model_visible_chars": 322,
+      "output_schema_chars": 86,
+      "params": 2,
+      "unbounded_numeric_params": []
+    },
+    "concept_mapping_context": {
+      "chars": 2333,
+      "description_chars": 193,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 1863,
+      "model_visible_chars": 2079,
+      "output_schema_chars": 89,
+      "params": 13,
+      "unbounded_numeric_params": [
+        "concept_id",
+        "descendant_limit",
+        "embedding_neighbor_limit",
+        "neighbor_limit"
+      ]
+    },
+    "concept_navigate_to_standard": {
+      "chars": 727,
+      "description_chars": 205,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 235,
+      "model_visible_chars": 468,
+      "output_schema_chars": 94,
+      "params": 1,
+      "unbounded_numeric_params": []
+    },
+    "concept_nearest_standard_ancestor": {
+      "chars": 1682,
+      "description_chars": 195,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 1190,
+      "model_visible_chars": 1418,
+      "output_schema_chars": 99,
+      "params": 7,
+      "unbounded_numeric_params": [
+        "candidate_limit",
+        "concept_id"
+      ]
+    },
+    "concept_neighbors": {
+      "chars": 1090,
+      "description_chars": 342,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 480,
+      "model_visible_chars": 839,
+      "output_schema_chars": 83,
+      "params": 5,
+      "unbounded_numeric_params": [
+        "concept_id",
+        "max_depth",
+        "max_nodes"
+      ]
+    },
+    "concept_path": {
+      "chars": 813,
+      "description_chars": 218,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 340,
+      "model_visible_chars": 570,
+      "output_schema_chars": 78,
+      "params": 4,
+      "unbounded_numeric_params": [
+        "max_depth",
+        "source_id",
+        "target_id"
+      ]
+    },
+    "concept_relationships": {
+      "chars": 722,
+      "description_chars": 289,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 152,
+      "model_visible_chars": 462,
+      "output_schema_chars": 87,
+      "params": 1,
+      "unbounded_numeric_params": [
+        "concept_id"
+      ]
+    },
+    "concept_resolve_mapping_expression": {
+      "chars": 1084,
+      "description_chars": 337,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 445,
+      "model_visible_chars": 816,
+      "output_schema_chars": 100,
+      "params": 4,
+      "unbounded_numeric_params": []
+    },
+    "concept_search_exact": {
+      "chars": 1274,
+      "description_chars": 228,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 775,
+      "model_visible_chars": 1023,
+      "output_schema_chars": 86,
+      "params": 6,
+      "unbounded_numeric_params": [
+        "limit"
+      ]
+    },
+    "concept_search_fulltext": {
+      "chars": 1434,
+      "description_chars": 277,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 879,
+      "model_visible_chars": 1179,
+      "output_schema_chars": 89,
+      "params": 7,
+      "unbounded_numeric_params": [
+        "limit",
+        "min_rank"
+      ]
+    },
+    "concept_search_normalized": {
+      "chars": 2105,
+      "description_chars": 196,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 1628,
+      "model_visible_chars": 1849,
+      "output_schema_chars": 91,
+      "params": 10,
+      "unbounded_numeric_params": [
+        "limit"
+      ]
+    },
+    "concept_shared_standard_ancestor": {
+      "chars": 6340,
+      "description_chars": 994,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": true,
+      "input_schema_chars": 766,
+      "model_visible_chars": 1792,
+      "output_schema_chars": 4369,
+      "params": 6,
+      "unbounded_numeric_params": [
+        "offset"
+      ]
+    },
+    "domain_classify": {
+      "chars": 1017,
+      "description_chars": 355,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 399,
+      "model_visible_chars": 769,
+      "output_schema_chars": 81,
+      "params": 2,
+      "unbounded_numeric_params": []
+    },
+    "embedding_encode": {
+      "chars": 729,
+      "description_chars": 161,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 306,
+      "model_visible_chars": 483,
+      "output_schema_chars": 82,
+      "params": 2,
+      "unbounded_numeric_params": []
+    },
+    "embedding_index_status": {
+      "chars": 410,
+      "description_chars": 62,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 75,
+      "model_visible_chars": 159,
+      "output_schema_chars": 88,
+      "params": 0,
+      "unbounded_numeric_params": []
+    },
+    "embedding_neighbours": {
+      "chars": 943,
+      "description_chars": 225,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 446,
+      "model_visible_chars": 691,
+      "output_schema_chars": 86,
+      "params": 5,
+      "unbounded_numeric_params": [
+        "concept_id",
+        "limit"
+      ]
+    },
+    "embedding_search": {
+      "chars": 1402,
+      "description_chars": 216,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 923,
+      "model_visible_chars": 1155,
+      "output_schema_chars": 82,
+      "params": 7,
+      "unbounded_numeric_params": [
+        "limit"
+      ]
+    },
+    "embedding_search_batch": {
+      "chars": 1166,
+      "description_chars": 178,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 712,
+      "model_visible_chars": 912,
+      "output_schema_chars": 88,
+      "params": 8,
+      "unbounded_numeric_params": [
+        "batch_size",
+        "limit"
+      ]
+    },
+    "knowledge_catalogue": {
+      "chars": 1535,
+      "description_chars": 330,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 935,
+      "model_visible_chars": 1284,
+      "output_schema_chars": 85,
+      "params": 5,
+      "unbounded_numeric_params": []
+    },
+    "knowledge_pack": {
+      "chars": 720,
+      "description_chars": 242,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 219,
+      "model_visible_chars": 475,
+      "output_schema_chars": 80,
+      "params": 1,
+      "unbounded_numeric_params": []
+    },
+    "mapping_evaluate_candidates": {
+      "chars": 1522,
+      "description_chars": 262,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 974,
+      "model_visible_chars": 1263,
+      "output_schema_chars": 93,
+      "params": 5,
+      "unbounded_numeric_params": [
+        "top_k"
+      ]
+    },
+    "source_plan": {
+      "chars": 1134,
+      "description_chars": 356,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 519,
+      "model_visible_chars": 886,
+      "output_schema_chars": 77,
+      "params": 5,
+      "unbounded_numeric_params": []
+    },
+    "source_plan_assisted": {
+      "chars": 1256,
+      "description_chars": 265,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 719,
+      "model_visible_chars": 1004,
+      "output_schema_chars": 86,
+      "params": 5,
+      "unbounded_numeric_params": []
+    },
+    "system_status": {
+      "chars": 441,
+      "description_chars": 119,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 66,
+      "model_visible_chars": 198,
+      "output_schema_chars": 79,
+      "params": 0,
+      "unbounded_numeric_params": []
+    },
+    "system_vocabulary_catalogue": {
+      "chars": 423,
+      "description_chars": 60,
+      "exposes_model_name": false,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 80,
+      "model_visible_chars": 167,
+      "output_schema_chars": 93,
+      "params": 0,
+      "unbounded_numeric_params": []
+    },
+    "text_decompose": {
+      "chars": 1097,
+      "description_chars": 301,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 536,
+      "model_visible_chars": 851,
+      "output_schema_chars": 80,
+      "params": 4,
+      "unbounded_numeric_params": [
+        "max_terms"
+      ]
+    },
+    "text_disambiguate": {
+      "chars": 1096,
+      "description_chars": 269,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 561,
+      "model_visible_chars": 847,
+      "output_schema_chars": 83,
+      "params": 4,
+      "unbounded_numeric_params": [
+        "max_interpretations"
+      ]
+    },
+    "text_mapping_cleanup": {
+      "chars": 1112,
+      "description_chars": 276,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 564,
+      "model_visible_chars": 860,
+      "output_schema_chars": 86,
+      "params": 4,
+      "unbounded_numeric_params": []
+    },
+    "text_normalize": {
+      "chars": 923,
+      "description_chars": 279,
+      "exposes_model_name": true,
+      "has_annotations": true,
+      "has_typed_output_schema": false,
+      "input_schema_chars": 384,
+      "model_visible_chars": 677,
+      "output_schema_chars": 80,
+      "params": 3,
+      "unbounded_numeric_params": []
+    }
+  },
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List broader concepts above a concept (stored OMOP hierarchy). Use it to check whether a\ncandidate is more specific than the source supports, or to find a generalisation when no\nexact match exists. max_depth bounds stored separation, not hops; zero separation does\nnot mean the concepts are interchangeable.",
+      "inputSchema": {
+        "properties": {
+          "concept_id": {
+            "description": "The more specific concept.",
+            "exclusiveMinimum": 0,
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "max_depth": {
+            "default": 5,
+            "description": "Maximum stored separation, 0-20. Default 5.",
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Max Depth",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_ancestorsArguments",
+        "type": "object"
+      },
+      "name": "concept_ancestors",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_ancestorsDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List a concept's clinical or therapeutic association edges (for example regimen to\ncomponent drugs, drug to indication), each with the related concept's standard flag.\nDefining attributes such as finding site are ATTRIBUTE edges; use concept_neighbors for\nthose.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": true,
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "direction": {
+            "default": "out",
+            "title": "Direction",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "predicate_subkinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Predicate Subkinds"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_associationsArguments",
+        "type": "object"
+      },
+      "name": "concept_associations",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_associationsDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Look up one concept by vocabulary_id and concept_code. Use it for codes that appear in\nthe source data or in tool results. Codes recalled from memory are often wrong; to find\na concept by its meaning, search with concept_candidate_bundle.",
+      "inputSchema": {
+        "properties": {
+          "concept_code": {
+            "description": "The code as it appears in that vocabulary.",
+            "title": "Concept Code",
+            "type": "string"
+          },
+          "vocabulary_id": {
+            "description": "Exact vocabulary_id, for example ICD10CM or LOINC.",
+            "title": "Vocabulary Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vocabulary_id",
+          "concept_code"
+        ],
+        "title": "concept_by_codeArguments",
+        "type": "object"
+      },
+      "name": "concept_by_code",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_by_codeDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Default first search for a source term. Runs exact, normalized, full-text and embedding\nsearch together and returns one deduplicated candidate list; retrieved_by shows which\nchannels found each candidate. Pass domain when known. Candidates are leads: check\nstandard_concept and domain_id, then the hierarchy (concept_mapping_context,\nconcept_descendants) before choosing.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": true,
+            "description": "Exclude retired (invalid) concepts. Default true.",
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id to restrict to, for example Measurement, Drug or Condition. Use it when known.",
+            "title": "Domain"
+          },
+          "include_embedding": {
+            "default": true,
+            "description": "Run the embedding channel.",
+            "title": "Include Embedding",
+            "type": "boolean"
+          },
+          "include_fulltext": {
+            "default": true,
+            "description": "Run the full-text channel.",
+            "title": "Include Fulltext",
+            "type": "boolean"
+          },
+          "include_hierarchy_context": {
+            "default": false,
+            "description": "Attach ancestors to the first five candidates (larger output).",
+            "title": "Include Hierarchy Context",
+            "type": "boolean"
+          },
+          "include_normalized": {
+            "default": true,
+            "description": "Run the normalized channel.",
+            "title": "Include Normalized",
+            "type": "boolean"
+          },
+          "include_relationship_summary": {
+            "default": false,
+            "description": "Attach a relationship summary to the first five candidates (larger output).",
+            "title": "Include Relationship Summary",
+            "type": "boolean"
+          },
+          "include_standard_mappings": {
+            "default": true,
+            "description": "Attach each candidate's Maps-to standard concept(s).",
+            "title": "Include Standard Mappings",
+            "type": "boolean"
+          },
+          "include_synonyms": {
+            "default": true,
+            "description": "Also match concept synonyms.",
+            "title": "Include Synonyms",
+            "type": "boolean"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Embedding model; omit to use the configured default.",
+            "title": "Model Name"
+          },
+          "overall_limit": {
+            "default": 30,
+            "description": "Maximum candidates in the merged list.",
+            "title": "Overall Limit",
+            "type": "integer"
+          },
+          "parent_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keep only descendants of these concept_ids. Applies to the exact, normalized and full-text channels, not embedding.",
+            "title": "Parent Ids"
+          },
+          "per_channel_limit": {
+            "default": 10,
+            "description": "Maximum results per channel.",
+            "title": "Per Channel Limit",
+            "type": "integer"
+          },
+          "query": {
+            "description": "The source term text, as written.",
+            "title": "Query",
+            "type": "string"
+          },
+          "standard_only": {
+            "default": false,
+            "description": "true returns only standard concepts. The default false also returns non-standard hits (with their standard mapping when include_standard_mappings is true).",
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Restrict to one exact vocabulary_id.",
+            "title": "Vocabulary Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "concept_candidate_bundleArguments",
+        "type": "object"
+      },
+      "name": "concept_candidate_bundle",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_candidate_bundleDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "List more specific concepts below a concept (stored OMOP hierarchy, up to max_depth\nlevels). Use it after picking a candidate, to check whether a more specific standard\nconcept matches every qualifier the source states (for example specimen, site, route or\nform). Each result has domain_id, standard_concept and depth. Results are ordered by depth\nthen concept_id; limit defaults to 50 (range 1..500), offset defaults to 0, and the response\nincludes total, returned and truncated.",
+      "inputSchema": {
+        "properties": {
+          "concept_class_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only descendants in these concept classes, for example ['Clinical Drug']. Use for drugs, where depth is not specificity.",
+            "title": "Concept Class Ids"
+          },
+          "concept_id": {
+            "description": "The broader concept.",
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum descendants to return.",
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "max_depth": {
+            "default": 3,
+            "description": "Levels below to include (hierarchy hops). Default 3.",
+            "maximum": 10,
+            "minimum": 1,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Number of descendants to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_descendantsArguments",
+        "type": "object"
+      },
+      "name": "concept_descendants",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_descendantsDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Shortest equivalence path between two concepts over identity edges (Maps to, same_as,\ncross-vocabulary equivalence and replacement links). With\nallow_hierarchical_traversal=true it may also step up or down the hierarchy, so the link\nfound can be broader than an exact equivalence.",
+      "inputSchema": {
+        "properties": {
+          "allow_hierarchical_traversal": {
+            "default": false,
+            "title": "Allow Hierarchical Traversal",
+            "type": "boolean"
+          },
+          "max_depth": {
+            "default": 8,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_id",
+          "target_id"
+        ],
+        "title": "concept_equivalency_pathArguments",
+        "type": "object"
+      },
+      "name": "concept_equivalency_path",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_equivalency_pathDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Raw single-hop hierarchy edges from concept_relationship, including classification (for\nexample ATC) and cross-vocabulary links. Use concept_ancestors or concept_descendants\nfor ordinary is-a questions; use this only for classification membership or\ncross-vocabulary hierarchy edges.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": true,
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "direction": {
+            "default": "out",
+            "title": "Direction",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "predicate_subkinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Predicate Subkinds"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_extended_inheritanceArguments",
+        "type": "object"
+      },
+      "name": "concept_extended_inheritance",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_extended_inheritanceDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Look up one concept by concept_id: name, vocabulary, domain, class and standard flag.\nUse it to verify a candidate before answering. To find concepts from text, use\nconcept_candidate_bundle.",
+      "inputSchema": {
+        "properties": {
+          "concept_id": {
+            "description": "OMOP concept_id.",
+            "title": "Concept Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_getArguments",
+        "type": "object"
+      },
+      "name": "concept_get",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_getDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Quick resolver: ranked candidates from the first resolver tier that matches (exact, then\nfull-text, then embedding, then partial), so it can stop at a short or broad name. Use\nit for a fast lead; use concept_candidate_bundle for a broad candidate set. By default\nnon-standard matches are resolved to standard via Maps to (standardized_from shows the\nsource). classification_concept ('C') results are hierarchy nodes, not mapping targets.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": false,
+            "description": "Exclude deprecated or upgraded concepts from candidate resolution.",
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id to restrict to, when known.",
+            "title": "Domain"
+          },
+          "include_embedding": {
+            "default": true,
+            "description": "Allow the embedding tier.",
+            "title": "Include Embedding",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 5,
+            "description": "Maximum results.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "parent_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keep only descendants of these concept_ids.",
+            "title": "Parent Ids"
+          },
+          "query": {
+            "description": "The source term text.",
+            "title": "Query",
+            "type": "string"
+          },
+          "standard_only": {
+            "default": false,
+            "description": "Restrict candidate resolution to concepts flagged 'S' or 'C'. The default false resolves non-standard matches to standard via Maps to.",
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Restrict to one exact vocabulary_id.",
+            "title": "Vocabulary Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "concept_groundArguments",
+        "type": "object"
+      },
+      "name": "concept_ground",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_groundDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Resolve a vocabulary_id and concept_code (for example a source code) to its standard\nconcept(s) via identity relationships, which include Maps to value; for the Maps to\ntarget alone, use concept_navigate_to_standard.",
+      "inputSchema": {
+        "properties": {
+          "concept_code": {
+            "description": "The source code.",
+            "title": "Concept Code",
+            "type": "string"
+          },
+          "vocabulary_id": {
+            "description": "Exact vocabulary_id of the code.",
+            "title": "Vocabulary Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vocabulary_id",
+          "concept_code"
+        ],
+        "title": "concept_map_to_standardArguments",
+        "type": "object"
+      },
+      "name": "concept_map_to_standard",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_map_to_standardDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Return \"Maps to value\" target concepts for a given vocabulary/code pair.",
+      "inputSchema": {
+        "properties": {
+          "concept_code": {
+            "title": "Concept Code",
+            "type": "string"
+          },
+          "vocabulary_id": {
+            "title": "Vocabulary Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vocabulary_id",
+          "concept_code"
+        ],
+        "title": "concept_map_to_valueArguments",
+        "type": "object"
+      },
+      "name": "concept_map_to_value",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_map_to_valueDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "One-call review of a candidate before committing to it: standard mapping, ancestors,\nrelationship summary and graph neighbours. Set include_descendants=true to also list\nmore specific concepts.",
+      "inputSchema": {
+        "properties": {
+          "ancestor_limit": {
+            "default": 5,
+            "description": "Maximum ancestors.",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Ancestor Limit",
+            "type": "integer"
+          },
+          "ancestor_max_depth": {
+            "default": 5,
+            "description": "Maximum ancestor separation.",
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Ancestor Max Depth",
+            "type": "integer"
+          },
+          "concept_id": {
+            "description": "The candidate to review.",
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "descendant_limit": {
+            "default": 10,
+            "description": "Maximum descendants.",
+            "title": "Descendant Limit",
+            "type": "integer"
+          },
+          "embedding_neighbor_limit": {
+            "default": 10,
+            "description": "Maximum embedding neighbours.",
+            "title": "Embedding Neighbor Limit",
+            "type": "integer"
+          },
+          "include_ancestors": {
+            "default": true,
+            "description": "Include broader concepts.",
+            "title": "Include Ancestors",
+            "type": "boolean"
+          },
+          "include_descendants": {
+            "default": false,
+            "description": "Include more specific concepts (default false).",
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "include_embedding_neighbors": {
+            "default": false,
+            "description": "Include nearest concepts by embedding.",
+            "title": "Include Embedding Neighbors",
+            "type": "boolean"
+          },
+          "include_neighbors": {
+            "default": true,
+            "description": "Include graph neighbours.",
+            "title": "Include Neighbors",
+            "type": "boolean"
+          },
+          "include_relationship_summary": {
+            "default": true,
+            "description": "Include counts of relationship types.",
+            "title": "Include Relationship Summary",
+            "type": "boolean"
+          },
+          "include_standard_mapping": {
+            "default": true,
+            "description": "Include its Maps-to target.",
+            "title": "Include Standard Mapping",
+            "type": "boolean"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Embedding model; omit to use the configured default.",
+            "title": "Model Name"
+          },
+          "neighbor_limit": {
+            "default": 15,
+            "description": "Maximum neighbours.",
+            "title": "Neighbor Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_mapping_contextArguments",
+        "type": "object"
+      },
+      "name": "concept_mapping_context",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_mapping_contextDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Resolve concept_ids (for example non-standard search hits) to their standard equivalents\nvia Maps to, in one call. Standard concepts return themselves; unmapped concepts return\n[]; unknown ids are omitted.",
+      "inputSchema": {
+        "properties": {
+          "concept_ids": {
+            "description": "List of concept_ids to resolve.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Concept Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "concept_ids"
+        ],
+        "title": "concept_navigate_to_standardArguments",
+        "type": "object"
+      },
+      "name": "concept_navigate_to_standard",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_navigate_to_standardDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "When no standard concept matches the source at its precision, find the closest broader\nstandard concept, from a concept_id or a free-text query. Equally near candidates are\nreported as ambiguous.",
+      "inputSchema": {
+        "properties": {
+          "candidate_limit": {
+            "default": 10,
+            "description": "Maximum grounded seeds retrieved in query mode.",
+            "title": "Candidate Limit",
+            "type": "integer"
+          },
+          "concept_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Start concept (use this or query).",
+            "title": "Concept Id"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id filter.",
+            "title": "Domain"
+          },
+          "max_depth": {
+            "default": 5,
+            "description": "Maximum stored separation, 0-20.",
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "parent_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keep only grounded seeds in query mode that are descendants of these concept_ids.",
+            "title": "Parent Ids"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Free text to ground first (use this or concept_id).",
+            "title": "Query"
+          },
+          "vocabulary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Restrict grounded seeds in query mode to one exact vocabulary_id.",
+            "title": "Vocabulary Id"
+          }
+        },
+        "title": "concept_nearest_standard_ancestorArguments",
+        "type": "object"
+      },
+      "name": "concept_nearest_standard_ancestor",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_nearest_standard_ancestorDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Breadth-first exploration of everything linked to a concept across all relationship\ntypes (hierarchy, identity, attribute, composition, association), up to 4 hops. Use it\nto discover related concepts when you do not know which relationship connects them, for\nexample a procedure's site and method (predicate_kinds=[\"ATTRIBUTE\"], max_depth=1).",
+      "inputSchema": {
+        "properties": {
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "include_edges": {
+            "default": true,
+            "title": "Include Edges",
+            "type": "boolean"
+          },
+          "max_depth": {
+            "default": 2,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "max_nodes": {
+            "default": 100,
+            "title": "Max Nodes",
+            "type": "integer"
+          },
+          "predicate_kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Predicate Kinds"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_neighborsArguments",
+        "type": "object"
+      },
+      "name": "concept_neighbors",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_neighborsDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Shortest path between two known concepts over any relationship type. within_domain=true\n(default) keeps both ends of every edge in one domain; set it false to cross domains\nthrough attribute edges such as finding site.",
+      "inputSchema": {
+        "properties": {
+          "max_depth": {
+            "default": 8,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "integer"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "integer"
+          },
+          "within_domain": {
+            "default": true,
+            "title": "Within Domain",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_id",
+          "target_id"
+        ],
+        "title": "concept_pathArguments",
+        "type": "object"
+      },
+      "name": "concept_path",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_pathDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Returns all relationships for a concept grouped by direction (inbound/outbound).\n\nEdges are not filtered by domain, so cross-domain attribute edges are\nincluded: e.g. a Procedure's \"Has method\" (-> Observation), \"Has dir\nproc site\" (-> Spec Anatomic Site) and \"Has dir device\" (-> Device).",
+      "inputSchema": {
+        "properties": {
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "concept_relationshipsArguments",
+        "type": "object"
+      },
+      "name": "concept_relationships",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_relationshipsDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Resolve a structured mapping expression to standard OMOP concepts.\n\nAccepts a list of items each specifying a vocabulary_id and concept_code (or\nconcept_id). Resolves each to its standard equivalent(s) and optionally\ndeduplicates the combined result set. Useful for batch-resolving a pre-defined\nconcept set from source vocabulary codes.",
+      "inputSchema": {
+        "properties": {
+          "deduplicate": {
+            "default": true,
+            "title": "Deduplicate",
+            "type": "boolean"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Domain"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "resolve_to_standard": {
+            "default": true,
+            "title": "Resolve To Standard",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "concept_resolve_mapping_expressionArguments",
+        "type": "object"
+      },
+      "name": "concept_resolve_mapping_expression",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_resolve_mapping_expressionDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Exact, case-insensitive match on concept name or synonym. concept_candidate_bundle\nalready runs this channel; call it directly only to confirm that an exact name exists.\nReturns non-standard concepts too; check standard_concept.",
+      "inputSchema": {
+        "properties": {
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id filter.",
+            "title": "Domain"
+          },
+          "include_synonyms": {
+            "default": true,
+            "description": "Also match synonyms.",
+            "title": "Include Synonyms",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum results.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Exact name or synonym to match.",
+            "title": "Query",
+            "type": "string"
+          },
+          "standard_only": {
+            "default": false,
+            "description": "Only standard concepts.",
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Exact vocabulary_id filter.",
+            "title": "Vocabulary Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "concept_search_exactArguments",
+        "type": "object"
+      },
+      "name": "concept_search_exact",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_search_exactDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Ranked word-based search on concept names (PostgreSQL full text).\nconcept_candidate_bundle already runs this channel; call it directly to see more\nfull-text results or to set min_rank. Returns non-standard concepts too. If\ntsvector_available is false, results are always empty.",
+      "inputSchema": {
+        "properties": {
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id filter.",
+            "title": "Domain"
+          },
+          "include_synonyms": {
+            "default": true,
+            "description": "Also search synonyms.",
+            "title": "Include Synonyms",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum results.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "min_rank": {
+            "default": 0.0,
+            "description": "Drop results below this ts_rank.",
+            "title": "Min Rank",
+            "type": "number"
+          },
+          "query": {
+            "description": "Words to search for.",
+            "title": "Query",
+            "type": "string"
+          },
+          "standard_only": {
+            "default": false,
+            "description": "Only standard concepts.",
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Exact vocabulary_id filter.",
+            "title": "Vocabulary Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "concept_search_fulltextArguments",
+        "type": "object"
+      },
+      "name": "concept_search_fulltext",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_search_fulltextDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Near-verbatim search after normalizing punctuation and whitespace; deterministic,\nunranked. concept_candidate_bundle already runs this channel; call it directly only for\na strict near-exact check.",
+      "inputSchema": {
+        "$defs": {
+          "NormalizationProfile": {
+            "description": "Supported normalization contracts shared by Python and SQL callers.",
+            "enum": [
+              "verbatim",
+              "aggressive",
+              "drug_name"
+            ],
+            "title": "NormalizationProfile",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "allow_unindexed_scan": {
+            "default": false,
+            "description": "Allow a slow unscoped scan when no normalized index exists.",
+            "title": "Allow Unindexed Scan",
+            "type": "boolean"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id filter.",
+            "title": "Domain"
+          },
+          "include_synonyms": {
+            "default": false,
+            "description": "Also match synonyms.",
+            "title": "Include Synonyms",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum results.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "normalization_profile": {
+            "$ref": "#/$defs/NormalizationProfile",
+            "default": "verbatim",
+            "description": "Normalization profile; default verbatim."
+          },
+          "parent_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keep only descendants of these concept_ids.",
+            "title": "Parent Ids"
+          },
+          "query": {
+            "description": "Text to match after normalization.",
+            "title": "Query",
+            "type": "string"
+          },
+          "remove_stop_phrases": {
+            "default": true,
+            "description": "Strip common stop phrases before matching.",
+            "title": "Remove Stop Phrases",
+            "type": "boolean"
+          },
+          "standard_only": {
+            "default": false,
+            "description": "Only standard concepts.",
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Exact vocabulary_id filter.",
+            "title": "Vocabulary Id"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "concept_search_normalizedArguments",
+        "type": "object"
+      },
+      "name": "concept_search_normalized",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "concept_search_normalizedDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Find common active standard ancestors of alternative candidates for one source.\n\nSupply 2..200 positive concept IDs in the same domain (at least two distinct).\nClass/vocabulary filters apply before selection; null means unrestricted;\nempty or unknown filters are invalid. Exact vocabulary IDs are required:\nRxNorm does not include RxNorm Extension. Use system_vocabulary_catalogue\nto discover available identifiers.\n\nmax_depth=0..20 measures stored minimum separation, not parent hops.\nDistinct zero-distance ancestors count, and each seed counts as itself.\nReturns selected, ambiguous, no_match or incompatible_inputs. found means\na unique selection, not simply the existence of common ancestry.\nlimit/offset page the complete common set and never change selection.\n\nA shared ancestor is a generalization, not proof of equivalence or clinical\ncorrectness. Do not merge separate combination-drug ingredients with this\noperation. Deterministic for a fixed vocabulary; no LLM/embeddings required.",
+      "inputSchema": {
+        "properties": {
+          "concept_class_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Concept Class Ids"
+          },
+          "concept_ids": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 200,
+            "minItems": 2,
+            "title": "Concept Ids",
+            "type": "array"
+          },
+          "limit": {
+            "default": 10,
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "max_depth": {
+            "default": 5,
+            "maximum": 20,
+            "minimum": 0,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "vocabulary_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vocabulary Ids"
+          }
+        },
+        "required": [
+          "concept_ids"
+        ],
+        "title": "concept_shared_standard_ancestorArguments",
+        "type": "object"
+      },
+      "name": "concept_shared_standard_ancestor",
+      "outputSchema": {
+        "$defs": {
+          "AncestorConcept": {
+            "properties": {
+              "concept_class_id": {
+                "title": "Concept Class Id",
+                "type": "string"
+              },
+              "concept_code": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Concept Code"
+              },
+              "concept_id": {
+                "exclusiveMinimum": 0,
+                "title": "Concept Id",
+                "type": "integer"
+              },
+              "concept_name": {
+                "title": "Concept Name",
+                "type": "string"
+              },
+              "depth": {
+                "minimum": 0,
+                "title": "Depth",
+                "type": "integer"
+              },
+              "domain_id": {
+                "title": "Domain Id",
+                "type": "string"
+              },
+              "is_active": {
+                "const": true,
+                "title": "Is Active",
+                "type": "boolean"
+              },
+              "standard_concept": {
+                "const": true,
+                "title": "Standard Concept",
+                "type": "boolean"
+              },
+              "vocabulary_id": {
+                "title": "Vocabulary Id",
+                "type": "string"
+              }
+            },
+            "required": [
+              "concept_id",
+              "concept_name",
+              "vocabulary_id",
+              "domain_id",
+              "concept_class_id",
+              "standard_concept",
+              "is_active",
+              "depth"
+            ],
+            "title": "AncestorConcept",
+            "type": "object"
+          },
+          "AncestorConstraints": {
+            "properties": {
+              "active_only": {
+                "const": true,
+                "default": true,
+                "title": "Active Only",
+                "type": "boolean"
+              },
+              "concept_class_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Concept Class Ids"
+              },
+              "same_domain": {
+                "const": true,
+                "default": true,
+                "title": "Same Domain",
+                "type": "boolean"
+              },
+              "standard_only": {
+                "const": true,
+                "default": true,
+                "title": "Standard Only",
+                "type": "boolean"
+              },
+              "vocabulary_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Vocabulary Ids"
+              }
+            },
+            "required": [
+              "concept_class_ids",
+              "vocabulary_ids"
+            ],
+            "title": "AncestorConstraints",
+            "type": "object"
+          },
+          "AncestorPage": {
+            "properties": {
+              "has_more": {
+                "title": "Has More",
+                "type": "boolean"
+              },
+              "limit": {
+                "maximum": 50,
+                "minimum": 1,
+                "title": "Limit",
+                "type": "integer"
+              },
+              "offset": {
+                "minimum": 0,
+                "title": "Offset",
+                "type": "integer"
+              },
+              "returned": {
+                "minimum": 0,
+                "title": "Returned",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "offset",
+              "limit",
+              "returned",
+              "has_more"
+            ],
+            "title": "AncestorPage",
+            "type": "object"
+          },
+          "SharedAncestorData": {
+            "properties": {
+              "ancestry_source": {
+                "const": "concept_ancestor",
+                "default": "concept_ancestor",
+                "title": "Ancestry Source",
+                "type": "string"
+              },
+              "common_ancestors": {
+                "items": {
+                  "$ref": "#/$defs/AncestorConcept"
+                },
+                "title": "Common Ancestors",
+                "type": "array"
+              },
+              "common_candidate_count": {
+                "minimum": 0,
+                "title": "Common Candidate Count",
+                "type": "integer"
+              },
+              "constraints": {
+                "$ref": "#/$defs/AncestorConstraints"
+              },
+              "distance_metric": {
+                "const": "min_levels_of_separation",
+                "default": "min_levels_of_separation",
+                "title": "Distance Metric",
+                "type": "string"
+              },
+              "found": {
+                "title": "Found",
+                "type": "boolean"
+              },
+              "include_self": {
+                "const": true,
+                "default": true,
+                "title": "Include Self",
+                "type": "boolean"
+              },
+              "input_concept_ids": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 200,
+                "minItems": 2,
+                "title": "Input Concept Ids",
+                "type": "array"
+              },
+              "input_domains": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": "Input Domains",
+                "type": "object"
+              },
+              "max_depth": {
+                "maximum": 20,
+                "minimum": 0,
+                "title": "Max Depth",
+                "type": "integer"
+              },
+              "nearest_candidate_count": {
+                "minimum": 0,
+                "title": "Nearest Candidate Count",
+                "type": "integer"
+              },
+              "page": {
+                "$ref": "#/$defs/AncestorPage"
+              },
+              "selected_ancestor": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/AncestorConcept"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "selected_distances_by_input": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "title": "Selected Distances By Input",
+                "type": "object"
+              },
+              "selection_complete": {
+                "const": true,
+                "default": true,
+                "title": "Selection Complete",
+                "type": "boolean"
+              },
+              "selection_reason": {
+                "title": "Selection Reason",
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "selected",
+                  "ambiguous",
+                  "no_match",
+                  "incompatible_inputs"
+                ],
+                "title": "Status",
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "found",
+              "input_concept_ids",
+              "input_domains",
+              "constraints",
+              "max_depth",
+              "selection_reason",
+              "selected_ancestor",
+              "selected_distances_by_input",
+              "common_ancestors",
+              "common_candidate_count",
+              "nearest_candidate_count",
+              "page"
+            ],
+            "title": "SharedAncestorData",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NOT_FOUND",
+                  "INVALID_INPUT",
+                  "BACKEND_UNAVAIL",
+                  "QUERY_ERROR",
+                  "QUERY_TIMEOUT",
+                  "FORMAT_BINARY_DECODE",
+                  "FORMAT_UNRECOGNISED",
+                  "MISSING_DEPENDENCY",
+                  "LEGACY_REGISTRY",
+                  "MISPLACED_REGISTRY",
+                  "MISSING_STORAGE_TABLE",
+                  "MODEL_REGISTRATION_CONFLICT",
+                  "READ_ONLY_STORE",
+                  "INTERNAL_ERROR"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Code"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SharedAncestorData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "error": {
+            "default": false,
+            "title": "Error",
+            "type": "boolean"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          }
+        },
+        "title": "SharedAncestorResponse",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Model-based guess of where data-dictionary fields belong: Measurement, Condition,\nObservation, Procedure, Drug, Device, or the non-OMOP labels Metadata (administrative\nfields such as site codes or form dates) and Identifier (record-linkage IDs). Uses each\nlabel and its first 10 example values. Unassigned labels are omitted; there is no\nconfidence score.",
+      "inputSchema": {
+        "properties": {
+          "label_values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Map of field label to example values; the first 10 per label are used.",
+            "title": "Label Values",
+            "type": "object"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          }
+        },
+        "required": [
+          "label_values"
+        ],
+        "title": "domain_classifyArguments",
+        "type": "object"
+      },
+      "name": "domain_classify",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "domain_classifyDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Return the raw embedding vector for a text, using the configured embedding model. For\ndiagnostics only: embedding_search encodes internally. The vector is large.",
+      "inputSchema": {
+        "properties": {
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Omit to use the configured live model; no other model is accepted.",
+            "title": "Model Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "embedding_encodeArguments",
+        "type": "object"
+      },
+      "name": "embedding_encode",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "embedding_encodeDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Returns status of the embedding backend and registered models.",
+      "inputSchema": {
+        "properties": {},
+        "title": "embedding_index_statusArguments",
+        "type": "object"
+      },
+      "name": "embedding_index_status",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "embedding_index_statusDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Returns nearest embedding-space neighbours for one OMOP concept.\n\nThe default uses the partial vector index on is_standard AND is_valid. Pass\nstandard_only=False to include non-standard neighbours, at the cost of a full scan.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": true,
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 10,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          },
+          "standard_only": {
+            "default": true,
+            "title": "Standard Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "concept_id"
+        ],
+        "title": "embedding_neighboursArguments",
+        "type": "object"
+      },
+      "name": "embedding_neighbours",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "embedding_neighboursDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Semantic search by meaning. Use it for abbreviations, paraphrases, misspellings or\nnon-English terms that word-based search misses. Similar meaning is not equivalence:\nconfirm hits with concept_get and the hierarchy.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": true,
+            "description": "Exclude retired concepts.",
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domain_id filter.",
+            "title": "Domain"
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum results.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Embedding model; omit to use the configured default.",
+            "title": "Model Name"
+          },
+          "query": {
+            "description": "Text to search for by meaning.",
+            "title": "Query",
+            "type": "string"
+          },
+          "standard_only": {
+            "default": false,
+            "description": "Only standard concepts.",
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Exact vocabulary_id filter.",
+            "title": "Vocabulary"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "embedding_searchArguments",
+        "type": "object"
+      },
+      "name": "embedding_search",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "embedding_searchDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Search the embedding index for multiple queries in one batch.\n\nAll queries share the same search filters. Use separate calls when\ndomain, vocabulary, or model constraints differ.",
+      "inputSchema": {
+        "properties": {
+          "active_only": {
+            "default": true,
+            "title": "Active Only",
+            "type": "boolean"
+          },
+          "batch_size": {
+            "default": 32,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Domain"
+          },
+          "limit": {
+            "default": 10,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          },
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Queries",
+            "type": "array"
+          },
+          "standard_only": {
+            "default": false,
+            "title": "Standard Only",
+            "type": "boolean"
+          },
+          "vocabulary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vocabulary"
+          }
+        },
+        "required": [
+          "queries"
+        ],
+        "title": "embedding_search_batchArguments",
+        "type": "object"
+      },
+      "name": "embedding_search_batch",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "embedding_search_batchDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Find the convention packs (OMOP and OHDSI conventions, plus local site rules) that apply\nto a job. Call it once at the start of any mapping or review job, with the OMOP domains\ninvolved, before choosing between candidates; then read each applicable pack with\nknowledge_pack. Returns name, scope_summary and see_also for each pack.",
+      "inputSchema": {
+        "properties": {
+          "domains": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "OMOP domains involved in the job, for example [\"Measurement\", \"Drug\"].",
+            "title": "Domains"
+          },
+          "include_local": {
+            "default": true,
+            "description": "Include local site packs (default true).",
+            "title": "Include Local",
+            "type": "boolean"
+          },
+          "layer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Restrict to core, specialisation, source or localisation.",
+            "title": "Layer"
+          },
+          "section_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Section names from the source, used to detect a specialty.",
+            "title": "Section Names"
+          },
+          "source_system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Detected source system (from source_plan), if any.",
+            "title": "Source System"
+          }
+        },
+        "title": "knowledge_catalogueArguments",
+        "type": "object"
+      },
+      "name": "knowledge_catalogue",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "knowledge_catalogueDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Read one convention pack by name (from knowledge_catalogue): its guidance text and\nrules, for example which concept level or vocabulary applies when candidates are equally\nprecise. Apply its rules to the decision; they override general habit.",
+      "inputSchema": {
+        "properties": {
+          "name": {
+            "description": "Pack name from knowledge_catalogue, for example standard-concept-preference.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "knowledge_packArguments",
+        "type": "object"
+      },
+      "name": "knowledge_pack",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "knowledge_packDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Score predicted mappings against reference mappings: accuracy (the reference standard\nconcept_id is among the first top_k predictions), coverage and agreement cases,\noptionally by domain. An evaluation utility; concept_ids are not checked against the\nvocabulary.",
+      "inputSchema": {
+        "properties": {
+          "group_by_domain": {
+            "default": true,
+            "title": "Group By Domain",
+            "type": "boolean"
+          },
+          "match_mode": {
+            "default": "standard_concept_id",
+            "title": "Match Mode",
+            "type": "string"
+          },
+          "predicted_mappings": {
+            "description": "Rows with source_key (or source_id or source_term), predicted_standard_concept_ids as a ranked list, optional domain_id.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Predicted Mappings",
+            "type": "array"
+          },
+          "reference_mappings": {
+            "description": "Rows with source_key (or source_id or source_term), reference_standard_concept_id (required), optional domain_id.",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Reference Mappings",
+            "type": "array"
+          },
+          "top_k": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Count a match within the first top_k predictions; omit to use all.",
+            "title": "Top K"
+          }
+        },
+        "required": [
+          "predicted_mappings",
+          "reference_mappings"
+        ],
+        "title": "mapping_evaluate_candidatesArguments",
+        "type": "object"
+      },
+      "name": "mapping_evaluate_candidates",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "mapping_evaluate_candidatesDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Plan submitted source content into neutral grounding artifacts.\n\nAccepts source content as UTF-8 text by default. Pass\n``content_encoding=\"base64\"`` when submitting binary formats such as\nXLSX, PDF, or DOCX. The result always includes the final\n``IngestionPlan`` and may optionally include intermediate raw,\nnormalized, and annotated tables for inspection.",
+      "inputSchema": {
+        "properties": {
+          "caller_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Caller Hint"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "content_encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "utf-8",
+            "title": "Content Encoding"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Filename"
+          },
+          "include_intermediate": {
+            "default": false,
+            "title": "Include Intermediate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "source_planArguments",
+        "type": "object"
+      },
+      "name": "source_plan",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "source_planDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "source_plan plus a language-model review of the tables the rules could not classify\nconfidently; use it after source_plan when plan.uncertain_tables is not empty. Returns\nBACKEND_UNAVAIL when no language model is configured or model-assisted planning is\nturned off.",
+      "inputSchema": {
+        "properties": {
+          "caller_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Your format guess; only compared with the detection, never changes it.",
+            "title": "Caller Hint"
+          },
+          "content": {
+            "description": "File content: raw text, or base64 (with content_encoding=base64) for xlsx, pdf or docx.",
+            "title": "Content",
+            "type": "string"
+          },
+          "content_encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "utf-8",
+            "title": "Content Encoding"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Filename"
+          },
+          "include_intermediate": {
+            "default": false,
+            "title": "Include Intermediate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "source_plan_assistedArguments",
+        "type": "object"
+      },
+      "name": "source_plan_assisted",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "source_plan_assistedDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Health of each configured backend (overall: healthy, degraded or unavailable). Call it\nwhen a capability seems missing.",
+      "inputSchema": {
+        "properties": {},
+        "title": "system_statusArguments",
+        "type": "object"
+      },
+      "name": "system_status",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "system_statusDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Returns all OMOP vocabularies, domains, and concept classes.",
+      "inputSchema": {
+        "properties": {},
+        "title": "system_vocabulary_catalogueArguments",
+        "type": "object"
+      },
+      "name": "system_vocabulary_catalogue",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "system_vocabulary_catalogueDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Language-model split of free text naming several concepts (criteria, note excerpts) into\nthe distinct clinical terms it states, each normalised, to ground one by one with\nconcept_candidate_bundle. The terms are model text, not OMOP concepts; max_terms is a\nrequest to the model, not an enforced limit.",
+      "inputSchema": {
+        "properties": {
+          "domain_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional context such as a domain name; it guides the model and is not a filter.",
+            "title": "Domain Hint"
+          },
+          "max_terms": {
+            "default": 10,
+            "description": "Requested maximum number of terms, 1-20.",
+            "title": "Max Terms",
+            "type": "integer"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "text_decomposeArguments",
+        "type": "object"
+      },
+      "name": "text_decompose",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "text_decomposeDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Language-model list of the plausible meanings of an ambiguous term or abbreviation, most\nlikely first given the context (no frequency data is used), with is_ambiguous. Ground\neach meaning separately; max_interpretations is a request to the model, not an enforced\nlimit.",
+      "inputSchema": {
+        "properties": {
+          "domain_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional context such as a domain name; it guides the model and is not a filter.",
+            "title": "Domain Hint"
+          },
+          "max_interpretations": {
+            "default": 5,
+            "description": "Requested maximum number of meanings, 1-10.",
+            "title": "Max Interpretations",
+            "type": "integer"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "text_disambiguateArguments",
+        "type": "object"
+      },
+      "name": "text_disambiguate",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "text_disambiguateDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Language-model rewrite of one data-dictionary label or value into the best single search\nphrase, removing form noise (scoring syntax, code prefixes, duplicated fragments) while\nkeeping meaning and specificity. Returns the phrase, a confidence and the model's own\nchanged flag.",
+      "inputSchema": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional object with surrounding information, for example the parent label, sibling values or source code.",
+            "title": "Context"
+          },
+          "domain_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Domain Hint"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "text_mapping_cleanupArguments",
+        "type": "object"
+      },
+      "name": "text_mapping_cleanup",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "text_mapping_cleanupDictOutput",
+        "type": "object"
+      }
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Language-model expansion of a short term: clear abbreviations, lay wording and obvious\nmisspellings, keeping meaning and specificity. Use it when word-based search fails on\nshorthand; embedding search already tolerates much of this. Returns the normalised text\nwith a confidence.",
+      "inputSchema": {
+        "properties": {
+          "domain_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional context, used only to resolve ambiguity.",
+            "title": "Domain Hint"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "text_normalizeArguments",
+        "type": "object"
+      },
+      "name": "text_normalize",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "text_normalizeDictOutput",
+        "type": "object"
+      }
+    }
+  ],
+  "toolsets": {
+    "concept_ancestors": [
+      "graph",
+      "mapping"
+    ],
+    "concept_associations": [
+      "graph"
+    ],
+    "concept_by_code": [
+      "lookup"
+    ],
+    "concept_candidate_bundle": [
+      "mapping",
+      "search"
+    ],
+    "concept_descendants": [
+      "graph",
+      "mapping"
+    ],
+    "concept_equivalency_path": [
+      "graph"
+    ],
+    "concept_extended_inheritance": [
+      "graph"
+    ],
+    "concept_get": [
+      "lookup"
+    ],
+    "concept_ground": [
+      "search"
+    ],
+    "concept_map_to_standard": [
+      "mapping_advanced"
+    ],
+    "concept_map_to_value": [
+      "mapping_advanced"
+    ],
+    "concept_mapping_context": [
+      "mapping"
+    ],
+    "concept_navigate_to_standard": [
+      "mapping"
+    ],
+    "concept_nearest_standard_ancestor": [
+      "mapping"
+    ],
+    "concept_neighbors": [
+      "graph"
+    ],
+    "concept_path": [
+      "graph"
+    ],
+    "concept_relationships": [
+      "graph"
+    ],
+    "concept_resolve_mapping_expression": [
+      "mapping_advanced"
+    ],
+    "concept_search_exact": [
+      "search"
+    ],
+    "concept_search_fulltext": [
+      "search"
+    ],
+    "concept_search_normalized": [
+      "search"
+    ],
+    "concept_shared_standard_ancestor": [
+      "mapping_advanced"
+    ],
+    "domain_classify": [
+      "llm"
+    ],
+    "embedding_encode": [
+      "offline"
+    ],
+    "embedding_index_status": [
+      "embedding"
+    ],
+    "embedding_neighbours": [
+      "embedding"
+    ],
+    "embedding_search": [
+      "embedding",
+      "search"
+    ],
+    "embedding_search_batch": [
+      "embedding",
+      "search"
+    ],
+    "knowledge_catalogue": [
+      "knowledge"
+    ],
+    "knowledge_pack": [
+      "knowledge"
+    ],
+    "mapping_evaluate_candidates": [
+      "offline"
+    ],
+    "source_plan": [
+      "source"
+    ],
+    "source_plan_assisted": [
+      "llm",
+      "source"
+    ],
+    "system_status": [
+      "system"
+    ],
+    "system_vocabulary_catalogue": [
+      "system"
+    ],
+    "text_decompose": [
+      "llm"
+    ],
+    "text_disambiguate": [
+      "llm"
+    ],
+    "text_mapping_cleanup": [
+      "llm"
+    ],
+    "text_normalize": [
+      "llm"
+    ]
+  }
+}

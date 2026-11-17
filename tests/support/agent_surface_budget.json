@@ -1,0 +1,14 @@
+{
+  "max_model_visible_tool_chars": 37106,
+  "max_instructions_chars": 1050,
+  "history": [
+    {
+      "date": "2026-11-17",
+      "model_visible_tool_chars": 36083,
+      "instructions_chars": 952,
+      "max_model_visible_tool_chars": 37106,
+      "max_instructions_chars": 1050,
+      "reason": "Committed reference surface; ceilings carried over."
+    }
+  ]
+}

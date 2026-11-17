@@ -1,4 +1,4 @@
-"""Local agent-surface snapshot: exactly what an MCP client is shown.
+"""Committed agent-surface test fixtures: exactly what an MCP client is shown.
 
 The surface is collected through the real MCP protocol: the FastMCP app that
 ``GroundworkersMCPServer.run`` would serve is captured and queried with an
@@ -8,15 +8,16 @@ annotations are the ones an agent receives.
 Two surfaces:
 
 * ``reference`` -- a fixed stack (CDM + embedding store + chat model, no
-  plugins) built without live services. Optional comparisons use the local,
-  Git-ignored ``evaluation/surface/reference.json`` and ``budget.json``.
+  plugins) built without live services. Comparisons use committed fixtures in
+  ``tests/support/agent_surface_reference.json`` and
+  ``tests/support/agent_surface_budget.json``.
 * ``live`` -- whatever the local stack config and backend health produce.
   Evidence only; never gated.
 
 Usage::
 
     python -m tests.support.agent_surface --check     # compare with reference
-    python -m tests.support.agent_surface --write     # accept the current surface
+    python -m tests.support.agent_surface --write     # regenerate the reference fixture
     python -m tests.support.agent_surface --live --output <file>
 """
 
@@ -35,12 +36,13 @@ from unittest.mock import patch
 
 SCHEMA = "groundworkers.agent-surface/v1"
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SURFACE_DIR = REPO_ROOT / "evaluation" / "surface"
-REFERENCE_PATH = SURFACE_DIR / "reference.json"
-BUDGET_PATH = SURFACE_DIR / "budget.json"
+SURFACE_DIR = REPO_ROOT / "tests" / "support"
+REFERENCE_PATH = SURFACE_DIR / "agent_surface_reference.json"
+BUDGET_PATH = SURFACE_DIR / "agent_surface_budget.json"
 REGENERATE_COMMAND = "python -m tests.support.agent_surface --write"
 
-_BOUND_KEYS = ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum")
+_LOWER_BOUND_KEYS = ("minimum", "exclusiveMinimum")
+_UPPER_BOUND_KEYS = ("maximum", "exclusiveMaximum")
 
 
 def _compact(value: Any) -> str:
@@ -57,15 +59,18 @@ def _numeric_branches(schema: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def unbounded_numeric_params(input_schema: dict[str, Any]) -> list[str]:
-    """Numeric parameters whose schema carries no lower or upper bound.
+    """Numeric parameters whose schema is missing either a lower or upper bound.
 
     A small model only sees the schema; a bound enforced at runtime (or a
-    silent clamp) is invisible to it.
+    silent clamp) is invisible to it. Both sides must be explicit for a
+    parameter to count as bounded.
     """
     names = []
     for name, prop in sorted(input_schema.get("properties", {}).items()):
         for branch in _numeric_branches(prop):
-            if not any(key in branch for key in _BOUND_KEYS):
+            has_lower_bound = any(key in branch for key in _LOWER_BOUND_KEYS)
+            has_upper_bound = any(key in branch for key in _UPPER_BOUND_KEYS)
+            if not has_lower_bound or not has_upper_bound:
                 names.append(name)
                 break
     return names
