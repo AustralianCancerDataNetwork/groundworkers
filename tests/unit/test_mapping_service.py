@@ -1,13 +1,16 @@
-from unittest.mock import Mock
+import asyncio
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from groundworkers.adapters.omop_emb import CandidateSearchLimits
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.services import MappingService
 from groundworkers.services.vocab import (
     ConceptMappingResult,
     ConceptMatch,
     MappedConcept,
+    VocabService,
 )
 
 
@@ -523,6 +526,199 @@ def test_concept_candidate_bundle_combines_channels_and_standard_mappings():
     assert "ancestor_preview" in non_standard
 
 
+def test_standard_candidate_bundle_maps_and_truncates_all_channels():
+    vocab = Mock(spec=StubVocabAdapter)
+    vocab.resolve_domain = Mock(return_value="Condition")
+    fixture = StubVocabAdapter()
+    vocab.search_exact.return_value = fixture.search_exact("diabetes")
+    vocab.search_normalized_with_plan.return_value = (
+        fixture.search_normalized("diabetes"),
+        "indexed",
+    )
+    vocab.search_fulltext.return_value = fixture.search_fulltext("diabetes")
+    mapping = fixture.navigate_to_standard([102])[0]
+    direct = MappedConcept(vocab.search_exact.return_value[0].concept, "Maps to")
+    outside = [
+        MappedConcept(
+            {"concept_id": cid, "concept_name": name, "domain_id": "Measurement"},
+            "Maps to",
+        )
+        for cid, name in ((301, "One"), (302, "Two"), (303, "Three"), (304, "Four"))
+    ]
+    mapping.targets.extend([direct, *outside])
+    vocab.navigate_to_standard.return_value = [
+        mapping,
+        ConceptMappingResult(
+            103, "Diabetic disorder", False, False, [mapping.targets[0]]
+        ),
+        ConceptMappingResult(
+            104, "Embedding source", False, False, [mapping.targets[0]]
+        ),
+    ]
+    emb = Mock()
+    emb.search.return_value = {
+        "results": [
+            {
+                "concept_id": 104,
+                "concept_name": "Embedding source",
+                "vocabulary_id": "ICD10CM",
+                "domain_id": "Condition",
+                "similarity": 0.9,
+                "standard_concept": False,
+            },
+            {
+                "concept_id": 105,
+                "concept_name": "Unmapped",
+                "vocabulary_id": "ICD10CM",
+                "domain_id": "Condition",
+                "similarity": 0.8,
+                "standard_concept": False,
+            },
+            {
+                "concept_id": 106,
+                "concept_name": "Standard embedding hit",
+                "vocabulary_id": "SNOMED",
+                "domain_id": "Condition",
+                "similarity": 0.7,
+                "standard_concept": True,
+            },
+        ]
+    }
+    emb.async_search = AsyncMock(return_value=emb.search.return_value)
+    service = MappingService(vocab, emb_adapter=emb)
+    kwargs = {
+        "domain": "condition",
+        "standard_only": True,
+        "per_channel_limit": 1,
+        "overall_limit": 2,
+        "include_standard_mappings": False,
+    }
+
+    result = service.concept_candidate_bundle("diabetes", **kwargs)
+
+    for search in (
+        vocab.search_exact,
+        vocab.search_normalized_with_plan,
+        vocab.search_fulltext,
+    ):
+        assert search.call_args.kwargs["limit"] == 2
+        assert search.call_args.kwargs["standard_only"] is False
+    assert emb.search.call_args.kwargs["limit"] == CandidateSearchLimits(
+        valid=25, standard=1
+    )
+    assert emb.search.call_args.kwargs["domain"] == "Condition"
+    vocab.navigate_to_standard.assert_called_once_with([102, 103, 104, 105])
+    assert result["standardized_candidates"] == []
+    assert [row["concept_id"] for row in result["candidate_union"]] == [101, 201]
+    direct_row, mapped_row = result["candidate_union"]
+    assert direct_row["retrieved_by"] == ["exact", "normalized", "maps_to"]
+    assert [source["concept_id"] for source in direct_row["reached_via"]] == [102]
+    assert [source["concept_id"] for source in mapped_row["reached_via"]] == [
+        102,
+        103,
+        104,
+    ]
+    assert mapped_row["retrieved_by"] == [
+        "normalized",
+        "fulltext",
+        "embedding",
+        "maps_to",
+    ]
+    assert mapped_row["reached_via"][-1] == {
+        "concept_id": 104,
+        "concept_name": "Embedding source",
+        "vocabulary_id": "ICD10CM",
+        "channel": "embedding",
+        "similarity": 0.9,
+    }
+    assert all(
+        "mapped_standard_concepts" not in row for row in result["candidate_union"]
+    )
+    assert [
+        row["concept_id"] for row in result["channels"]["embedding"]["results"]
+    ] == [201]
+    assert all(len(channel["results"]) <= 1 for channel in result["channels"].values())
+    assert result["warnings"] == [
+        "4 matched concept(s) map to standard concepts outside the Condition domain, not listed above: "
+        "One (301, Measurement) via 'Type 2 diabetes mellitus'; "
+        "Two (302, Measurement) via 'Type 2 diabetes mellitus'; "
+        "Three (303, Measurement) via 'Type 2 diabetes mellitus'; and 1 more"
+    ]
+    assert (
+        asyncio.run(service.async_concept_candidate_bundle("diabetes", **kwargs))
+        == result
+    )
+    assert emb.async_search.call_args.kwargs == emb.search.call_args.kwargs
+
+
+def test_standard_candidate_bundle_preserves_opted_in_mapping_summary():
+    fixture = StubVocabAdapter()
+    vocab = Mock(spec=StubVocabAdapter)
+    vocab.resolve_domain = Mock(return_value="Condition")
+    vocab.search_exact.return_value = fixture.search_normalized("diabetes")
+    vocab.navigate_to_standard.return_value = fixture.navigate_to_standard([102])
+    service = MappingService(vocab)
+    options = dict(
+        domain="Condition",
+        include_embedding=False,
+        include_normalized=False,
+        include_fulltext=False,
+        include_standard_mappings=True,
+    )
+    prior = service.concept_candidate_bundle("diabetes", **options)
+    vocab.navigate_to_standard.reset_mock()
+
+    result = service.concept_candidate_bundle("diabetes", standard_only=True, **options)
+
+    vocab.navigate_to_standard.assert_called_once_with([102])
+    assert result["standardized_candidates"] == prior["standardized_candidates"]
+    (target,) = result["candidate_union"]
+    assert target["concept_id"] == 201
+    assert target["retrieved_by"] == ["exact", "maps_to"]
+    assert target["reached_via"][0]["channel"] == "exact"
+
+
+def test_candidate_bundle_without_standard_only_preserves_payload():
+    result = MappingService(StubVocabAdapter()).concept_candidate_bundle(
+        "  diabetes  ",
+        standard_only=False,
+        include_normalized=False,
+        include_fulltext=False,
+        include_embedding=False,
+    )
+    concept = StubVocabAdapter().search_exact("diabetes")[0].concept
+    assert result == {
+        "query": "diabetes",
+        "constraints": {
+            "domain": None,
+            "vocabulary_id": None,
+            "standard_only": False,
+            "active_only": True,
+            "parent_ids": None,
+        },
+        "channels": {
+            "exact": {
+                "available": True,
+                "results": [
+                    {**concept, "match_source": "name", "matched_synonym": None}
+                ],
+                "retrieval_notes": [
+                    "case-insensitive exact match over concept_name and optional synonyms"
+                ],
+            }
+        },
+        "standardized_candidates": [],
+        "candidate_union": [
+            {
+                key: value
+                for key, value in {**concept, "retrieved_by": ["exact"]}.items()
+                if key not in {"classification_concept", "is_active"}
+            }
+        ],
+        "warnings": [],
+    }
+
+
 @pytest.mark.parametrize(
     "limits",
     (
@@ -553,6 +749,25 @@ def test_embedding_only_candidate_backfilled_with_identity_metadata():
     assert emb_only["concept_code"] == "73211009"
     assert emb_only["domain_id"] == "Condition"
     assert emb_only["concept_class_id"] == "Clinical Finding"
+
+
+def test_standard_bundle_backfills_missing_standardness_before_postfiltering():
+    vocab = Mock(spec=VocabService)
+    vocab.resolve_domain.return_value = None
+    vocab.search_exact.return_value = []
+    vocab.navigate_to_standard.return_value = []
+    emb = Mock()
+    emb.search.return_value = {"results": [{"concept_id": 104, "similarity": 0.91}]}
+    service = MappingService(vocab, graph_service=StubGraphAdapter(), emb_adapter=emb)
+
+    result = service.concept_candidate_bundle(
+        "diabetes", standard_only=True, include_normalized=False, include_fulltext=False
+    )
+
+    (candidate,) = result["candidate_union"]
+    assert candidate["concept_id"] == 104
+    assert candidate["standard_concept"] is True
+    assert candidate["vocabulary_id"] == "SNOMED"
 
 
 def test_embedding_only_candidate_warns_when_graph_absent_for_backfill():

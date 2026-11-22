@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from omop_emb import EmbeddingRole, MetricType
 
-from groundworkers.adapters.omop_emb import OmopEmbAdapter
+from groundworkers.adapters.omop_emb import CandidateSearchLimits, OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
 
 
@@ -338,6 +338,145 @@ def test_async_search_batch_rejects_misaligned_results(monkeypatch):
                 7,
                 "Condition",
                 "SNOMED",
+                True,
+                True,
+                None,
+            )
+        )
+
+    assert caught.value.code == "BACKEND_UNAVAIL"
+
+
+@pytest.mark.parametrize("mode", ["sync", "async", "batch"])
+def test_candidate_search_backfills_empty_valid_hits_and_reuses_vector(
+    monkeypatch, mode
+):
+    vectors = (
+        ((0.1, 0.2, 0.3), (0.4, 0.5, 0.6)) if mode == "batch" else ((0.1, 0.2, 0.3),)
+    )
+    backend = StubModelBackend(vectors=vectors)
+    adapter = build_adapter(model_backend=backend)
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: model_record())
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+
+    def search(**kwargs):
+        reader.calls.append(kwargs)
+        if kwargs["concept_filter"].require_standard:
+            rows = ((nearest_match(),), (nearest_match(concept_id=222),))
+            return rows[: len(vectors)]
+        if mode == "batch":
+            return ((), (nearest_match(concept_id=333), nearest_match(concept_id=222)))
+        return ()
+
+    monkeypatch.setattr(reader, "get_nearest_concepts", search)
+    filters = (
+        CandidateSearchLimits(valid=25, standard=5),
+        "Condition",
+        "SNOMED",
+        True,
+        True,
+        None,
+    )
+    if mode == "sync":
+        result = adapter.search("hypertension", *filters)
+    elif mode == "async":
+        result = asyncio.run(adapter.async_search("hypertension", *filters))
+    else:
+        result = asyncio.run(
+            adapter.async_search_batch(["hypertension", "diabetes"], *filters)
+        )
+
+    groups = result["results"] if mode == "batch" else [result["results"]]
+    expected = [[111], [333, 222]] if mode == "batch" else [[111]]
+    assert [[row["concept_id"] for row in hits] for hits in groups] == expected
+    valid, backfill = reader.calls
+    assert [valid["k"], backfill["k"]] == [25, 5]
+    assert valid["concept_filter"].require_standard is False
+    assert backfill["concept_filter"].require_standard is True
+    for call in reader.calls:
+        assert call["concept_filter"].domains == ("Condition",)
+        assert call["concept_filter"].vocabularies == ("SNOMED",)
+        assert call["concept_filter"].require_active is True
+    assert valid["query_embedding"] is backfill["query_embedding"]
+    assert len(backend.calls) == 1
+
+
+@pytest.mark.parametrize("mixed_batch", [False, True])
+def test_candidate_search_backfills_only_queries_with_fewer_distinct_standard_hits(
+    monkeypatch, mixed_batch
+):
+    vectors = [(0.1, 0.2, 0.3)]
+    queries = ["hypertension"]
+    enough = (nearest_match(), nearest_match(concept_id=222))
+    enough[0].domain_id = "condition"
+    different_domain = nearest_match(concept_id=444)
+    different_domain.domain_id = "Observation"
+    nonstandard = nearest_match(concept_id=555)
+    nonstandard.is_standard = False
+    few = nearest_match(concept_id=333)
+
+    candidates = (enough,)
+    if mixed_batch:
+        vectors.append((0.4, 0.5, 0.6))
+        queries.append("diabetes")
+        candidates += ((few, few, different_domain, nonstandard),)
+
+    backend = StubModelBackend(vectors=vectors)
+    adapter = build_adapter(model_backend=backend)
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: model_record())
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+
+    def search(**kwargs):
+        reader.calls.append(kwargs)
+        if kwargs["concept_filter"].require_standard:
+            return ((few, nearest_match(concept_id=666)),)
+        return candidates
+
+    monkeypatch.setattr(reader, "get_nearest_concepts", search)
+    result = asyncio.run(
+        adapter.async_search_batch(
+            queries,
+            CandidateSearchLimits(valid=25, standard=2),
+            "Condition",
+            None,
+            True,
+            True,
+            None,
+        )
+    )
+
+    result_ids = [[row["concept_id"] for row in hits] for hits in result["results"]]
+    assert result_ids[0] == [111, 222]
+    assert [call["k"] for call in reader.calls] == ([25, 2] if mixed_batch else [25])
+    if mixed_batch:
+        assert result_ids[1] == [333, 444, 555, 666]
+        np.testing.assert_array_equal(reader.calls[1]["query_embedding"], [vectors[1]])
+    assert len(backend.calls) == 1
+
+
+def test_candidate_search_rejects_misaligned_standard_backfill(monkeypatch):
+    vectors = [(0.1, 0.2, 0.3), (0.4, 0.5, 0.6)]
+    adapter = build_adapter(model_backend=StubModelBackend(vectors=vectors))
+    reader = StubReader()
+    monkeypatch.setattr(adapter, "_resolve_model_record", lambda _: model_record())
+    monkeypatch.setattr(adapter, "_build_reader", lambda _: reader)
+
+    def search(**kwargs):
+        if kwargs["concept_filter"].require_standard:
+            return ((nearest_match(),),)
+        return ((), ())
+
+    monkeypatch.setattr(reader, "get_nearest_concepts", search)
+
+    with pytest.raises(GroundworkersError, match="misaligned batch results") as caught:
+        asyncio.run(
+            adapter.async_search_batch(
+                ["hypertension", "diabetes"],
+                CandidateSearchLimits(valid=25, standard=2),
+                "Condition",
+                None,
                 True,
                 True,
                 None,

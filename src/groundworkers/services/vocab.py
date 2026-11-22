@@ -877,11 +877,7 @@ class VocabService:
         """Return "Maps to unit" related concepts for the given concept_ids."""
         return self._navigate_relationship(concept_ids, self.UNIT_RELATIONSHIP_IDS)
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _resolve_domain(self, domain: str | None) -> str | None:
+    def resolve_domain(self, domain: str | None) -> str | None:
         """Canonicalise a requested domain, rejecting one that cannot exist.
 
         Mirrors ``ConceptGroundingService._resolve_domain`` so the search tools
@@ -895,6 +891,10 @@ class VocabService:
                 "INVALID_INPUT", self._domain_names.describe_unknown(domain)
             )
         return canonical
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _apply_concept_filters(
         self,
@@ -924,7 +924,7 @@ class VocabService:
         and should not — the join to ``concept_ancestor`` is a graph concern,
         not a flag one.
         """
-        canonical_domain = self._resolve_domain(domain)
+        canonical_domain = self.resolve_domain(domain)
         stmt = ConceptFilter(
             domains=(canonical_domain,) if canonical_domain else None,
             vocabularies=(vocabulary_id,) if vocabulary_id else None,

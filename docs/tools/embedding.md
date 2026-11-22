@@ -70,6 +70,8 @@ Encodes a text query on the fly and returns the nearest concepts by vector simil
 
 All parameters except `query` are optional.
 
+With `standard_only=true`, search can retrieve non-standard concepts and then replace them with standard OMOP `Maps to` targets in the requested domain. Mapped candidates identify their source and embedding similarity in `reached_via`. A warning names up to three targets outside the requested domain. A standard-only lookup adds candidates if the wider search found fewer distinct in-domain standard hits than the requested `limit`.
+
 !!! warning "Requires a configured embedding model"
     `embedding_search` must encode the query string using a live embedding model.
     Configure `embedding_model_name` in `[tools.groundworkers]` and give its
@@ -93,6 +95,8 @@ Encodes and searches multiple query strings in one provider/index operation. The
 ```
 
 All queries in a call share the same domain, vocabulary, model, and concept filters. Partition queries before calling when those constraints differ. The MCP wrapper accepts at most 256 queries; `batch_size` is the provider batch size and is bounded to 1–128.
+
+With `standard_only=true`, each query uses the same post-filter as `embedding_search`. The batch returns a flat `warnings` list, even when empty. Each warning begins with the query's one-based position and text.
 
 ## `embedding_encode`
 

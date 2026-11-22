@@ -4,6 +4,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -12,7 +13,9 @@ from omop_emb import (
     EmbeddingModelRecord,
     EmbeddingReaderInterface,
     EmbeddingRole,
+    IndexConfig,
     MetricType,
+    NearestConceptMatch,
 )
 from omop_emb.backends import EmbeddingStoreReader
 from omop_llm import ModelBackend
@@ -23,6 +26,14 @@ from groundworkers.base.errors import GroundworkersError, embedding_store_error
 from groundworkers.base.results import enum_value
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class CandidateSearchLimits:
+    """Retrieval limits for a wider search followed by standard-only backfill."""
+
+    valid: int
+    standard: int
 
 
 class OmopEmbAdapter:
@@ -219,7 +230,7 @@ class OmopEmbAdapter:
     def search(
         self,
         query: str,
-        limit: int,
+        limit: int | CandidateSearchLimits,
         domain: str | None,
         vocabulary: str | None,
         standard_only: bool,
@@ -238,13 +249,26 @@ class OmopEmbAdapter:
             active_only=active_only,
         )
         try:
-            raw = reader.get_nearest_concepts_from_query_texts(
-                query_texts=(query,),
-                model_backend=model_backend,
-                concept_filter=concept_filter,
-                k=limit,
-                faiss_index_config=record.index_config,
-            )
+            if isinstance(limit, int):
+                raw = reader.get_nearest_concepts_from_query_texts(
+                    query_texts=(query,),
+                    model_backend=model_backend,
+                    concept_filter=concept_filter,
+                    k=limit,
+                    faiss_index_config=record.index_config,
+                )
+            else:
+                raw = _search_embeddings(
+                    reader,
+                    query_embedding=EmbeddingReaderInterface.generate_embeddings(
+                        model_backend, (query,), role=EmbeddingRole.QUERY
+                    ),
+                    concept_filter=concept_filter,
+                    limit=limit,
+                    faiss_index_config=record.index_config,
+                )
+        except GroundworkersError:
+            raise
         except Exception as exc:
             _raise_embedding_store_error(exc)
             logger.exception(
@@ -303,7 +327,7 @@ class OmopEmbAdapter:
     async def async_search(
         self,
         query: str,
-        limit: int,
+        limit: int | CandidateSearchLimits,
         domain: str | None,
         vocabulary: str | None,
         standard_only: bool,
@@ -326,12 +350,15 @@ class OmopEmbAdapter:
                 [query],
                 role=EmbeddingRole.QUERY,
             )
-            raw = reader.get_nearest_concepts(
+            raw = _search_embeddings(
+                reader,
                 query_embedding=_embedding_array(vectors, expected_rows=1),
                 concept_filter=concept_filter,
-                k=limit,
+                limit=limit,
                 faiss_index_config=record.index_config,
             )
+        except GroundworkersError:
+            raise
         except Exception as exc:
             _raise_embedding_store_error(exc)
             logger.exception(
@@ -352,7 +379,7 @@ class OmopEmbAdapter:
     async def async_search_batch(
         self,
         queries: list[str],
-        limit: int,
+        limit: int | CandidateSearchLimits,
         domain: str | None,
         vocabulary: str | None,
         standard_only: bool,
@@ -394,10 +421,11 @@ class OmopEmbAdapter:
             # Database/FAISS search is synchronous in omop-emb. Keep it off the
             # event loop while the provider-facing part remains natively async.
             raw = await asyncio.to_thread(
-                reader.get_nearest_concepts,
+                _search_embeddings,
+                reader,
                 query_embedding=query_embeddings,
                 concept_filter=concept_filter,
-                k=limit,
+                limit=limit,
                 faiss_index_config=record.index_config,
             )
         except GroundworkersError:
@@ -592,6 +620,82 @@ def _embedding_array(vectors: object, *, expected_rows: int) -> np.ndarray:
     if result.shape[0] != expected_rows:
         raise RuntimeError(f"Expected {expected_rows} embeddings, got {result.shape[0]}")
     return result
+
+
+def _search_embeddings(
+    reader: EmbeddingReaderInterface,
+    *,
+    query_embedding: np.ndarray,
+    concept_filter: EmbeddingConceptFilter,
+    limit: int | CandidateSearchLimits,
+    faiss_index_config: IndexConfig | None,
+) -> tuple[tuple[NearestConceptMatch, ...], ...]:
+    if isinstance(limit, int):
+        return reader.get_nearest_concepts(
+            query_embedding=query_embedding,
+            concept_filter=concept_filter,
+            k=limit,
+            faiss_index_config=faiss_index_config,
+        )
+
+    empty = ((),) * len(query_embedding)
+    candidates = (
+        reader.get_nearest_concepts(
+            query_embedding=query_embedding,
+            concept_filter=replace(concept_filter, require_standard=False),
+            k=limit.valid,
+            faiss_index_config=faiss_index_config,
+        )
+        or empty
+    )
+    if len(candidates) != len(query_embedding):
+        raise GroundworkersError(
+            "BACKEND_UNAVAIL", "The embedding index returned misaligned batch results."
+        )
+
+    # A filtered approximate search can exhaust its scan before filling k.
+    domains = {domain.casefold() for domain in concept_filter.domains or ()}
+    backfill_indices = [
+        index
+        for index, hits in enumerate(candidates)
+        if len(
+            {
+                hit.concept_id
+                for hit in hits
+                if hit.is_standard
+                and (not domains or (hit.domain_id or "").casefold() in domains)
+            }
+        )
+        < limit.standard
+    ]
+    backfill_by_index = {}
+    if backfill_indices:
+        vectors = (
+            query_embedding
+            if len(backfill_indices) == len(query_embedding)
+            else query_embedding[backfill_indices]
+        )
+        backfill = reader.get_nearest_concepts(
+            query_embedding=vectors,
+            concept_filter=concept_filter,
+            k=limit.standard,
+            faiss_index_config=faiss_index_config,
+        )
+        if backfill:
+            if len(backfill) != len(backfill_indices):
+                raise GroundworkersError(
+                    "BACKEND_UNAVAIL",
+                    "The embedding index returned misaligned batch results.",
+                )
+            backfill_by_index = dict(zip(backfill_indices, backfill, strict=True))
+
+    merged = []
+    for index, hits in enumerate(candidates):
+        rows = {hit.concept_id: hit for hit in hits}
+        for hit in backfill_by_index.get(index, ()):
+            rows.setdefault(hit.concept_id, hit)
+        merged.append(tuple(rows.values()))
+    return tuple(merged)
 
 
 def _raise_embedding_store_error(exc: BaseException) -> None:
