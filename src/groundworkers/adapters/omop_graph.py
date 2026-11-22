@@ -25,7 +25,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError, NoResultFound
 from sqlalchemy.orm import Session, sessionmaker
 
-from groundworkers.adapters._omop_graph_ancestry import AncestorRow, q_ancestor_rows
+from groundworkers.adapters._omop_graph_ancestry import (
+    AncestorRow,
+    DescendantRow,
+    q_ancestor_rows,
+    q_descendant_count,
+    q_descendant_rows,
+)
 from groundworkers.base.concept_payload import serialise_concept_view
 from groundworkers.base.domain_names import DomainNameResolver
 from groundworkers.base.errors import GroundworkersError
@@ -252,15 +258,61 @@ class OmopGraphAdapter:
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR") from exc
 
+    def descendant_rows(
+        self,
+        ancestor_id: int,
+        max_separation: int,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        concept_class_ids: Sequence[str] | None = None,
+    ) -> tuple[list[DescendantRow], int]:
+        """Read stored descendants and their exact count, optionally filtered or paged."""
+        count_statement = q_descendant_count(
+            ancestor_id, max_separation, concept_class_ids=concept_class_ids
+        )
+        rows_statement = q_descendant_rows(
+            ancestor_id,
+            max_separation,
+            limit=limit,
+            offset=offset,
+            concept_class_ids=concept_class_ids,
+        )
+        try:
+            with self._cdm_session_factory() as session:
+                if concept_class_ids is not None:
+                    known_classes = set(
+                        session.scalars(
+                            select(Concept_Class.concept_class_id).where(
+                                Concept_Class.concept_class_id.in_(concept_class_ids)
+                            )
+                        )
+                    )
+                    unknown_classes = [
+                        name for name in concept_class_ids if name not in known_classes
+                    ]
+                    if unknown_classes:
+                        raise GroundworkersError(
+                            "INVALID_INPUT",
+                            "Unknown concept_class_ids: " + ", ".join(unknown_classes),
+                        )
+                total = int(session.scalar(count_statement) or 0)
+                rows = [
+                    DescendantRow(
+                        descendant_concept_id=row["descendant_concept_id"],
+                        min_levels_of_separation=row["min_levels_of_separation"],
+                    )
+                    for row in session.execute(rows_statement).mappings()
+                ]
+            return rows, total
+        except GroundworkersError:
+            raise
+        except Exception as exc:
+            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR") from exc
+
     def parents(self, concept_id: int) -> tuple[int, ...]:
         try:
             return tuple(int(p) for p in self._get_kg().parents(concept_id))
-        except Exception as exc:
-            raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
-
-    def children(self, concept_id: int) -> tuple[int, ...]:
-        try:
-            return tuple(int(c) for c in self._get_kg().children(concept_id))
         except Exception as exc:
             raise self._wrap_graph_error(exc, default_code="QUERY_ERROR")
 

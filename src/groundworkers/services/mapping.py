@@ -720,9 +720,17 @@ class MappingService:
                 "include_self": False,
             }
         if include_descendants:
-            result["descendants"] = self._graph.get_descendants(
-                concept_id, max(1, min(descendant_limit, 10))
-            )[:descendant_limit]
+            descendant_limit = max(1, min(descendant_limit, 10))
+            descendant_page = self._graph.get_descendants(
+                concept_id, 3, limit=descendant_limit
+            )
+            result["descendants"] = descendant_page["descendants"]
+            result["descendant_scope"] = {
+                "max_depth": 3,
+                "limit": descendant_limit,
+                "total": descendant_page["total"],
+                "truncated": descendant_limit < descendant_page["total"],
+            }
         if include_relationship_summary:
             result["relationship_summary"] = self._summarise_edges(
                 self._graph.get_edges(concept_id)

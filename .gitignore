@@ -9,6 +9,7 @@ build/
 *.egg-info/
 .DS_Store
 _design/
+/evaluation/
 *.log
 *.bak
 *.tmp

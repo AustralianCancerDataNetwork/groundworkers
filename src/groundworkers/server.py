@@ -105,7 +105,8 @@ def create_server(
         state = app.plugins.get(plugin.name)
         if state is not None:
             try:
-                plugin.register(server, state)
+                with server.plugin_registration(plugin.name):
+                    plugin.register(server, state)
             except Exception:
                 logger.exception(
                     "Groundworkers plugin %s failed during MCP registration.",
@@ -195,8 +196,16 @@ def main(argv: list[str] | None = None) -> None:
         _set_explicit_config_path(args.config_path)
     try:
         config = build_app_config(config_path=args.config_path)
-    except (ConfigurationError, FileNotFoundError, OSError, TypeError, ValueError) as exc:
-        raise SystemExit(_configuration_failure(exc, config_path=args.config_path)) from None
+    except (
+        ConfigurationError,
+        FileNotFoundError,
+        OSError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise SystemExit(
+            _configuration_failure(exc, config_path=args.config_path)
+        ) from None
     # Now that the stack is loaded, its [logging] section takes precedence, and
     # the namespaces GroundworkersConfig declares (omop_graph, omop_emb) are
     # configured alongside groundworkers' own.
@@ -208,6 +217,7 @@ def main(argv: list[str] | None = None) -> None:
             json.dumps(
                 {
                     "config": config.describe(),
+                    "instructions": server.describe_instructions(),
                     "tools": server.describe_tools(),
                     "prompts": server.describe_prompts(),
                     "resources": server.describe_resources(),
@@ -255,10 +265,14 @@ def _lint_plugins(config_path: str | None) -> None:
         _set_explicit_config_path(config_path)
     try:
         stack = load_stack_config(config_path)
-    except (ConfigurationError, FileNotFoundError, OSError, TypeError, ValueError) as exc:
-        raise SystemExit(
-            _configuration_failure(exc, config_path=config_path)
-        ) from None
+    except (
+        ConfigurationError,
+        FileNotFoundError,
+        OSError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise SystemExit(_configuration_failure(exc, config_path=config_path)) from None
 
     reports: list[PluginLintReport] = []
     skipped: list[str] = []

@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+from difflib import get_close_matches
 from functools import wraps
 from typing import Annotated, Any, Literal, get_origin, get_type_hints
 
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel
 
 from groundworkers.base.errors import (
@@ -17,8 +20,72 @@ from groundworkers.base.errors import (
     internal_error_response,
     scrub_error_message,
 )
+from groundworkers.server_instructions import build_instructions
+from groundworkers.toolsets import ToolMeta, select_tools
 
 logger = logging.getLogger(__name__)
+_READ_ONLY_TOOL_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
+
+def _tool_annotations_or_default(
+    annotations: ToolAnnotations | None,
+) -> ToolAnnotations:
+    if annotations is not None:
+        return annotations
+    return _READ_ONLY_TOOL_ANNOTATIONS
+
+
+def _install_mcp_argument_validation(app: Any) -> Any:
+    """Reject unregistered keys before the MCP SDK drops them from arguments."""
+    tool_manager = getattr(app, "_tool_manager", None)
+    if tool_manager is None:
+        return app
+
+    call_tool = tool_manager.call_tool
+
+    async def validate_tool_arguments(
+        name: str,
+        arguments: dict[str, Any],
+        context: Any = None,
+        convert_result: bool = False,
+    ) -> Any:
+        tool = tool_manager.get_tool(name)
+        if tool is not None:
+            declared = set(tool.fn_metadata.arg_model.model_fields)
+            undeclared = sorted(set(arguments) - declared)
+            if undeclared:
+                details = []
+                for argument in undeclared:
+                    matches = get_close_matches(argument, sorted(declared))
+                    hint = f" (did you mean '{matches[0]}'?)" if matches else ""
+                    details.append(argument + hint)
+                error_result = GroundworkersError(
+                    "INVALID_INPUT",
+                    "Undeclared tool argument(s): " + ", ".join(details),
+                ).to_dict()
+                return CallToolResult(
+                    content=[
+                        TextContent(
+                            type="text",
+                            text=json.dumps(error_result, indent=2),
+                        )
+                    ],
+                    isError=True,
+                )
+        return await call_tool(
+            name,
+            arguments,
+            context=context,
+            convert_result=convert_result,
+        )
+
+    tool_manager.call_tool = validate_tool_arguments
+    return app
 
 
 @dataclass(frozen=True)
@@ -55,6 +122,8 @@ class GroundworkersMCPServer:
         self.name = name
         self._tools: dict[str, Callable[..., Any]] = {}
         self._tool_annotations: dict[str, ToolAnnotations | None] = {}
+        self._tool_metadata: dict[str, ToolMeta] = {}
+        self._registration_toolsets: frozenset[str] = frozenset()
         self._prompts: dict[str, _RegisteredPrompt] = {}
         self._resources: dict[str, tuple[Callable[..., Any], str | None]] = {}
 
@@ -62,6 +131,7 @@ class GroundworkersMCPServer:
         self,
         name: str | None = None,
         *,
+        toolsets: Collection[str] = (),
         annotations: ToolAnnotations | None = None,
         result_model: type[BaseModel] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -109,10 +179,27 @@ class GroundworkersMCPServer:
 
             _advertise_tool_signature(func, guarded, result_model)
             self._tools[tool_name] = guarded
-            self._tool_annotations[tool_name] = annotations
+            self._tool_annotations[tool_name] = _tool_annotations_or_default(
+                annotations
+            )
+            self._tool_metadata[tool_name] = self._tool_meta(toolsets)
             return guarded
 
         return decorator
+
+    def _tool_meta(self, toolsets: Collection[str]) -> ToolMeta:
+        """Freeze explicit toolsets or inherit the current registration default."""
+        return ToolMeta(frozenset(toolsets) or self._registration_toolsets)
+
+    @contextmanager
+    def plugin_registration(self, plugin_name: str) -> Iterator[None]:
+        """Default untagged tools to their plugin during its registration."""
+        previous = self._registration_toolsets
+        self._registration_toolsets = frozenset({f"plugin:{plugin_name}"})
+        try:
+            yield
+        finally:
+            self._registration_toolsets = previous
 
     def prompt(
         self,
@@ -147,7 +234,15 @@ class GroundworkersMCPServer:
         return decorator
 
     def list_tools(self) -> list[str]:
-        return sorted(self._tools.keys())
+        return sorted(self.available_tools())
+
+    def available_tools(self) -> frozenset[str]:
+        """Return the registered tool names available for advertisement."""
+        return select_tools(
+            {name: self._tool_metadata[name].toolsets for name in self._tools},
+            include=None,
+            exclude=(),
+        )
 
     def list_prompts(self) -> list[str]:
         return sorted(self._prompts.keys())
@@ -174,13 +269,31 @@ class GroundworkersMCPServer:
     def call_prompt(self, name: str, **kwargs: Any) -> Any:
         return self._prompts[name].func(**kwargs)
 
+    @property
+    def instructions(self) -> str | None:
+        # Resolve against the final tool registry, including late plugin registration.
+        text, _ = build_instructions(self.available_tools())
+        return text
+
+    def describe_instructions(self) -> dict[str, Any]:
+        text, sections = build_instructions(self.available_tools())
+        return {
+            "present": text is not None,
+            "chars": len(text) if text is not None else 0,
+            "sections": list(sections),
+        }
+
     def describe_tools(self) -> dict[str, dict[str, Any]]:
         description: dict[str, dict[str, Any]] = {}
+        available = self.available_tools()
         for name, func in self._tools.items():
+            if name not in available:
+                continue
             signature = inspect.signature(func)
             description[name] = {
                 "signature": str(signature),
                 "doc": inspect.getdoc(func) or "",
+                "toolsets": sorted(self._tool_metadata[name].toolsets),
             }
             if (annotations := self._tool_annotations.get(name)) is not None:
                 description[name]["annotations"] = annotations.model_dump()
@@ -241,12 +354,16 @@ class GroundworkersMCPServer:
         # alive for the process lifetime.
         app = FastMCP(
             self.name,
+            instructions=self.instructions,
             host=host,
             port=port,
             json_response=transport == "streamable-http",
             stateless_http=True,
         )
+        available = self.available_tools()
         for tool_name, func in self._tools.items():
+            if tool_name not in available:
+                continue
             app.tool(
                 name=tool_name,
                 description=inspect.getdoc(func) or "",
@@ -284,7 +401,8 @@ class GroundworkersMCPServer:
             )
         for uri, (func, description) in self._resources.items():
             app.resource(uri, description=description or "")(func)
-        app.run(transport=transport)
+
+        _install_mcp_argument_validation(app).run(transport=transport)
 
 
 def _prompt_arguments(
@@ -381,7 +499,9 @@ def _normalise_tool_result(
 
 
 def _advertise_tool_signature(
-    func: Callable[..., Any], guarded: Callable[..., Any], result_model: type[BaseModel] | None,
+    func: Callable[..., Any],
+    guarded: Callable[..., Any],
+    result_model: type[BaseModel] | None,
 ) -> None:
     # wraps preserves annotation strings, but FastMCP evaluates them in
     # this wrapper's globals. Resolve Annotated aliases in the original

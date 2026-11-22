@@ -7,3 +7,4 @@
 - [ ] Applied exactly one label (`breaking`, `feature`, `fix`, `dependencies`, or `chore`)
 - [ ] Tests pass locally (`uv run pytest -q`)
 - [ ] Lint passes (`uv run ruff check .`)
+- [ ] If tests/support/agent_surface_reference.json changed, I read its diff: every change to what agents see is intended

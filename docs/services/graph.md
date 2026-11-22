@@ -38,7 +38,7 @@ Return a serialized OMOP concept from a known identifier.
 
 ### `get_ancestors(...)` and `get_descendants(...)`
 
-Walk the OMOP hierarchy with bounded depth and serialized results.
+Read the stored `concept_ancestor` table with bounded minimum separation and serialized results. `get_descendants(...)` can also filter exact concept class IDs before paging; unpaged and paged results use the same stored rows.
 
 ### `get_edges(...)` and `get_neighbors(...)`
 

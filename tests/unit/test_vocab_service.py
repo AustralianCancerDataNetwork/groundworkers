@@ -175,6 +175,26 @@ def test_search_tools_expose_the_characterized_vocab_service(tmp_path) -> None:
     assert navigation["results"][0]["standard_concepts"][0]["concept_id"] == 1
 
 
+def test_fulltext_in_process_call_keeps_runtime_limit_clamp(
+    tmp_path, monkeypatch
+) -> None:
+    service = _service(tmp_path)
+    received_limits: list[int] = []
+
+    def search_fulltext(_query: str, **kwargs):
+        received_limits.append(kwargs["limit"])
+        return [], True
+
+    monkeypatch.setattr(service, "search_fulltext", search_fulltext)
+    server = GroundworkersMCPServer("search-test")
+    register_search_tools(server, service)
+
+    server.call("concept_search_fulltext", query="diabetes", limit=40)
+    server.call("concept_search_fulltext", query="diabetes", limit=100)
+
+    assert received_limits == [30, 30]
+
+
 # ---------------------------------------------------------------------------
 # Normalized-search affordability guard
 # ---------------------------------------------------------------------------
@@ -228,18 +248,23 @@ def test_normalized_search_runs_when_bounded_or_explicitly_allowed(
     assert isinstance(service.search_normalized("diabetes mellitus", **kwargs), list)
 
 
-def test_normalized_search_plan_uses_index_without_filters(tmp_path, monkeypatch) -> None:
+def test_normalized_search_plan_uses_index_without_filters(
+    tmp_path, monkeypatch
+) -> None:
     service = _service(tmp_path)
     monkeypatch.setattr(service._cdm.engine.dialect, "name", "postgresql")
     monkeypatch.setattr(service, "_has_normalized_index", lambda *_args: True)
 
-    assert service._normalized_search_plan(
-        domain=None,
-        vocabulary_id=None,
-        parent_ids=None,
-        include_synonyms=False,
-        allow_unindexed_scan=False,
-    ) == "indexed"
+    assert (
+        service._normalized_search_plan(
+            domain=None,
+            vocabulary_id=None,
+            parent_ids=None,
+            include_synonyms=False,
+            allow_unindexed_scan=False,
+        )
+        == "indexed"
+    )
 
 
 def test_normalized_search_runs_unfiltered_when_index_is_available(
@@ -258,7 +283,9 @@ def test_normalized_search_runs_unfiltered_when_index_is_available(
     assert [item.concept_id for item in results] == [1, 2]
 
 
-def test_normalized_search_translates_postgres_statement_timeout(tmp_path, monkeypatch) -> None:
+def test_normalized_search_translates_postgres_statement_timeout(
+    tmp_path, monkeypatch
+) -> None:
     service = _service(tmp_path)
 
     class QueryCanceled(RuntimeError):

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.grounding import ConceptGroundingService
+from groundworkers.toolsets import Toolset
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +18,12 @@ def _short_text(value: str, *, limit: int = 120) -> str:
     compact = " ".join(value.split())
     if len(compact) <= limit:
         return compact
-    return f"{compact[:limit - 3]}..."
+    return f"{compact[: limit - 3]}..."
 
 
-def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: ConceptGroundingService) -> None:
+def register_resolver_tools(
+    server: GroundworkersMCPServer, grounding_service: ConceptGroundingService
+) -> None:
     """Register free-text concept resolution tools against the MCP server.
 
     These tools map unstructured text (clinical terms, natural language, partial
@@ -30,62 +35,46 @@ def register_resolver_tools(server: GroundworkersMCPServer, grounding_service: C
     For direct lexical search with retrieval signals see search_tools.py.
     """
 
-    @server.tool("concept_ground")
+    @server.tool("concept_ground", toolsets=(Toolset.SEARCH,))
     async def concept_ground(
-        query: str,
-        limit: int = 5,
-        domain: str | None = None,
-        vocabulary_id: str | None = None,
-        parent_ids: list[int] | None = None,
-        standard_only: bool = False,
-        active_only: bool = False,
-        include_embedding: bool = True,
+        query: Annotated[str, Field(description="The source term text.")],
+        limit: Annotated[int, Field(description="Maximum results.")] = 5,
+        domain: Annotated[
+            str | None, Field(description="OMOP domain_id to restrict to, when known.")
+        ] = None,
+        vocabulary_id: Annotated[
+            str | None, Field(description="Restrict to one exact vocabulary_id.")
+        ] = None,
+        parent_ids: Annotated[
+            list[int] | None,
+            Field(description="Keep only descendants of these concept_ids."),
+        ] = None,
+        standard_only: Annotated[
+            bool,
+            Field(
+                description="Restrict candidate resolution to concepts flagged 'S' or 'C'. The default false resolves non-standard matches to standard via Maps to."
+            ),
+        ] = False,
+        active_only: Annotated[
+            bool,
+            Field(
+                description="Exclude deprecated or upgraded concepts from candidate resolution."
+            ),
+        ] = False,
+        include_embedding: Annotated[
+            bool, Field(description="Allow the embedding tier.")
+        ] = True,
     ) -> dict[str, Any]:
-        """Ground free text to ranked OMOP concept candidates.
-
-        Runs a tiered resolver pipeline (Exact → FullText → Embedding → Partial)
-        and short-circuits on the first tier that returns results. Each tier
-        also matches against concept synonyms.
-
-        match_kind in each result indicates which resolver tier produced it:
-          EXACT             — case-insensitive exact match on concept_name or synonym
-          FULLTEXT          — PostgreSQL FTS (requires tsvector sidecar column)
-          EMBEDDING_NEAREST — nearest-neighbour embedding search
-          PARTIAL           — iLIKE fragment match (last resort)
-
-        Each result includes scoring fields (total_score, relevance, parsimony_penalty,
-        broadness_bonus, separation, embedding_score) and standardized_from when the
-        grounded concept was mapped from a non-standard source concept.
-
-        Each result also carries strict OMOP flags: standard_concept is true only for
-        raw standard_concept = 'S', and classification_concept only for 'C'. Grounding
-        can land on a classification concept, which is a valid hierarchy node but not a
-        valid mapping target for a CDM entity field — check the flags rather than
-        assuming every result is standard.
-
-        standard_only: when true, restrict candidate resolution to concepts carrying a
-          standardness flag ('S' or 'C'). Defaults to false, so non-standard concepts
-          are resolved and then standardized via "Maps to", which is usually what you
-          want. Note this narrows *candidates*, not results.
-        active_only: when true, exclude concepts with an invalid_reason (deprecated or
-          upgraded) from candidate resolution. Defaults to false.
-
-        grounding_explanation summarises which resolver tier matched, whether embedding
-        scoring was active, which parent_ids constrained the search space, and the
-        standard_only/active_only policy that was applied.
-
-        parent_ids: optional list of OMOP concept_ids that act as required ancestors.
-          Only concepts that are descendants of at least one of these will be returned.
-          Use this to constrain grounding to a specific clinical sub-hierarchy — e.g.
-          pass the concept_id for "Neoplastic disease" to ensure only oncology results
-          are returned, or the concept_id for a specific drug class to scope a drug
-          lookup to that class.
-          When omitted the search runs without an ancestry constraint.
-
-        For finer control over resolver selection and quality thresholds, use
-        concept_search_exact, concept_search_fulltext, embedding_search, or
-        concept_navigate_to_standard.
-        """
+        """Quick resolver: ranked candidates from the first resolver tier that matches (exact, then
+        full-text, then embedding, then partial), so it can stop at a short or broad name. Use
+        it for a fast lead; use concept_candidate_bundle for a broad candidate set. By default
+        non-standard matches are resolved to standard via Maps to (standardized_from shows the
+        source). classification_concept ('C') results are hierarchy nodes, not mapping targets."""
+        # Each lexical tier also checks synonyms. Results retain total_score, relevance,
+        # parsimony_penalty, broadness_bonus, separation, embedding_score and
+        # standardized_from. Strict flags distinguish standard S from classification C.
+        # grounding_explanation records the matched tier, embedding participation,
+        # effective parent IDs and candidate standard/active policies.
         stripped = query.strip()
         if not stripped:
             return {

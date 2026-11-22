@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
 from groundworkers.services.knowledge.models import KnowledgeLayer, PackManifest
+from groundworkers.toolsets import Toolset
 
 logger = logging.getLogger(__name__)
 
@@ -96,41 +99,50 @@ def register_knowledge_tools(
     )
     def knowledge_catalogue_resource() -> str:
         import json
+
         manifests = catalogue.all()
-        return json.dumps({
-            "packs": [_manifest_payload(m) for m in manifests],
-            "total": len(manifests),
-        })
+        return json.dumps(
+            {
+                "packs": [_manifest_payload(m) for m in manifests],
+                "total": len(manifests),
+            }
+        )
 
-    @server.tool("knowledge_catalogue")
+    @server.tool("knowledge_catalogue", toolsets=(Toolset.KNOWLEDGE,))
     def knowledge_catalogue(
-        source_system: str | None = None,
-        domains: list[str] | None = None,
-        section_names: list[str] | None = None,
-        layer: str | None = None,
-        include_local: bool = True,
+        source_system: Annotated[
+            str | None,
+            Field(description="Detected source system (from source_plan), if any."),
+        ] = None,
+        domains: Annotated[
+            list[str] | None,
+            Field(
+                description='OMOP domains involved in the job, for example ["Measurement", "Drug"].'
+            ),
+        ] = None,
+        section_names: Annotated[
+            list[str] | None,
+            Field(
+                description="Section names from the source, used to detect a specialty."
+            ),
+        ] = None,
+        layer: Annotated[
+            str | None,
+            Field(
+                description="Restrict to core, specialisation, source or localisation."
+            ),
+        ] = None,
+        include_local: Annotated[
+            bool, Field(description="Include local site packs (default true).")
+        ] = True,
     ) -> dict[str, Any]:
-        """Discover which knowledge packs apply to a given job context.
-
-        Returns a filtered list of pack manifests from the knowledge layer.
-        Can be called at any workflow phase — source planning, grounding,
-        convention checking, or review — not only at load time.
-
-        source_system   Filter to packs applicable to this detected source
-                        system (e.g. "redcap"). Pass the detected_source_system
-                        value from source_plan output.
-        domains         Filter to packs relevant to these OMOP domains
-                        (e.g. ["Drug", "Measurement"]).
-        section_names   Section names from the job, used for specialty
-                        auto-detection via manifest fingerprints.
-        layer           Restrict to one namespace: "core", "specialisation",
-                        "source", or "localisation".
-        include_local   Whether to include localisation packs (default true).
-
-        Each result includes: name, layer, version, shareability,
-        scope_summary, mechanisms, applicability, see_also.
-        see_also lists related packs worth loading alongside this one.
-        """
+        """Find the convention packs (OMOP and OHDSI conventions, plus local site rules) that apply
+        to a job. Call it once at the start of any mapping or review job, with the OMOP domains
+        involved, before choosing between candidates; then read each applicable pack with
+        knowledge_pack. Returns name, scope_summary and see_also for each pack."""
+        # Source planning supplies detected_source_system; section names drive specialty
+        # fingerprint matching. Manifest results also retain layer, version, shareability,
+        # mechanisms and applicability alongside scope_summary and see_also.
         resolved_layer: KnowledgeLayer | None = None
         if layer is not None:
             if layer not in _KNOWN_LAYERS:
@@ -158,24 +170,20 @@ def register_knowledge_tools(
         except Exception:
             raise
 
-    @server.tool("knowledge_pack")
-    def knowledge_pack(name: str) -> dict[str, Any]:
-        """Fetch the full content of one knowledge pack by name.
-
-        Discover applicable packs with ``knowledge_catalogue`` first, then call
-        this to retrieve a pack's actual content for context injection
-        (guidance) or programmatic rule application (rules).
-
-        name    The pack name from a catalogue entry (e.g.
-                "standard-concept-preference").
-
-        Returns the manifest fields plus:
-          guidance   Markdown guidance text (guidance.md), or null if absent.
-          rules      Parsed rules.yaml content, or null if absent.
-          examples   Parsed examples.yaml content, or null if absent.
-
-        Returns NOT_FOUND when no pack with that name exists.
-        """
+    @server.tool("knowledge_pack", toolsets=(Toolset.KNOWLEDGE,))
+    def knowledge_pack(
+        name: Annotated[
+            str,
+            Field(
+                description="Pack name from knowledge_catalogue, for example standard-concept-preference."
+            ),
+        ],
+    ) -> dict[str, Any]:
+        """Read one convention pack by name (from knowledge_catalogue): its guidance text and
+        rules, for example which concept level or vocabulary applies when candidates are equally
+        precise. Apply its rules to the decision; they override general habit."""
+        # The manifest is extended with guidance.md, rules.yaml and examples.yaml
+        # content. Missing optional files yield null; unknown pack names yield NOT_FOUND.
         try:
             content = catalogue.get_pack(name)
             if content is None:

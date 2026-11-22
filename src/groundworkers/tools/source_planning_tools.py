@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
@@ -15,6 +17,7 @@ from groundworkers.services.source_planning.serialisation import (
     decode_content,
     serialize_pre_ingest_bundle,
 )
+from groundworkers.toolsets import Toolset
 
 _INGESTION_STRATEGY_DESCRIPTIONS: dict[IngestionStrategy, str] = {
     IngestionStrategy.DATA_DICT_IDEAL: "Table has codes plus enough semantic context for direct data-dictionary ingestion.",
@@ -30,7 +33,7 @@ def register_source_planning_tools(
     server: GroundworkersMCPServer,
     source_planning_service: SourcePlanningService,
 ) -> None:
-    @server.tool("source_plan")
+    @server.tool("source_plan", toolsets=(Toolset.SOURCE,))
     def source_plan(
         content: str,
         filename: str | None = None,
@@ -54,27 +57,37 @@ def register_source_planning_tools(
                 filename=filename,
                 caller_hint=caller_hint,
             )
-            return serialize_pre_ingest_bundle(bundle, include_intermediate=include_intermediate)
+            return serialize_pre_ingest_bundle(
+                bundle, include_intermediate=include_intermediate
+            )
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
             return exc.to_dict()
 
-    @server.tool("source_plan_assisted")
+    @server.tool("source_plan_assisted", toolsets=(Toolset.SOURCE, Toolset.LLM))
     async def source_plan_assisted(
-        content: str,
+        content: Annotated[
+            str,
+            Field(
+                description="File content: raw text, or base64 (with content_encoding=base64) for xlsx, pdf or docx."
+            ),
+        ],
         filename: str | None = None,
-        caller_hint: str | None = None,
+        caller_hint: Annotated[
+            str | None,
+            Field(
+                description="Your format guess; only compared with the detection, never changes it."
+            ),
+        ] = None,
         content_encoding: str | None = "utf-8",
         include_intermediate: bool = False,
     ) -> dict[str, Any]:
-        """Plan submitted source content with explicit LLM-assisted classification.
-
-        This tool is the explicit second-step source-planning path for cases
-        where deterministic classification was not strong enough. It preserves
-        fallback provenance in the returned planning artifacts. When no LLM
-        adapter is configured, the tool returns ``BACKEND_UNAVAIL``.
-        """
+        """source_plan plus a language-model review of the tables the rules could not classify
+        confidently; use it after source_plan when plan.uncertain_tables is not empty. Returns
+        BACKEND_UNAVAIL when no language model is configured or model-assisted planning is
+        turned off."""
+        # Serialization retains model-tier use and per-table fallback provenance.
 
         try:
             raw_content = decode_content(content, content_encoding)
@@ -83,7 +96,9 @@ def register_source_planning_tools(
                 filename=filename,
                 caller_hint=caller_hint,
             )
-            return serialize_pre_ingest_bundle(bundle, include_intermediate=include_intermediate)
+            return serialize_pre_ingest_bundle(
+                bundle, include_intermediate=include_intermediate
+            )
         except ValueError as exc:
             return {"error": True, "code": "INVALID_INPUT", "message": str(exc)}
         except GroundworkersError as exc:
