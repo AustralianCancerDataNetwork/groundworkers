@@ -78,7 +78,7 @@ def create_server(
         register_resolver_tools(server, app.services.grounding)
 
     if app.adapters.omop_emb is not None:
-        register_embedding_tools(server, app.adapters.omop_emb)
+        register_embedding_tools(server, app.adapters.omop_emb, app.services.vocab)
         register_embedding_resources(server, app.adapters.omop_emb)
     if app.services.text is not None:
         register_text_tools(server, app.services.text)

@@ -1,14 +1,86 @@
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Annotated, Any
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any, TypedDict
 
 from pydantic import Field
 
-from groundworkers.adapters.omop_emb import OmopEmbAdapter
+from groundworkers.adapters.omop_emb import CandidateSearchLimits, OmopEmbAdapter
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
+from groundworkers.services.mapping import (
+    EMBEDDING_CANDIDATE_WINDOW,
+    postfilter_standard_candidates,
+)
+from groundworkers.services.vocab import VocabService
 from groundworkers.toolsets import Toolset
+
+
+class _SearchOptions(TypedDict):
+    limit: int
+    domain: str | None
+    vocabulary: str | None
+    active_only: bool
+    model_name: str | None
+
+
+class _SingleSearchOptions(_SearchOptions):
+    query: str
+
+
+class _BatchSearchOptions(_SearchOptions):
+    queries: list[str]
+    batch_size: int
+
+
+async def _search_embedding_candidates(
+    search: Callable[..., Awaitable[dict[str, Any]]],
+    vocab: VocabService | None,
+    *,
+    limit: int,
+    domain: str | None,
+    active_only: bool,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    if vocab is None:
+        raise GroundworkersError(
+            "BACKEND_UNAVAIL",
+            "The vocabulary service is required for standard-only embedding search.",
+        )
+    domain = vocab.resolve_domain(domain)
+    result = await search(
+        limit=CandidateSearchLimits(max(limit, EMBEDDING_CANDIDATE_WINDOW), limit),
+        domain=domain,
+        standard_only=True,
+        active_only=active_only,
+        **kwargs,
+    )
+    batch = "queries" in kwargs
+    rows_by_query = result["results"] if batch else [result["results"]]
+    groups, _ = await asyncio.to_thread(
+        postfilter_standard_candidates,
+        vocab,
+        [("embedding", rows) for rows in rows_by_query],
+        domain=domain,
+        active_only=active_only,
+    )
+    if batch:
+        result["results"] = [rows[:limit] for rows, _ in groups]
+        result["warnings"] = [
+            f"query {index} ({query!r}): {warning}"
+            for index, (query, (_, warning)) in enumerate(
+                zip(kwargs["queries"], groups, strict=True), start=1
+            )
+            if warning
+        ]
+    else:
+        ((rows, warning),) = groups
+        result["results"] = rows[:limit]
+        if warning:
+            result.setdefault("warnings", []).append(warning)
+    return result
 
 
 def register_embedding_resources(
@@ -33,7 +105,9 @@ def register_embedding_resources(
 
 
 def register_embedding_tools(
-    server: GroundworkersMCPServer, emb_adapter: OmopEmbAdapter
+    server: GroundworkersMCPServer,
+    emb_adapter: OmopEmbAdapter,
+    vocab: VocabService | None,
 ) -> None:
     @server.tool("embedding_index_status", toolsets=(Toolset.EMBEDDING,))
     def embedding_index_status() -> dict[str, Any]:
@@ -111,16 +185,20 @@ def register_embedding_tools(
                 "message": "query must be a non-empty string",
             }
         safe_limit = max(1, min(limit, 50))
+        options = _SingleSearchOptions(
+            query=query,
+            limit=safe_limit,
+            domain=domain,
+            vocabulary=vocabulary,
+            active_only=active_only,
+            model_name=model_name,
+        )
         try:
-            return await emb_adapter.async_search(
-                query=query,
-                limit=safe_limit,
-                domain=domain,
-                vocabulary=vocabulary,
-                standard_only=standard_only,
-                active_only=active_only,
-                model_name=model_name,
-            )
+            if standard_only:
+                return await _search_embedding_candidates(
+                    emb_adapter.async_search, vocab, **options
+                )
+            return await emb_adapter.async_search(standard_only=False, **options)
         except NotImplementedError as exc:
             return {"error": True, "code": "BACKEND_UNAVAIL", "message": str(exc)}
         except GroundworkersError as exc:
@@ -167,17 +245,21 @@ def register_embedding_tools(
                 "message": "batch_size must be between 1 and 128",
             }
         safe_limit = max(1, min(limit, 50))
+        options = _BatchSearchOptions(
+            queries=queries,
+            limit=safe_limit,
+            domain=domain,
+            vocabulary=vocabulary,
+            active_only=active_only,
+            model_name=model_name,
+            batch_size=batch_size,
+        )
         try:
-            return await emb_adapter.async_search_batch(
-                queries=queries,
-                limit=safe_limit,
-                domain=domain,
-                vocabulary=vocabulary,
-                standard_only=standard_only,
-                active_only=active_only,
-                model_name=model_name,
-                batch_size=batch_size,
-            )
+            if standard_only:
+                return await _search_embedding_candidates(
+                    emb_adapter.async_search_batch, vocab, **options
+                )
+            return await emb_adapter.async_search_batch(standard_only=False, **options)
         except GroundworkersError as exc:
             return exc.to_dict()
 

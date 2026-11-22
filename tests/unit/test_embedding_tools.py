@@ -1,7 +1,14 @@
 
+from unittest.mock import AsyncMock, Mock
 
+from groundworkers.adapters.omop_emb import CandidateSearchLimits
 from groundworkers.base.errors import GroundworkersError
 from groundworkers.base.server import GroundworkersMCPServer
+from groundworkers.services.vocab import (
+    ConceptMappingResult,
+    MappedConcept,
+    VocabService,
+)
 from groundworkers.tools.embedding_tools import register_embedding_tools
 
 
@@ -113,9 +120,9 @@ class StubEmbAdapter:
         return self.encode(text=text, model_name=model_name)
 
 
-def build_server(adapter) -> GroundworkersMCPServer:
+def build_server(adapter, vocab=None) -> GroundworkersMCPServer:
     server = GroundworkersMCPServer("test-server")
-    register_embedding_tools(server, adapter)
+    register_embedding_tools(server, adapter, vocab)
     return server
 
 
@@ -213,12 +220,24 @@ def test_embedding_search_calls_adapter_with_clamped_limit_and_filters():
         limit=500,
         domain="Condition",
         vocabulary="SNOMED",
-        standard_only=True,
+        standard_only=False,
         active_only=False,
         model_name="demo-model",
     )
 
-    assert result["query_text"] == "hypertension"
+    assert result == {
+        "query_text": "hypertension",
+        "model_name": "demo-model",
+        "results": [
+            {
+                "concept_id": 123,
+                "concept_name": "Demo concept",
+                "similarity": 0.9,
+                "is_standard": True,
+                "is_active": True,
+            }
+        ],
+    }
     assert adapter.calls == [
         (
             "search",
@@ -227,7 +246,7 @@ def test_embedding_search_calls_adapter_with_clamped_limit_and_filters():
                 "limit": 50,
                 "domain": "Condition",
                 "vocabulary": "SNOMED",
-                "standard_only": True,
+                "standard_only": False,
                 "active_only": False,
                 "model_name": "demo-model",
             },
@@ -258,11 +277,15 @@ def test_embedding_search_batch_passes_shared_filters_and_batch_size():
         queries=["hypertension", "diabetes"],
         limit=500,
         domain="Condition",
-        standard_only=True,
+        standard_only=False,
         batch_size=16,
     )
 
-    assert result["query_texts"] == ["hypertension", "diabetes"]
+    assert result == {
+        "query_texts": ["hypertension", "diabetes"],
+        "model_name": "demo-model",
+        "results": [[], []],
+    }
     assert adapter.calls == [
         (
             "search_batch",
@@ -271,13 +294,163 @@ def test_embedding_search_batch_passes_shared_filters_and_batch_size():
                 "limit": 50,
                 "domain": "Condition",
                 "vocabulary": None,
-                "standard_only": True,
+                "standard_only": False,
                 "active_only": True,
                 "model_name": None,
                 "batch_size": 16,
             },
         )
     ]
+
+
+def test_standard_embedding_search_keeps_cross_domain_targets_without_domain():
+    adapter = StubEmbAdapter()
+    adapter.async_search = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "concept_id": 123,
+                    "concept_name": "Source",
+                    "vocabulary_id": "ICD10CM",
+                    "similarity": 0.8,
+                    "standard_concept": False,
+                },
+                {
+                    "concept_id": 124,
+                    "concept_name": "Unmapped",
+                    "standard_concept": False,
+                },
+            ]
+        }
+    )
+    vocab = Mock(spec=VocabService)
+    vocab.resolve_domain.return_value = None
+    vocab.navigate_to_standard.return_value = [
+        ConceptMappingResult(
+            123,
+            "Source",
+            False,
+            False,
+            [
+                MappedConcept(
+                    {
+                        "concept_id": cid,
+                        "concept_name": domain,
+                        "domain_id": domain,
+                        "standard_concept": True,
+                    },
+                    "Maps to",
+                )
+                for cid, domain in (
+                    (201, "Condition"),
+                    (301, "Measurement"),
+                    (401, "Observation"),
+                )
+            ],
+        )
+    ]
+
+    result = build_server(adapter, vocab).call(
+        "embedding_search", query="source", standard_only=True, limit=2
+    )
+
+    assert adapter.async_search.call_args.kwargs["limit"] == CandidateSearchLimits(
+        valid=25, standard=2
+    )
+    assert vocab.navigate_to_standard.call_args.args == ([123, 124],)
+    assert [(row["concept_id"], row["domain_id"]) for row in result["results"]] == [
+        (201, "Condition"),
+        (301, "Measurement"),
+    ]
+    assert result["results"][0]["reached_via"] == [
+        {
+            "concept_id": 123,
+            "concept_name": "Source",
+            "vocabulary_id": "ICD10CM",
+            "channel": "embedding",
+            "similarity": 0.8,
+        }
+    ]
+    assert "warnings" not in result
+
+
+def test_standard_embedding_batch_maps_once_and_aligns_each_query_warning():
+    first = {
+        "concept_id": 123,
+        "concept_name": "First source",
+        "standard_concept": False,
+    }
+    second = {
+        "concept_id": 124,
+        "concept_name": "Second source",
+        "standard_concept": False,
+    }
+    direct = {
+        "concept_id": 202,
+        "concept_name": "Direct hit",
+        "domain_id": "Condition",
+        "standard_concept": True,
+    }
+    adapter = StubEmbAdapter()
+    adapter.async_search_batch = AsyncMock(
+        return_value={"results": [[first, direct], [second, first]]}
+    )
+    vocab = Mock(spec=VocabService)
+    vocab.resolve_domain.return_value = "Condition"
+    vocab.navigate_to_standard.return_value = [
+        ConceptMappingResult(
+            123, "First source", False, False, [MappedConcept(direct, "Maps to")]
+        ),
+        ConceptMappingResult(
+            124,
+            "Second source",
+            False,
+            False,
+            [
+                MappedConcept(
+                    {
+                        "concept_id": 301,
+                        "concept_name": "Other target",
+                        "domain_id": "Measurement",
+                        "standard_concept": True,
+                    },
+                    "Maps to",
+                )
+            ],
+        ),
+    ]
+
+    result = build_server(adapter, vocab).call(
+        "embedding_search_batch",
+        queries=["first", "second"],
+        domain="condition",
+        standard_only=True,
+    )
+
+    vocab.navigate_to_standard.assert_called_once_with([123, 124])
+    assert adapter.async_search_batch.call_args.kwargs["domain"] == "Condition"
+    assert adapter.async_search_batch.call_args.kwargs[
+        "limit"
+    ] == CandidateSearchLimits(valid=25, standard=10)
+    assert [[row["concept_id"] for row in group] for group in result["results"]] == [
+        [202],
+        [202],
+    ]
+    assert result["warnings"] == [
+        "query 2 ('second'): 1 matched concept(s) map to standard concepts outside the Condition domain, not listed above: "
+        "Other target (301, Measurement) via 'Second source'",
+    ]
+
+
+def test_standard_embedding_batch_returns_empty_warnings_without_off_domain_hits():
+    vocab = Mock(spec=VocabService)
+    vocab.resolve_domain.return_value = None
+    result = build_server(StubEmbAdapter(), vocab).call(
+        "embedding_search_batch", queries=["diabetes"], standard_only=True
+    )
+
+    assert result["warnings"] == []
+    vocab.navigate_to_standard.assert_not_called()
 
 
 def test_embedding_search_batch_rejects_empty_query():

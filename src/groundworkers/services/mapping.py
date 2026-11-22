@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from typing import Any
 
-from groundworkers.adapters.omop_emb import OmopEmbAdapter
+from groundworkers.adapters.omop_emb import CandidateSearchLimits, OmopEmbAdapter
 from groundworkers.base.ancestry import (
     SharedAncestorRequest,
     validate_ancestor_depth,
@@ -20,6 +21,7 @@ from groundworkers.services.graph import GraphService
 from groundworkers.services.grounding import ConceptGroundingService
 from groundworkers.services.relationship_neighborhood import RelationshipTraversal
 from groundworkers.services.vocab import (
+    ConceptMappingResult,
     VocabService,
     normalize_text_for_matching,
     serialise_concept_match,
@@ -29,10 +31,106 @@ from groundworkers.services.vocab import (
 
 MAX_CANDIDATES_PER_CHANNEL = 20
 MAX_CANDIDATE_UNION = 100
+EMBEDDING_CANDIDATE_WINDOW = 25
 # Allow multiple relationship types per node while bounding each seed's edge payload.
 RELATIONSHIP_EDGES_PER_NODE = 5
 _SYNC_EMBEDDING = object()
 _SYNC_GROUNDING = object()
+
+
+def postfilter_standard_candidates(
+    vocab: VocabService,
+    groups: Sequence[tuple[str | None, list[dict[str, Any]]]],
+    *,
+    domain: str | None,
+    active_only: bool,
+) -> tuple[list[tuple[list[dict[str, Any]], str | None]], list[ConceptMappingResult]]:
+    """Resolve each ranked group, looking up its sources alongside all other groups."""
+    source_ids = list(
+        dict.fromkeys(
+            row["concept_id"]
+            for _, rows in groups
+            for row in rows
+            if not row.get("standard_concept", row.get("is_standard"))
+        )
+    )
+    mappings = vocab.navigate_to_standard(source_ids) if source_ids else []
+    targets = {
+        mapping.source_concept_id: [
+            target.concept
+            for target in mapping.targets
+            if target.relationship_id == "Maps to"
+            and (not active_only or target.concept.get("is_active") is not False)
+        ]
+        for mapping in mappings
+    }
+    return [
+        _merge_standard_candidates(rows, targets, domain, channel)
+        for channel, rows in groups
+    ], mappings
+
+
+def _merge_standard_candidates(
+    rows: list[dict[str, Any]],
+    targets: dict[int, list[dict[str, Any]]],
+    domain: str | None,
+    channel: str | None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    candidates: dict[int, dict[str, Any]] = {}
+    outside: dict[int, str] = {}
+    for row in rows:
+        source_id = row["concept_id"]
+        source_channels = [channel] if channel is not None else row["retrieved_by"]
+        if row.get("standard_concept", row.get("is_standard")):
+            direct = row.copy()
+            direct.pop("mapped_standard_concepts", None)
+            candidate = candidates.setdefault(source_id, direct)
+            if candidate is not direct and "reached_via" in candidate:
+                _add_mapping_channels(candidate, source_channels)
+            continue
+
+        source = {
+            key: row.get(key) for key in ("concept_id", "concept_name", "vocabulary_id")
+        }
+        similarity = row.get("similarity", row.get("embedding_similarity"))
+        provenance = [{**source, "channel": origin} for origin in source_channels]
+        for entry in provenance:
+            if entry["channel"] == "embedding" and similarity is not None:
+                entry["similarity"] = similarity
+        for target in targets.get(source_id, []):
+            target_id = target["concept_id"]
+            if (
+                domain
+                and (target.get("domain_id") or "").casefold() != domain.casefold()
+            ):
+                outside.setdefault(
+                    target_id,
+                    f"{target['concept_name']} ({target_id}, {target['domain_id']}) via '{source['concept_name']}'",
+                )
+                continue
+            candidate = candidates.setdefault(target_id, target.copy())
+            _add_mapping_channels(candidate, source_channels)
+            candidate.setdefault("reached_via", []).extend(provenance)
+
+    warning = None
+    if outside:
+        named = list(outside.values())[:3]
+        if len(outside) > 3:
+            named.append(f"and {len(outside) - 3} more")
+        warning = (
+            f"{len(outside)} matched concept(s) map to standard concepts outside the {domain} domain, "
+            f"not listed above: {'; '.join(named)}"
+        )
+    return list(candidates.values()), warning
+
+
+def _add_mapping_channels(candidate: dict[str, Any], channels: list[str]) -> None:
+    retrieved_by = [
+        tag for tag in candidate.get("retrieved_by", []) if tag != "maps_to"
+    ]
+    candidate["retrieved_by"] = list(
+        dict.fromkeys([*retrieved_by, *channels, "maps_to"])
+    )
 
 
 class MappingService:
@@ -203,16 +301,24 @@ class MappingService:
 
         warnings: list[str] = []
         channels: dict[str, dict[str, Any]] = {}
+        lexical_limit = (
+            min(2 * per_channel_limit, MAX_CANDIDATES_PER_CHANNEL)
+            if standard_only
+            else per_channel_limit
+        )
+        embedding_domain = (
+            self._vocab.resolve_domain(domain) if standard_only else domain
+        )
 
         exact_results = self._vocab.search_exact(
             query,
             domain=domain or None,
             vocabulary_id=vocabulary_id or None,
-            standard_only=standard_only,
+            standard_only=False,
             active_only=active_only,
             include_synonyms=include_synonyms,
             parent_ids=parent_ids,
-            limit=per_channel_limit,
+            limit=lexical_limit,
         )
         channels["exact"] = {
             "available": True,
@@ -227,10 +333,10 @@ class MappingService:
                 query,
                 domain=domain,
                 vocabulary_id=vocabulary_id,
-                standard_only=standard_only,
+                standard_only=False,
                 active_only=active_only,
                 parent_ids=parent_ids,
-                limit=per_channel_limit,
+                limit=lexical_limit,
             )
             if channel is not None:
                 channels["normalized"] = channel
@@ -242,11 +348,11 @@ class MappingService:
                 query,
                 domain=domain or None,
                 vocabulary_id=vocabulary_id or None,
-                standard_only=standard_only,
+                standard_only=False,
                 active_only=active_only,
                 include_synonyms=include_synonyms,
                 parent_ids=parent_ids,
-                limit=per_channel_limit,
+                limit=lexical_limit,
             )
             channels["fulltext"] = {
                 "available": fts_available,
@@ -275,8 +381,12 @@ class MappingService:
                     if _embedding_result is _SYNC_EMBEDDING:
                         embedding_result = self._emb.search(
                             query=query,
-                            limit=per_channel_limit,
-                            domain=domain,
+                            limit=CandidateSearchLimits(
+                                EMBEDDING_CANDIDATE_WINDOW, per_channel_limit
+                            )
+                            if standard_only
+                            else per_channel_limit,
+                            domain=embedding_domain,
                             vocabulary=vocabulary_id,
                             standard_only=standard_only,
                             active_only=active_only,
@@ -305,29 +415,29 @@ class MappingService:
                     }
                     warnings.append(f"embedding channel unavailable: {exc.message}")
 
-        candidate_union = self._build_candidate_union(channels, overall_limit)
+        candidate_union = self._build_candidate_union(
+            channels, MAX_CANDIDATE_UNION if standard_only else overall_limit
+        )
         self._backfill_candidate_metadata(candidate_union, warnings)
 
         standardized_candidates: list[dict[str, Any]] = []
-        if include_standard_mappings and candidate_union:
-            concept_ids = [
-                row["concept_id"]
-                for row in candidate_union
-                if not row.get("standard_concept")
-            ]
-            if concept_ids:
-                mappings = self._vocab.navigate_to_standard(concept_ids)
+        if standard_only:
+            candidate_union, warning, mappings = self._postfilter_bundle(
+                candidate_union,
+                channels,
+                embedding_domain,
+                active_only,
+                per_channel_limit,
+            )
+            if warning:
+                warnings.append(warning)
+            candidate_union = candidate_union[:overall_limit]
+            if include_standard_mappings:
                 standardized_candidates = [
                     serialise_standard_mapping(m) for m in mappings
                 ]
-                mapping_index = {
-                    m["source_concept_id"]: m["standard_concepts"]
-                    for m in standardized_candidates
-                }
-                for row in candidate_union:
-                    row["mapped_standard_concepts"] = mapping_index.get(
-                        row["concept_id"], []
-                    )
+        elif include_standard_mappings:
+            standardized_candidates = self._annotate_standard_mappings(candidate_union)
 
         if include_hierarchy_context and self._graph is not None:
             for row in candidate_union[: min(5, len(candidate_union))]:
@@ -399,8 +509,14 @@ class MappingService:
             try:
                 embedding_result = await self._emb.async_search(
                     query=query,
-                    limit=per_channel_limit,
-                    domain=domain,
+                    limit=CandidateSearchLimits(
+                        EMBEDDING_CANDIDATE_WINDOW, per_channel_limit
+                    )
+                    if standard_only
+                    else per_channel_limit,
+                    domain=self._vocab.resolve_domain(domain)
+                    if standard_only
+                    else domain,
                     vocabulary=vocabulary_id,
                     standard_only=standard_only,
                     active_only=active_only,
@@ -427,6 +543,59 @@ class MappingService:
             model_name=model_name,
             _embedding_result=embedding_result,
         )
+
+    def _postfilter_bundle(
+        self,
+        candidate_union: list[dict[str, Any]],
+        channels: dict[str, dict[str, Any]],
+        domain: str | None,
+        active_only: bool,
+        per_channel_limit: int,
+    ) -> tuple[list[dict[str, Any]], str | None, list[ConceptMappingResult]]:
+        groups, mappings = postfilter_standard_candidates(
+            self._vocab,
+            [
+                (None, candidate_union),
+                *((name, channel["results"]) for name, channel in channels.items()),
+            ],
+            domain=domain,
+            active_only=active_only,
+        )
+        (rows, warning), *filtered_channels = groups
+        union_source_ids = {
+            row["concept_id"]
+            for row in candidate_union
+            if not row.get("standard_concept")
+        }
+        for channel, (channel_rows, _) in zip(
+            channels.values(), filtered_channels, strict=True
+        ):
+            channel["results"] = channel_rows[:per_channel_limit]
+        return (
+            rows,
+            warning,
+            [m for m in mappings if m.source_concept_id in union_source_ids],
+        )
+
+    def _annotate_standard_mappings(
+        self, candidate_union: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        concept_ids = [
+            row["concept_id"]
+            for row in candidate_union
+            if not row.get("standard_concept")
+        ]
+        if not concept_ids:
+            return []
+        mappings = self._vocab.navigate_to_standard(concept_ids)
+        standardized_candidates = [serialise_standard_mapping(m) for m in mappings]
+        mapping_index = {
+            m["source_concept_id"]: m["standard_concepts"]
+            for m in standardized_candidates
+        }
+        for row in candidate_union:
+            row["mapped_standard_concepts"] = mapping_index.get(row["concept_id"], [])
+        return standardized_candidates
 
     def concept_nearest_standard_ancestor(
         self,

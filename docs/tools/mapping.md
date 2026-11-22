@@ -95,7 +95,11 @@ Representative response sections:
 - `candidate_union`
 - `warnings`
 
-In the MCP response, `channels` has the shape `{"exact": {"available": true, "count": 2}}`, with one entry per channel that ran. Counts describe the channel results before deduplication or the merged-list limit. Candidate details remain in `candidate_union`, where `retrieved_by` identifies their channels. `standardized_candidates`, `constraints` and `warnings` retain their existing shapes. The direct Python service and REST endpoint continue to return full channel result lists.
+In MCP, `channels` has the shape `{"exact": {"available": true, "count": 2}}`. Each count describes the returned rows for that channel before the merged-list limit. With `standard_only=true`, the count reflects post-filtering, deduplication within the channel, and its `per_channel_limit`. The direct Python service and REST endpoint return the channel result lists.
+
+With `standard_only=true`, retrieval can find non-standard sources. Groundworkers replaces those hits with their standard OMOP `Maps to` targets in the requested domain and deduplicates the results. For each mapped candidate, `retrieved_by` includes the source retrieval channels and `maps_to`. Each `reached_via` entry identifies the source concept, its vocabulary and the channel that found it. Embedding entries also include similarity when available. When a mapping leads outside the requested domain, `warnings` names up to three such targets with their source names.
+
+When `include_standard_mappings=true`, `standardized_candidates` describes the standard mappings of non-standard sources from the candidate union before post-filtering.
 
 Hierarchy previews and relationship summaries enrich only the first five
 merged candidates.
