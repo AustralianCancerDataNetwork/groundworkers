@@ -85,7 +85,7 @@ Owned here
 |---|---|---|
 | Source-planning roles and column review pack | [Models](src/groundworkers/services/source_planning/models.py); [pack manifest](src/groundworkers/prompt_packs/groundcrew-source-column-classification/manifest.yaml) | Groundcrew and source-planning clients |
 | Domain routing and classifier outputs | [omop_domains.py](src/groundworkers/omop_domains.py) | Groundcrew's domain review pack and the domain-routing knowledge pack |
-| Mapping conventions | [Standard-concept guidance](src/groundworkers/knowledge/packs/core/standard-concept-preference/guidance.md), [drug guidance](src/groundworkers/knowledge/packs/core/drug-concept-granularity/guidance.md), [history-of guidance](src/groundworkers/knowledge/packs/core/history-of-event/guidance.md) | Agents reading knowledge packs; guidance is advisory |
+| Mapping conventions | [Standard-concept guidance](src/groundworkers/knowledge/packs/core/standard-concept-preference/guidance.md), [drug guidance](src/groundworkers/knowledge/packs/core/drug-concept-granularity/guidance.md), [history-of guidance](src/groundworkers/knowledge/packs/core/history-of-event/guidance.md), [measurement guidance](src/groundworkers/knowledge/packs/core/measurement-concept-granularity/guidance.md) | Agents reading knowledge packs; guidance is advisory |
 | Plugin interfaces | [plugins.py](src/groundworkers/plugins.py) | Registry and other Groundworkers plugins |
 
 Consumed from elsewhere

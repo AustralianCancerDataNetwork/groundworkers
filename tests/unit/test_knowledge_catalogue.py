@@ -3,10 +3,12 @@ from pathlib import Path
 from groundworkers.base.server import GroundworkersMCPServer
 from groundworkers.services.knowledge.catalogue import KnowledgeCatalogue
 from groundworkers.services.knowledge.models import PackApplicability
-from groundworkers.tools.knowledge_tools import register_knowledge_tools
+from groundworkers.tools.knowledge_tools import _PACKS_ROOT, register_knowledge_tools
 
 
-def _write_pack(root: Path, layer: str, name: str, manifest_yaml: str, *, guidance=None, rules=None) -> None:
+def _write_pack(
+    root: Path, layer: str, name: str, manifest_yaml: str, *, guidance=None, rules=None
+) -> None:
     pack_dir = root / layer / name
     pack_dir.mkdir(parents=True)
     (pack_dir / "manifest.yaml").write_text(manifest_yaml, encoding="utf-8")
@@ -49,6 +51,7 @@ def _build_packs(root: Path) -> None:
 # Discovery / query
 # ---------------------------------------------------------------------------
 
+
 def test_catalogue_discovers_all_packs(tmp_path):
     _build_packs(tmp_path)
     catalogue = KnowledgeCatalogue(tmp_path)
@@ -84,6 +87,7 @@ def test_query_excludes_non_matching_source_system(tmp_path):
 # matches() — regression coverage for the collapsed logic
 # ---------------------------------------------------------------------------
 
+
 def test_matches_always_true_ignores_all_context():
     app = PackApplicability(always=True, source_system="redcap")
     assert app.matches(source_system="qualtrics") is True
@@ -113,6 +117,7 @@ def test_matches_section_name_patterns_regex():
 # get_pack — content serving (the finished feature)
 # ---------------------------------------------------------------------------
 
+
 def test_get_pack_serves_guidance_text_and_parsed_rules(tmp_path):
     _build_packs(tmp_path)
     catalogue = KnowledgeCatalogue(tmp_path)
@@ -122,8 +127,57 @@ def test_get_pack_serves_guidance_text_and_parsed_rules(tmp_path):
     assert content is not None
     assert content.manifest.name == "standard-concept-preference"
     assert "Standard Concept Selection" in content.guidance
-    assert content.rules == {"standard_concept_required": {"reject_if": "standard_concept != 'S'"}}
+    assert content.rules == {
+        "standard_concept_required": {"reject_if": "standard_concept != 'S'"}
+    }
     assert content.examples is None  # no examples.yaml present
+
+
+def test_measurement_pack_applies_only_to_measurement_domain():
+    catalogue = KnowledgeCatalogue(_PACKS_ROOT)
+
+    measurement_names = {
+        manifest.name for manifest in catalogue.query(domains=["Measurement"])
+    }
+    drug_names = {manifest.name for manifest in catalogue.query(domains=["Drug"])}
+    condition_names = {
+        manifest.name for manifest in catalogue.query(domains=["Condition"])
+    }
+
+    name = "measurement-concept-granularity"
+    assert name in measurement_names
+    assert name not in drug_names
+    assert name not in condition_names
+
+
+def test_measurement_granularity_pack_loads_rules_without_vocabulary_ranking():
+    catalogue = KnowledgeCatalogue(_PACKS_ROOT)
+
+    content = catalogue.get_pack("measurement-concept-granularity")
+
+    assert content is not None
+    assert content.guidance
+    assert {
+        "core_rule",
+        "precision",
+        "vocabulary_preference",
+        "blood_specimen_systems",
+        "search_steps",
+        "no_exact_match",
+        "sources",
+    } <= content.rules.keys()
+    assert content.rules["vocabulary_preference"]["rule"] == "none"
+
+
+def test_measurement_pack_references_and_license_resolve():
+    catalogue = KnowledgeCatalogue(_PACKS_ROOT)
+
+    content = catalogue.get_pack("measurement-concept-granularity")
+    assert content is not None
+    discovered_names = {manifest.name for manifest in catalogue.all()}
+
+    assert set(content.manifest.see_also) <= discovered_names
+    assert "LOINC is copyright © Regenstrief Institute, Inc." in content.guidance
 
 
 def test_get_pack_missing_files_leave_none(tmp_path):
@@ -148,6 +202,7 @@ def test_get_pack_unknown_returns_none(tmp_path):
 # Tool surface
 # ---------------------------------------------------------------------------
 
+
 def test_knowledge_pack_tool_returns_content(tmp_path):
     _build_packs(tmp_path)
     server = GroundworkersMCPServer("test")
@@ -157,7 +212,10 @@ def test_knowledge_pack_tool_returns_content(tmp_path):
 
     assert result["name"] == "standard-concept-preference"
     assert "Standard Concept Selection" in result["guidance"]
-    assert result["rules"]["standard_concept_required"]["reject_if"] == "standard_concept != 'S'"
+    assert (
+        result["rules"]["standard_concept_required"]["reject_if"]
+        == "standard_concept != 'S'"
+    )
     assert "guidance.md" in result["files_present"]
 
 
@@ -186,7 +244,9 @@ def test_knowledge_pack_tool_not_found(tmp_path):
     assert result["code"] == "NOT_FOUND"
 
 
-def test_register_knowledge_tools_missing_configured_root_keeps_bundled_baseline(tmp_path):
+def test_register_knowledge_tools_missing_configured_root_keeps_bundled_baseline(
+    tmp_path,
+):
     server = GroundworkersMCPServer("test")
     assert register_knowledge_tools(server, packs_root=tmp_path / "missing") is True
     assert "knowledge_pack" in server.list_tools()
@@ -200,7 +260,9 @@ def test_register_knowledge_tools_uses_default_baseline_root():
     assert "knowledge://catalogue" in server.list_resources()
 
 
-def test_register_knowledge_tools_keeps_bundled_baseline_when_configured_root_is_added(tmp_path):
+def test_register_knowledge_tools_keeps_bundled_baseline_when_configured_root_is_added(
+    tmp_path,
+):
     _write_pack(
         tmp_path,
         "localisation",

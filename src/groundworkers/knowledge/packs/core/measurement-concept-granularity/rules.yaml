@@ -1,0 +1,78 @@
+# Measurement concept granularity. Declarative; see guidance.md.
+
+core_rule:
+  choose: the standard concept that keeps every part of the test the source gives, and adds none
+  never_add: [specimen, method, specimen_subtype, timing, challenge]  # even when one is the usual one for the test
+  unit_implies: property  # never the specimen
+  property_exception: with no unit in the source, a test's property is not an added fact
+  property_only_tie: with no unit, if candidates differ only in property, choose one and map it (not needs_review)
+  blood_fractions_not_added: for a source 'Blood', Serum, Plasma and Serum or Plasma do not add a specimen
+  never_drop_to_avoid_property: [specimen, component]
+  omitted_part: loss
+  added_or_contradicted_part: error  # an error is worse than a loss
+
+precision:
+  axes:  # part -> relationships that carry it
+    component: [Has component]
+    specimen: [Has system, Has specimen, Has direct site, Inheres in]
+    property: [Has property]
+    time: [Has time aspect]
+    scale: [Has scale type]
+    method: [Has method]
+  where_to_see:
+    loinc: concept_mapping_context neighbours by concept class (LOINC Component, System, Property, Time, Scale, Method); concept_relationships by name
+    snomed: concept_relationships (Has component, Has specimen, Has direct site, Inheres in, Has property) or the name
+  no_relationships: read the name; a part the name states counts
+
+vocabulary_preference:
+  domain: Measurement
+  rule: none  # parts decide, not vocabulary
+  standard_for_tests:
+    LOINC: most tests
+    SNOMED: most tests
+    OMOP Extension: tests added where LOINC and SNOMED lack them
+    CPT4: billing codes; combined tests or alternatives are broader than a single-test source
+    HCPCS: billing codes; as CPT4
+
+blood_specimen_systems:  # a source "Blood" (sample collected) fits all of these
+  - Blood
+  - Serum
+  - Plasma
+  - Serum or Plasma
+
+unknown_specimen:
+  choose: [LOINC System XXX, concept with no specimen]
+  never: a specimen-specific test, even the usual one
+
+search_steps:
+  - search with the full source label, including specimen and unit words
+  - compare every candidate's parts, not names
+  - too broad -> standard Measurement descendants; also search directly
+  - too specific or no exact match -> sideways (LOINC Component neighbour -> concept_relationships -> Component of), then up (nearest standard ancestor that keeps every stated part, including the specimen)
+
+not_targets:
+  - LOINC Class, LOINC Hierarchy and LOINC Group concepts
+  - panels listed as ancestors
+
+no_exact_match:  # first that applies
+  - exact: keeps every stated part, adds none
+  - broader: keeps the most stated parts, adds and contradicts none; rationale names what is lost
+  - none_faithful: no valid mapping (concept_id 0); never a near match
+
+not_covered:  # these rules do not apply; Cancer Modifier and OMOP Genomic concepts remain valid targets
+  - cancer staging and tumour attributes (Cancer Modifier, NAACCR)
+  - genomic variants (OMOP Genomic)
+
+sources:
+  - id: cdm54_measurement_concept_id
+    url: https://ohdsi.github.io/CommonDataModel/cdm54.html#measurement
+    rule: pick the measurement concept representing the most amount of detail you have
+  - id: book_ohdsi_5_3_12
+    url: https://ohdsi.github.io/BookOfOhdsi-2ndEdition/representation/vocabularies.html
+    rule: up-hill mappings only if the loss of information is irrelevant to standard research use cases
+  - id: book_ohdsi_5_3_13
+    url: https://ohdsi.github.io/BookOfOhdsi-2ndEdition/representation/vocabularies.html
+    rule: the Measurement hierarchy is incomplete
+  - id: loinc_ug_2_5
+    url: https://loinc.org/kb/users-guide/major-parts-of-a-loinc-term
+    rule: System is a defining part of a LOINC term; Bld = whole blood; Ser/Plas when serum and plasma are clinically equivalent
