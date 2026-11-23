@@ -17,7 +17,7 @@ dependencies = [
   "oa-configurator>=2.1.0,<3",
   "omop-alchemy>=3.0.0,<4",
   "omop-graph>=4.0.0,<5",
-  "omop-emb>=3.1.0,<4",
+  "omop-emb>=3.2.0,<4",
   "omop-llm>=1.0.2,<2",
   "omop-semantics>=0.6,<1",
   "uvicorn[standard]>=0.29,<1.0",
@@ -48,14 +48,14 @@ all_source = [
   "python-docx>=1.0",
 ]
 embedding-pgvector = [
-  "omop-emb[pgvector]>=3.1.0,<4",
+  "omop-emb[pgvector]>=3.2.0,<4",
 ]
 embedding-faiss = [
-  "omop-emb[faiss-cpu]>=3.1.0,<4",
+  "omop-emb[faiss-cpu]>=3.2.0,<4",
 ]
 duckdb = [
   "omop-graph[duckdb]>=4.0.0,<5",
-  "omop-emb[duckdbvss]>=3.1.0,<4",
+  "omop-emb[duckdbvss]>=3.2.0,<4",
 ]
 dev = [
   "groundworkers[duckdb]",

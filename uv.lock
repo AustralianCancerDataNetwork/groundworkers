@@ -1237,11 +1237,11 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26,<3" },
     { name = "oa-configurator", specifier = ">=2.1.0,<3" },
     { name = "omop-alchemy", specifier = ">=3.0.0,<4" },
-    { name = "omop-emb", specifier = ">=3.1.0,<4" },
-    { name = "omop-emb", extras = ["duckdbvss"], marker = "extra == 'dev'", specifier = ">=3.1.0,<4" },
-    { name = "omop-emb", extras = ["duckdbvss"], marker = "extra == 'duckdb'", specifier = ">=3.1.0,<4" },
-    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=3.1.0,<4" },
-    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=3.1.0,<4" },
+    { name = "omop-emb", specifier = ">=3.2.0,<4" },
+    { name = "omop-emb", extras = ["duckdbvss"], marker = "extra == 'dev'", specifier = ">=3.2.0,<4" },
+    { name = "omop-emb", extras = ["duckdbvss"], marker = "extra == 'duckdb'", specifier = ">=3.2.0,<4" },
+    { name = "omop-emb", extras = ["faiss-cpu"], marker = "extra == 'embedding-faiss'", specifier = ">=3.2.0,<4" },
+    { name = "omop-emb", extras = ["pgvector"], marker = "extra == 'embedding-pgvector'", specifier = ">=3.2.0,<4" },
     { name = "omop-graph", specifier = ">=4.0.0,<5" },
     { name = "omop-graph", extras = ["duckdb"], marker = "extra == 'dev'", specifier = ">=4.0.0,<5" },
     { name = "omop-graph", extras = ["duckdb"], marker = "extra == 'duckdb'", specifier = ">=4.0.0,<5" },
@@ -2659,7 +2659,7 @@ duckdb = [
 
 [[package]]
 name = "omop-emb"
-version = "3.1.0"
+version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "h5py" },
@@ -2674,9 +2674,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/5c/99fd350084bfc4b01ae4a257e8cb9b3c97b637f3ea1bc5000587e4430e63/omop_emb-3.1.0.tar.gz", hash = "sha256:8ebde36de4c269fd0c67d41bfda1b0cfee5ef4ac6fdd8912a42112441a54ebbc", size = 290209, upload-time = "2026-11-05T21:26:40.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4d/a8/0bf6f21ea6526f1f6e7f6b6a3a5fa3654ada0401d115f23f44b9f4e0e151/omop_emb-3.2.0.tar.gz", hash = "sha256:54dbbeb96c2b4333038f4a08f0970108de80f7785033d020c75644aeed49720e", size = 340277, upload-time = "2026-11-23T01:37:17.016Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/ea/ef867376e7ad86acadbca8d23fba244dddbd015847f7578ec47f11cee52d/omop_emb-3.1.0-py3-none-any.whl", hash = "sha256:a0c11f3227d01d86d736c8cc009d79f66997d105189462af10651bbc1735a901", size = 113798, upload-time = "2026-11-05T21:26:39.019Z" },
+    { url = "https://files.pythonhosted.org/packages/fb/6b/5d00d7793806b51bab1a5a8a8ece78299079e2ba4320a144abbb5f20ab89/omop_emb-3.2.0-py3-none-any.whl", hash = "sha256:18e176ac43c0b2fd6daa831fc6a3c819ad4318877aa7acc3b0d4bf3205ea3b1f", size = 125530, upload-time = "2026-11-23T01:37:15.532Z" },
 ]
 
 [package.optional-dependencies]
