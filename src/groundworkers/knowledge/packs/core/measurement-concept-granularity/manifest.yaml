@@ -1,0 +1,24 @@
+name: measurement-concept-granularity
+layer: core
+version: "1.5"
+shareability: public
+scope_summary: >
+  Lab tests and other measurements: choose the standard concept that keeps
+  every part of the test the source gives (analyte, specimen, property,
+  timing) and adds none, not even the usual specimen; with no unit, the
+  property is not an added fact. When nothing is exact,
+  go broader, never to a near match. How to compare parts and find broader
+  concepts; no vocabulary ranking. Does not cover cancer staging, tumour
+  attributes or genomic variants.
+
+mechanisms:
+  - context-inject
+
+applicability:
+  always: false
+  domains:
+    - Measurement
+
+see_also:
+  - standard-concept-preference
+  - domain-routing
