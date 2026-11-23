@@ -2043,7 +2043,7 @@
 <p>It is a thin wrapper over <code>DomainService</code>.</p>
 <hr />
 <h2 id="domain_classify"><code>domain_classify</code></h2>
-<p>Classifies field labels into OMOP domains using the label text and any example response values supplied by the caller.</p>
+<p>Uses a language model to guess the domain of each field from its label and at most the first 10 example values.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;label_values&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;haemoglobin&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;12.1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;13.4&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;11.8&quot;</span><span class="p">],</span>
@@ -2054,7 +2054,7 @@
 <span class="p">}</span>
 </code></pre></div>
 <p><code>label_values</code> is required. It maps each field label to a list of example response-value strings. Use an empty list when no values are known.</p>
-<p><code>model_name</code> is optional and overrides the default model from the LLM config for this call.</p>
+<p><code>model_name</code> is optional and accepts only the configured chat model or null.</p>
 <p><strong>Response:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;classifications&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -2064,7 +2064,7 @@
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>Only confident classifications are returned. Labels that the model cannot place confidently into a single OMOP domain are omitted so the caller can continue with fallback logic.</p>
+<p>Assignments with null or invalid domain values are omitted. There is no confidence score or confidence threshold, and model-returned label keys are not checked against the input labels.</p>
 <p>Valid returned domains are:</p>
 <ul>
 <li><code>Measurement</code></li>
@@ -2094,7 +2094,7 @@
 <tbody>
 <tr>
 <td><code>BACKEND_UNAVAIL</code></td>
-<td>LLM API unreachable, authentication failure, or LLM backend not configured</td>
+<td>Configured LLM API unreachable or authentication failure</td>
 </tr>
 <tr>
 <td><code>QUERY_ERROR</code></td>

@@ -2153,6 +2153,7 @@
 <span class="p">}</span>
 </code></pre></div>
 <p>All parameters except <code>query</code> are optional.</p>
+<p>With <code>standard_only=true</code>, search can retrieve non-standard concepts and then replace them with standard OMOP <code>Maps to</code> targets in the requested domain. Mapped candidates identify their source and embedding similarity in <code>reached_via</code>. A warning names up to three targets outside the requested domain. A standard-only lookup adds candidates if the wider search found fewer distinct in-domain standard hits than the requested <code>limit</code>.</p>
 <div class="admonition warning">
 <p class="admonition-title">Requires a configured embedding model</p>
 <p><code>embedding_search</code> must encode the query string using a live embedding model.
@@ -2173,6 +2174,7 @@ the tool returns <code>BACKEND_UNAVAIL</code>.</p>
 <span class="p">}</span>
 </code></pre></div>
 <p>All queries in a call share the same domain, vocabulary, model, and concept filters. Partition queries before calling when those constraints differ. The MCP wrapper accepts at most 256 queries; <code>batch_size</code> is the provider batch size and is bounded to 1–128.</p>
+<p>With <code>standard_only=true</code>, each query uses the same post-filter as <code>embedding_search</code>. The batch returns a flat <code>warnings</code> list, even when empty. Each warning begins with the query's one-based position and text.</p>
 <h2 id="embedding_encode"><code>embedding_encode</code></h2>
 <p>Encodes a text string into one query embedding vector.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -2188,7 +2190,7 @@ the tool returns <code>BACKEND_UNAVAIL</code>.</p>
 <span class="w">  </span><span class="nt">&quot;vector&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">0.0123</span><span class="p">,</span><span class="w"> </span><span class="mf">-0.0441</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div></p>
-<p>Like <code>embedding_search</code>, this requires a configured <code>embedding_model_name</code> and a live provider client.</p>
+<p>Like <code>embedding_search</code>, this requires a configured <code>embedding_model_name</code> and a live provider client. Encoding accepts only that configured live model, even when other models are registered for stored-vector operations.</p>
 
 
 

@@ -2019,7 +2019,7 @@
 <p>Resolver tools turn free text into ranked OMOP concept candidates. They are backed by <code>ConceptGroundingService</code> over the omop-graph backend. A result can be a standard concept, a non-standard source concept, or a classification concept; inspect the returned flags before treating it as a CDM mapping target.</p>
 <p>If you already have a known identifier, use <a href="../concept/">Concept Tools</a> instead. If you want raw lexical search primitives without the tiered resolver policy, use <a href="../search/">Search Tools</a>.</p>
 <h2 id="concept_ground"><code>concept_ground</code></h2>
-<p>Full-featured free-text grounding for clinical terms and source labels.</p>
+<p>Use this tiered resolver for a fast candidate lead. For the default search across retrieval channels, use <code>concept_candidate_bundle</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;lung cancer&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>

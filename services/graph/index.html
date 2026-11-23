@@ -2230,7 +2230,7 @@
 <h3 id="get_concept-and-get_concept_by_code"><code>get_concept(...)</code> and <code>get_concept_by_code(...)</code></h3>
 <p>Return a serialized OMOP concept from a known identifier.</p>
 <h3 id="get_ancestors-and-get_descendants"><code>get_ancestors(...)</code> and <code>get_descendants(...)</code></h3>
-<p>Walk the OMOP hierarchy with bounded depth and serialized results.</p>
+<p>Read the stored <code>concept_ancestor</code> table with bounded minimum separation and serialized results. <code>get_descendants(...)</code> can also filter exact concept class IDs before paging; unpaged and paged results use the same stored rows.</p>
 <h3 id="get_edges-and-get_neighbors"><code>get_edges(...)</code> and <code>get_neighbors(...)</code></h3>
 <p>Expose direct relationships or a bounded multi-hop neighborhood for one concept. <code>get_edges(...)</code> returns relationship summaries; <code>get_neighbors(...)</code> returns a bounded neighborhood packet with optional edges and termination metadata.</p>
 <h3 id="find_path-and-find_equivalency_path"><code>find_path(...)</code> and <code>find_equivalency_path(...)</code></h3>

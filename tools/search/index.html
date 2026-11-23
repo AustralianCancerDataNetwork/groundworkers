@@ -2110,7 +2110,7 @@
 <span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>All parameters except <code>query</code> are optional. <code>min_rank</code> must be in <code>[0.0, 1.0]</code> and is applied server-side before returning results (useful to avoid very large result sets); set to <code>0.0</code> to disable.</p>
+<p>All parameters except <code>query</code> are optional. <code>limit</code> defaults to 20 (1..30). <code>min_rank</code> must be in <code>[0.0, 1.0]</code> and is applied server-side before returning results (useful to avoid very large result sets); set to <code>0.0</code> to disable.</p>
 <p><code>tsvector_available</code> in the response indicates whether the sidecar column was detected. When <code>false</code>, <code>results</code> is always <code>[]</code> and the caller should fall through to <code>embedding_search</code> or <code>concept_search_exact</code>.</p>
 <p><strong>Response</strong>:
 <div class="highlight"><pre><span></span><code><span class="p">{</span>

@@ -2102,7 +2102,7 @@
 <span class="w">  </span><span class="nt">&quot;include_intermediate&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>This path returns <code>BACKEND_UNAVAIL</code> if no configured chat model can perform the assisted step. The deterministic <code>source_plan</code> path does not require an LLM.</p>
+<p>For extracted tables, this path returns <code>BACKEND_UNAVAIL</code> when no chat model is configured or <code>source_planning_llm_assisted_enabled</code> is false. A source with no extracted tables returns its plan without requiring model assistance. The deterministic <code>source_plan</code> path does not require an LLM.</p>
 <h2 id="supporting-mcp-resources">Supporting MCP resources</h2>
 <p>The server also exposes resources describing the current source-planning vocabulary:</p>
 <ul>

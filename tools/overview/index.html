@@ -799,6 +799,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#toolsets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Toolsets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mcp-rest-and-python" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1992,6 +2003,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#toolsets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Toolsets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mcp-rest-and-python" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2082,6 +2104,8 @@
 
 
 <h1 id="tools-overview">Tools overview</h1>
+<p>Text tools document model-requested limits and model-reported fields; mapping tools clarify identity traversal and evaluation inputs.</p>
+<p>MCP mapping tools provide parameter guidance, concise candidate-channel counts and a recovery hint for missing vocabulary codes.</p>
 <p>The MCP surface is organized by the job a caller is trying to do. Tool registration follows the active runtime: core vocabulary and graph tools require the CDM runtime, while embedding, chat, knowledge-pack, and semantic-projection tools appear only when their prerequisites are available.</p>
 <h2 id="choose-a-workflow">Choose a workflow</h2>
 <table>
@@ -2213,10 +2237,79 @@
 </tbody>
 </table>
 <p>The source-planning resources <code>source-planning://canonical-headers</code>, <code>source-planning://column-roles</code>, and <code>source-planning://ingestion-strategies</code> are also registered independently of the tool table. Text preprocessing prompts are available through MCP prompt discovery when the server starts.</p>
+<h2 id="toolsets">Toolsets</h2>
+<p>Tools can belong to several toolsets. <code>groundworkers --describe</code> lists each tool's memberships.</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>system</code></td>
+<td>Deployment status and vocabulary catalogue; always registered.</td>
+</tr>
+<tr>
+<td><code>lookup</code></td>
+<td>Fetch a concept by id or by vocabulary code.</td>
+</tr>
+<tr>
+<td><code>search</code></td>
+<td>Find candidate concepts for text.</td>
+</tr>
+<tr>
+<td><code>mapping</code></td>
+<td>Source-to-standard mapping workflow: candidates, mapping context, hierarchy checks, standard targets.</td>
+</tr>
+<tr>
+<td><code>mapping_advanced</code></td>
+<td>Less common mapping utilities: mapping by vocabulary code, value mapping, mapping expressions, shared standard ancestors.</td>
+</tr>
+<tr>
+<td><code>graph</code></td>
+<td>Concept hierarchy, relationships and paths.</td>
+</tr>
+<tr>
+<td><code>embedding</code></td>
+<td>Embedding index search and neighbours.</td>
+</tr>
+<tr>
+<td><code>llm</code></td>
+<td>Language-model text helpers.</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>Source-file planning.</td>
+</tr>
+<tr>
+<td><code>knowledge</code></td>
+<td>Convention packs.</td>
+</tr>
+<tr>
+<td><code>semantic</code></td>
+<td>Semantic projection (optional).</td>
+</tr>
+<tr>
+<td><code>offline</code></td>
+<td>Evaluation and diagnostics, not intended for agents.</td>
+</tr>
+</tbody>
+</table>
+<p>Usage instructions follow the available tools.
+Selection can exclude toolsets; exclusion wins when a tool also belongs to an included toolset.</p>
 <h2 id="mcp-rest-and-python">MCP, REST, and Python</h2>
 <p>MCP is the broad, discovery-oriented surface. REST intentionally exposes only curated workflow operations: candidate bundles and assisted source planning, plus <code>/healthz</code>. Direct Python callers should use <code>app.services.*</code> for domain workflows and should not import MCP tool modules to avoid a transport-shaped API.</p>
 <p>The one service that is not attached to <code>app.services</code> is <code>SemanticProjectionService</code>: it has no adapter dependency and is constructed directly when the feature is enabled. The <a href="../../usage/integrations/">integration guide</a> shows the three entry points; the <a href="../../concepts/">concepts guide</a> explains when each one is appropriate.</p>
 <h2 id="availability-and-errors">Availability and errors</h2>
+<p>The MCP initialize response includes usage instructions assembled from the final
+registered tool names, including plugin registrations. Each section is sent only
+when every Groundworkers tool it names is available; partial deployments can omit
+the mapping section. Stdio, SSE and streamable HTTP use the same selection.
+<code>groundworkers --describe</code> reports their presence, character count and included
+sections. The section text and declared tool dependencies live in
+<code>src/groundworkers/server_instructions.py</code>.</p>
 <p><code>system_status</code> and <code>system_vocabulary_catalogue</code> are always registered so a client can inspect the deployment before assuming optional capabilities exist. Other tool groups are omitted when their backing runtime is not configured. Use <code>groundworkers --describe</code> to inspect the exact active surface.</p>
 <p>MCP tools return a JSON-safe error object rather than raising across the transport boundary:</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ERROR_CODE&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Human-readable description&quot;</span><span class="p">}</span>

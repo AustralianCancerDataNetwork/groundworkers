@@ -2063,7 +2063,7 @@
 <p>Knowledge packs are reusable guidance and rule bundles. Groundworkers ships baseline packs and can layer site-specific or localisation packs from <code>knowledge_packs_root</code>. They are discovered independently of source planning, although a source-planning result often provides useful context for the query.</p>
 <p>The knowledge tools are registered when at least one packs root is available. <code>knowledge_catalogue</code> is the discovery step; <code>knowledge_pack</code> loads the content of a selected pack.</p>
 <h2 id="knowledge_catalogue"><code>knowledge_catalogue</code></h2>
-<p>Find packs whose applicability matches the supplied context. Omit filters to list all discovered packs.</p>
+<p>Find packs whose applicability matches the supplied context. Begin mapping and review jobs by discovering applicable packs with the involved domains, then load them before choosing candidates. Omit filters to list all discovered packs.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;source_system&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;redcap&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;domains&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Condition&quot;</span><span class="p">],</span>

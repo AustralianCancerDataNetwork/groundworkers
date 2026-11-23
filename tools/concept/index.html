@@ -2280,17 +2280,27 @@
 <span class="p">}</span>
 </code></pre></div></p>
 <hr />
-<p>Ancestry is read directly from the stored OMOP closure, with non-self
-zero-separation ancestors retained. <code>max_depth</code> accepts 0..20 and measures stored
-minimum separation; invalid values are rejected. The response preserves
-<code>ancestors</code> and reports <code>ancestry_source</code>, <code>distance_metric</code>, effective <code>max_depth</code>
-and <code>include_self=false</code>. A zero-distance link does not imply interchangeability.
-Parent/child primitives and descendant traversal keep their existing semantics.</p>
+<p>Ancestry is read directly from the stored OMOP closure, with non-self zero-separation ancestors retained. <code>max_depth</code> accepts 0..20 and measures stored minimum separation; invalid values are rejected. The response preserves <code>ancestors</code> and reports <code>ancestry_source</code>, <code>distance_metric</code>, effective <code>max_depth</code> and <code>include_self=false</code>. A zero-distance link does not imply interchangeability. Parent/child primitives expose direct graph relationships. Descendant results use the stored <code>concept_ancestor</code> table.</p>
 <h2 id="concept_descendants"><code>concept_descendants</code></h2>
-<p>Returns descendants of a concept up to <code>max_depth</code> hops (default 3, max 10).</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">441484</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">}</span>
+<p>Returns descendants from the stored <code>concept_ancestor</code> table (default depth 3, range 1..10). <code>depth</code> is the stored minimum separation, not a count of graph relationship hops. Results are ordered by depth and then concept ID. Use <code>limit</code> (default 50, range 1..500) and <code>offset</code> (default 0, minimum 0) to page through the stored ancestry. <code>concept_class_ids</code> optionally filters by exact <code>concept_class_id</code> before paging; <code>total</code> counts only matching descendants. For drug concepts, filter by classes such as <code>["Clinical Drug"]</code> because greater depth does not mean greater drug specificity. Unknown class IDs are rejected.</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1503297</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;max_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;concept_class_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Clinical Drug&quot;</span><span class="p">]}</span>
 </code></pre></div>
-<p><strong>Response</strong>: same shape as ancestors, with <code>"descendants"</code> key instead of <code>"ancestors"</code>.</p>
+<p><strong>Response</strong>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">441484</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;descendants&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">441485</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;concept_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">441486</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;returned&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;truncated&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;max_depth&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>total</code> counts all descendants within <code>max_depth</code>; <code>truncated</code> is true when more rows remain after the returned page. Results are ordered by minimum depth, then <code>concept_id</code>.</p>
 <hr />
 <h2 id="concept_relationships"><code>concept_relationships</code></h2>
 <p>Returns all direct relationships (edges) for one concept, grouped by direction. Edges are not filtered by domain, so cross-domain attribute edges (a Procedure's <code>Has method</code> → Observation, <code>Has dir proc site</code> → Spec Anatomic Site) are included.</p>
@@ -2331,7 +2341,7 @@ Parent/child primitives and descendant traversal keep their existing semantics.<
 <span class="p">}</span>
 </code></pre></div>
 <p>All parameters except <code>source_id</code> and <code>target_id</code> are optional.</p>
-<p><code>allow_hierarchical_traversal=false</code> (default): only IDENTITY predicates (<code>Maps to</code>, <code>Concept same_as</code>, <code>Concept poss_eq</code>, etc.). The connection found represents a direct cross-vocabulary equivalence with no loss of specificity.</p>
+<p><code>allow_hierarchical_traversal=false</code> (default): only IDENTITY predicates, including <code>Maps to</code>, <code>Concept same_as</code>, cross-vocabulary equivalence and replacement links. <code>Concept poss_eq</code> is an ASSOCIATION predicate and is excluded.</p>
 <p><code>allow_hierarchical_traversal=true</code>: also allows HIERARCHY predicates (<code>Is a</code> / <code>Subsumes</code>). A path may then step up or down the ancestry chain; the connection may be at a broader level of abstraction.</p>
 <p><strong>Response</strong> (same shape as <code>concept_path</code>):
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -2462,7 +2472,7 @@ Parent/child primitives and descendant traversal keep their existing semantics.<
 <p>Use the ancestor/descendant tools for the usual “what is this a kind of?” question. Use this tool when the edge-level classification graph itself matters, including cross-vocabulary or non-standard relationships. <code>direction</code> is <code>out</code>, <code>in</code>, or <code>both</code>; <code>limit</code> is clamped to <code>1..200</code>.</p>
 <hr />
 <h2 id="concept_map_to_standard"><code>concept_map_to_standard</code></h2>
-<p>Maps a non-standard concept (identified by vocabulary + code) to its standard OMOP equivalent via IDENTITY-type relationship edges.</p>
+<p>Resolves a vocabulary/code pair through all IDENTITY-type relationship edges. These include <code>Maps to value</code> and <code>Maps to unit</code>, so standard value or unit targets can appear alongside the <code>Maps to</code> target. For <code>Maps to</code> targets alone, use <code>concept_navigate_to_standard</code> with the source concept ID.</p>
 <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;vocabulary_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ICD10CM&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;concept_code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;C34.1&quot;</span><span class="p">}</span>
 </code></pre></div>
 <p><strong>Response</strong>:

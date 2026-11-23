@@ -2012,6 +2012,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.resolve_domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve_domain
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.services.vocab.VocabService.search_exact" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2211,6 +2222,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_descendants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_descendants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.services.graph.GraphService.get_extended_inheritance" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2390,6 +2412,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.postfilter_standard_candidates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        postfilter_standard_candidates
+      
+    </span>
+  </a>
   
 </li>
         
@@ -3697,6 +3730,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.services.vocab.VocabService.resolve_domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve_domain
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.services.vocab.VocabService.search_exact" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3896,6 +3940,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#groundworkers.services.graph.GraphService.get_descendants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_descendants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#groundworkers.services.graph.GraphService.get_extended_inheritance" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4075,6 +4130,17 @@
         
       </ul>
     </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groundworkers.services.mapping.postfilter_standard_candidates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        postfilter_standard_candidates
+      
+    </span>
+  </a>
   
 </li>
         
@@ -5592,6 +5658,26 @@ reporting instead of treating schema presence as operational readiness.</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="groundworkers.services.vocab.VocabService.resolve_domain" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">resolve_domain</span><span class="p">(</span><span class="n">domain</span><span class="p">)</span></code>
+
+</h4>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Canonicalise a requested domain, rejecting one that cannot exist.</p>
+<p>Mirrors <code>ConceptGroundingService._resolve_domain</code> so the search tools
+and the grounding tools agree on what a domain is and fail the same way.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="groundworkers.services.vocab.VocabService.search_exact" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">search_exact</span><span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vocabulary_id</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standard_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">include_synonyms</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">parent_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span></code>
 
@@ -5962,6 +6048,40 @@ errors), so callers can treat a missing key as "unknown concept".</p>
 <div class="doc doc-object doc-function">
 
 
+<h4 id="groundworkers.services.graph.GraphService.get_descendants" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">get_descendants</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="n">max_depth</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">concept_class_ids</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h4>
+          <div class="doc-overloads">
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_descendants</span><span class="p">(</span>
+    <span class="n">concept_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">max_depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">concept_class_ids</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span>
+</code></pre></div><div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_descendants</span><span class="p">(</span>
+    <span class="n">concept_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">max_depth</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">offset</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">concept_class_ids</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+</code></pre></div>          </div>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return stored descendants, optionally filtered by class or paged.</p>
+
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h4 id="groundworkers.services.graph.GraphService.get_extended_inheritance" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">get_extended_inheritance</span><span class="p">(</span><span class="n">concept_id</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">direction</span><span class="o">=</span><span class="s1">&#39;out&#39;</span><span class="p">,</span> <span class="n">predicate_subkinds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">active_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">limit</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span></code>
 
@@ -6305,6 +6425,24 @@ optional ancestry constraints, tier ordering, and response explanation.</p>
 
 </div>
 
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="groundworkers.services.mapping.postfilter_standard_candidates" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">postfilter_standard_candidates</span><span class="p">(</span><span class="n">vocab</span><span class="p">,</span> <span class="n">groups</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">domain</span><span class="p">,</span> <span class="n">active_only</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Resolve each ranked group, looking up its sources alongside all other groups.</p>
+
+
+    </div>
+
+</div>
 
 
 
